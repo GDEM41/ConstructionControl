@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using ClosedXML.Excel;
 
 namespace ConstructionControl
 {
@@ -398,8 +399,11 @@ namespace ConstructionControl
                     j.Supplier.Contains(SupplierFilterBox.Text,
                         StringComparison.OrdinalIgnoreCase));
 
-            filteredJournal = data.ToList();
-            JournalGrid.ItemsSource = filteredJournal;
+                     filteredJournal = data.ToList();
+                     JournalGrid.ItemsSource = filteredJournal;
+
+            RefreshSummaryTable();
+
         }
 
         // ================= СОХРАНЕНИЕ =================
@@ -450,8 +454,73 @@ namespace ConstructionControl
             SaveState();
             Close();
         }
-      
-       
+        private void ImportExcel_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Excel files (*.xlsx)|*.xlsx",
+                Title = "Выберите файл Excel с приходами"
+            };
+
+            if (dlg.ShowDialog() != true)
+                return;
+
+            using var wb = new XLWorkbook(dlg.FileName);
+
+            var sheetNames = wb.Worksheets
+                .Select(s => s.Name)
+                .ToList();
+            var importWindow = new ExcelImportWindow(dlg.FileName, sheetNames)
+            {
+                Owner = this
+            };
+
+            importWindow.ShowDialog();
+
+        }
+
+
+
+
+        private void RefreshSummaryTable()
+        {
+            if (currentObject == null)
+                return;
+
+            var result = new List<SummaryRow>();
+
+            // группируем ЖВК по материалу
+            var materials = journal
+                .GroupBy(j => new { j.MaterialName, j.Unit });
+
+            foreach (var mat in materials)
+            {
+                var row = new SummaryRow
+                {
+                    MaterialName = mat.Key.MaterialName,
+                    Unit = mat.Key.Unit
+                };
+
+                // инициализируем блоки
+                for (int block = 1; block <= currentObject.BlocksCount; block++)
+                    row.ByBlocks[block] = 0;
+
+                // суммируем
+                foreach (var rec in mat)
+                {
+                    // ПОКА: считаем всё как блок 1
+                    // (этажи и реальное распределение сделаем позже)
+                    row.ByBlocks[1] += rec.Quantity;
+                    row.Total += rec.Quantity;
+                }
+
+                result.Add(row);
+            }
+
+            SummaryGrid.ItemsSource = result;
+        }
+
+
 
 
     }

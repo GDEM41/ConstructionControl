@@ -59,8 +59,8 @@
             <ToolBar>
 
                 <Button Width="32" Height="32"
-        ToolTip="Сохранить"
-        Click="SaveButton_Click">
+                             ToolTip="Сохранить"
+                             Click="SaveButton_Click">
                     <TextBlock Text="💾" FontSize="16"/>
                 </Button>
 
@@ -86,6 +86,29 @@
                 IsEnabled="False">
                     <TextBlock Text="↪" FontSize="16"/>
                 </Button>
+                
+                <Separator Margin="10,0"/>
+
+                <Button Click="ImportExcel_Click"
+                        Margin="3,0"
+                        Padding="2,4"
+                        ToolTip="Импорт приходов из Excel"
+                        Background="White"
+                        BorderBrush="#888"
+                        BorderThickness="1">
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="📥"
+                                                   FontSize="16"
+                                                   Margin="0,0,2,0"/>
+                                        <TextBlock Text="Импорт Excel"
+                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                </Button>
+
+
+
 
             </ToolBar>
         </ToolBarTray>
@@ -114,6 +137,20 @@
 
             <!-- ВКЛАДКИ -->
             <TabControl Grid.Column="1">
+                
+                <TabItem Header="Сводная таблица">
+                    <Grid Margin="10">
+
+                        <DataGrid x:Name="SummaryGrid"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="True"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="All"/>
+
+                    </Grid>
+                </TabItem>
 
                 <!-- ЖВК -->
                 <TabItem Header="ЖВК">

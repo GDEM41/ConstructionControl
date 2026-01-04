@@ -77,4 +77,15 @@ namespace ConstructionControl
         public string Stb { get; set; }
         public string Supplier { get; set; }
     }
+    public class SummaryRow
+    {
+        public string MaterialName { get; set; }
+        public string Unit { get; set; }
+
+        // Ключ = номер блока, Значение = сумма
+        public Dictionary<int, int> ByBlocks { get; set; } = new();
+
+        public int Total { get; set; }
+    }
+
 }
