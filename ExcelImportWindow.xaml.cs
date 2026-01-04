@@ -21,6 +21,9 @@ namespace ConstructionControl
         private int? _ttnRow;
         private int? _supplierRow;
         private int? _passportRow;
+        private readonly Dictionary<string, ExcelImportTemplate> _appliedTemplates
+    = new Dictionary<string, ExcelImportTemplate>();
+
 
 
         private readonly string _filePath;
@@ -111,55 +114,62 @@ namespace ConstructionControl
         public List<JournalRecord> ImportedRecords { get; } = new();
         private void Import_Click(object sender, RoutedEventArgs e)
         {
-            if (_dateRow == null || _materialColumn == null || _quantityStartColumn == null)
+            if (_appliedTemplates.Count == 0)
             {
-                MessageBox.Show("Сначала выберите строку дат, колонку материалов и начало количеств");
+                MessageBox.Show("Не применён ни один шаблон");
                 return;
             }
 
-            using var wb = new ClosedXML.Excel.XLWorkbook(_filePath);
-            var ws = wb.Worksheet(SheetsList.SelectedItem.ToString());
+            ImportedRecords.Clear();
 
-            var range = ws.RangeUsed();
-            if (range == null)
-                return;
+            using var wb = new XLWorkbook(_filePath);
 
-            int lastRow = range.RowCount();
-            int lastCol = range.ColumnCount();
-
-            for (int r = _dateRow.Value + 1; r <= lastRow; r++)
+            foreach (var pair in _appliedTemplates)
             {
-                string material = ws.Cell(r, _materialColumn.Value).GetValue<string>();
-                if (string.IsNullOrWhiteSpace(material))
+                string sheetName = pair.Key;
+                var t = pair.Value;
+
+                var ws = wb.Worksheet(sheetName);
+                var range = ws.RangeUsed();
+                if (range == null)
                     continue;
 
-                for (int c = _quantityStartColumn.Value; c <= lastCol; c++)
+                int lastRow = range.RowCount();
+                int lastCol = range.ColumnCount();
+
+                for (int r = t.DateRow + 1; r <= lastRow; r++)
                 {
-                    if (!double.TryParse(ws.Cell(r, c).GetValue<string>(), out double qty))
+                    string material = ws.Cell(r, t.MaterialColumn).GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(material))
                         continue;
 
-                    if (qty <= 0)
-                        continue;
-
-                    DateTime date;
-                    if (!DateTime.TryParse(ws.Cell(_dateRow.Value, c).GetValue<string>(), out date))
-                        continue;
-
-                    ImportedRecords.Add(new JournalRecord
+                    for (int c = t.QuantityStartColumn; c <= lastCol; c++)
                     {
-                        Date = date,
-                        MaterialGroup = SheetsList.SelectedItem.ToString(), // ← ИМЯ ЛИСТА
-                        MaterialName = material,
-                        Quantity = (int)qty,
-                        Unit = "шт", // позже сделаем выбор из Excel
-                        ObjectName = ""
-                    });
+                        if (!double.TryParse(ws.Cell(r, c).GetValue<string>(), out double qty))
+                            continue;
 
+                        if (qty <= 0)
+                            continue;
+
+                        if (!DateTime.TryParse(ws.Cell(t.DateRow, c).GetValue<string>(), out DateTime date))
+                            continue;
+
+                        ImportedRecords.Add(new JournalRecord
+                        {
+                            Date = date,
+                            MaterialGroup = sheetName,
+                            MaterialName = material,
+                            Quantity = (int)Math.Round(qty, MidpointRounding.AwayFromZero),
+                            Unit = "шт",
+                            ObjectName = ""
+                        });
+                    }
                 }
             }
 
             MessageBox.Show($"Импортировано записей: {ImportedRecords.Count}");
-            
+            DialogResult = true;
+
         }
 
 
@@ -376,6 +386,35 @@ namespace ConstructionControl
                     break;
             }
         }
+        private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (SheetsList.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите лист Excel");
+                return;
+            }
+
+            if (TemplatesCombo.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите шаблон");
+                return;
+            }
+
+            string sheetName = SheetsList.SelectedItem.ToString();
+            string templateName = TemplatesCombo.SelectedItem.ToString();
+            string path = Path.Combine(TemplatesFolder, templateName + ".json");
+
+            var json = File.ReadAllText(path);
+            var template = System.Text.Json.JsonSerializer.Deserialize<ExcelImportTemplate>(json);
+
+            if (template == null)
+                return;
+
+            _appliedTemplates[sheetName] = template;
+
+            SelectedCellText.Text = $"Лист «{sheetName}» → шаблон «{templateName}» применён";
+        }
+
 
     }
 
