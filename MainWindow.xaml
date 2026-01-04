@@ -3,283 +3,258 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ConstructionControl"
         Title="Журнал входного контроля"
-        Height="600"
-        Width="1000">
+        Height="650"
+        Width="1150"
+        Background="#F6F7FB">
 
+    <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
 
-        <Style x:Key="SolidButton" TargetType="Button">
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="MinWidth" Value="120"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
+        <!-- Кнопка основная -->
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="110"/>
             <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#2F80ED"/>
+            <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#2F80ED"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>
 
-        <Style x:Key="SecondaryButton"
-               TargetType="Button"
-               BasedOn="{StaticResource SolidButton}">
-            <Setter Property="Background" Value="#E0E0E0"/>
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="BorderBrush" Value="#BDBDBD"/>
+        <!-- Кнопка вторичная -->
+        <Style x:Key="SecondaryButton" TargetType="Button"
+               BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="#E5E7EB"/>
+            <Setter Property="Foreground" Value="#111827"/>
+        </Style>
+        <!-- Toolbar кнопка -->
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
         </Style>
 
-        <Style x:Key="LockButtonStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="42"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="Margin" Value="0,0,12,0"/>
-            <Setter Property="Background" Value="#E0E0E0"/>
-            <Setter Property="BorderBrush" Value="#BDBDBD"/>
+        <!-- Toolbar кнопка -->
+        <Style x:Key="IconToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
         </Style>
 
     </Window.Resources>
 
     <DockPanel>
 
-        <!-- МЕНЮ -->
-        <Menu DockPanel.Dock="Top">
-            <MenuItem Header="Создать"
-                      Click="CreateObject_Click"/>
-
-            <MenuItem Header="Настройки объекта"
-                      Click="ObjectSettings_Click"/>
-
-            <MenuItem Header="Выход"
-                      Click="Exit_Click"/>
-
+        <!-- ================= МЕНЮ ================= -->
+        <Menu DockPanel.Dock="Top"
+              Background="White"
+              BorderThickness="0">
+            <MenuItem Header="Создать" Click="CreateObject_Click"/>
+            <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
+            <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>
 
-        <ToolBarTray DockPanel.Dock="Top">
-            <ToolBar>
+        <!-- ================= TOOLBAR ================= -->
+        <Border DockPanel.Dock="Top"
+                Background="White"
+                BorderBrush="#E5E7EB"
+                BorderThickness="0,0,0,1"
+                Padding="6">
 
-                <Button Width="32" Height="32"
-                             ToolTip="Сохранить"
-                             Click="SaveButton_Click">
-                    <TextBlock Text="💾" FontSize="16"/>
+            <ToolBar Background="Transparent">
+
+                <Button Style="{StaticResource IconButton}"
+                        ToolTip="Сохранить"
+                        Click="SaveButton_Click">
+                    💾
                 </Button>
 
-                <ToggleButton Width="32" Height="32"
-              ToolTip="Блокировка редактирования"
-              Checked="LockToggle_Checked"
-              Unchecked="LockToggle_Unchecked">
-                    <TextBlock Text="🔒" FontSize="16"/>
+                <ToggleButton Style="{StaticResource IconToggle}"
+                              ToolTip="Блокировка"
+                              Checked="LockToggle_Checked"
+                              Unchecked="LockToggle_Unchecked">
+                    🔒
                 </ToggleButton>
 
+                <Separator Margin="6,0"/>
 
+                <Button Style="{StaticResource IconButton}" IsEnabled="False">↩</Button>
+                <Button Style="{StaticResource IconButton}" IsEnabled="False">↪</Button>
 
-                <Separator/>
-
-                <Button Width="32" Height="32"
-                ToolTip="Шаг назад"
-                IsEnabled="False">
-                    <TextBlock Text="↩" FontSize="16"/>
-                </Button>
-
-                <Button Width="32" Height="32"
-                ToolTip="Шаг вперёд"
-                IsEnabled="False">
-                    <TextBlock Text="↪" FontSize="16"/>
-                </Button>
-                
                 <Separator Margin="10,0"/>
 
-                <Button Click="ImportExcel_Click"
-                        Margin="3,0"
-                        Padding="2,4"
-                        ToolTip="Импорт приходов из Excel"
-                        Background="White"
-                        BorderBrush="#888"
-                        BorderThickness="1">
-
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="📥"
-                                                   FontSize="16"
-                                                   Margin="0,0,2,0"/>
-                                        <TextBlock Text="Импорт Excel"
-                                   VerticalAlignment="Center"/>
-                                    </StackPanel>
-
+                <Button Style="{StaticResource SecondaryButton}"
+                        Click="ImportExcel_Click">
+                    📥 Импорт Excel
                 </Button>
 
-
-
-
             </ToolBar>
-        </ToolBarTray>
+        </Border>
 
-        <Grid>
+        <!-- ================= ОСНОВНАЯ ОБЛАСТЬ ================= -->
+        <Grid Margin="10">
 
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="260"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ДЕРЕВО -->
-            <TreeView x:Name="ObjectsTree"
-                      Grid.Column="0"
-                      SelectedItemChanged="ObjectsTree_SelectedItemChanged">
+            <!-- ===== ДЕРЕВО ===== -->
+            <Border Background="White"
+                    CornerRadius="8"
+                    Padding="6"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1">
 
-                <TreeView.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="Переименовать"
-                                  Click="RenameTreeItem_Click"/>
-                        <MenuItem Header="Удалить"
-                                  Click="DeleteTreeItem_Click"/>
-                    </ContextMenu>
-                </TreeView.ContextMenu>
-            </TreeView>
+                <TreeView x:Name="ObjectsTree"
+                          SelectedItemChanged="ObjectsTree_SelectedItemChanged">
 
-            <!-- ВКЛАДКИ -->
-            <TabControl Grid.Column="1">
-                
-                <TabItem Header="Сводная таблица">
-                    <Grid Margin="10">
+                    <TreeView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Переименовать"
+                                      Click="RenameTreeItem_Click"/>
+                            <MenuItem Header="Удалить"
+                                      Click="DeleteTreeItem_Click"/>
+                        </ContextMenu>
+                    </TreeView.ContextMenu>
+                </TreeView>
+            </Border>
 
+            <!-- ===== КОНТЕНТ ===== -->
+            <Border Grid.Column="1"
+                    Background="White"
+                    CornerRadius="8"
+                    Padding="8"
+                    Margin="10,0,0,0"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1">
+
+                <TabControl BorderThickness="0">
+
+                    <!-- ===== СВОДНАЯ ===== -->
+                    <TabItem Header="Сводная таблица">
                         <DataGrid x:Name="SummaryGrid"
-                  IsReadOnly="True"
-                  AutoGenerateColumns="True"
-                  CanUserAddRows="False"
-                  CanUserDeleteRows="False"
-                  HeadersVisibility="Column"
-                  GridLinesVisibility="All"/>
+                                  Margin="8"
+                                  IsReadOnly="True"
+                                  AutoGenerateColumns="True"
+                                  CanUserAddRows="False"
+                                  GridLinesVisibility="None"/>
+                    </TabItem>
 
-                    </Grid>
-                </TabItem>
+                    <!-- ===== ЖВК ===== -->
+                    <TabItem Header="ЖВК">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                <!-- ЖВК -->
-                <TabItem Header="ЖВК">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
+                            <!-- Панель кнопок -->
+                            <StackPanel Grid.Row="0"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,4,0,6">
 
-                        <!-- КНОПКИ -->
-                        <StackPanel Grid.Row="0"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    Margin="0,8,10,8">
+                                <Button Style="{StaticResource SecondaryButton}"
+                                        Click="ToggleFilters_Click">
+                                    🔍 Фильтры
+                                </Button>
 
-                            <Button Click="ToggleFilters_Click"
-                                Height="24"
-                                Padding="6,0"
-                                FontSize="12"
-                                Margin="0,0,0,0"
-                                VerticalAlignment="Center">
-
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🔍" Margin="0,0,4,0"/>
-                                    <TextBlock Text="Фильтры"/>
-                                </StackPanel>
-
-                            </Button>
-
-
-
-                            <Button Click="ExportToExcel_Click"
-                                Height="24"
-                                Padding="8,0"
-                                FontSize="12"
-                                Margin="6,0,0,0"
-                                Background="#2B78DA"
-                                Foreground="White"
-                                BorderBrush="#1F5FBF"
-                                BorderThickness="1"
-                                VerticalAlignment="Center">
-
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⬇" Margin="0,0,4,0"/>
-                                    <TextBlock Text="Экспорт"/>
-                                </StackPanel>
-
-                            </Button>
-
-
-
-                        </StackPanel>
-
-                        <!-- КОНТЕНТ -->
-                        <Grid Grid.Row="1">
-
+                                <Button Style="{StaticResource PrimaryButton}"
+                                        Click="ExportToExcel_Click">
+                                    ⬇ Экспорт
+                                </Button>
+                            </StackPanel>
                             <Border x:Name="FiltersPanel"
-                                    Background="#EEFFFFFF"
-                                    BorderBrush="Gray"
-                                    BorderThickness="1"
-                                    Padding="10"
-                                    Visibility="Collapsed"
-                                    VerticalAlignment="Top"
-                                    Margin="10"
-                                    Panel.ZIndex="10">
+        Background="White"
+        BorderBrush="#E5E7EB"
+        BorderThickness="1"
+        CornerRadius="8"
+        Padding="10"
+        Visibility="Collapsed"
+        Margin="10"
+        Panel.ZIndex="10">
 
                                 <StackPanel>
-                                    <TextBlock Text="Типы материалов"/>
-                                    <ListBox x:Name="FilterGroupsList"
-                                             SelectionMode="Extended"
-                                             Height="100"
-                                             SelectionChanged="Filters_Changed"/>
 
-                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Типы материалов"
+                   FontWeight="SemiBold"/>
+
+                                    <ListBox x:Name="FilterGroupsList"
+                 Height="100"
+                 SelectionMode="Extended"
+                 SelectionChanged="Filters_Changed"/>
+
+                                    <StackPanel Orientation="Horizontal"
+                    Margin="0,6,0,0">
                                         <Button Content="Все"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="SelectAllGroups_Click"/>
+                    Click="SelectAllGroups_Click"/>
                                         <Button Content="Очистить"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="ClearGroups_Click"/>
+                    Margin="6,0,0,0"
+                    Click="ClearGroups_Click"/>
                                     </StackPanel>
 
-                                    <TextBlock Text="Период" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Период"
+                   Margin="0,10,0,4"
+                   FontWeight="SemiBold"/>
+
                                     <StackPanel Orientation="Horizontal">
                                         <DatePicker x:Name="DateFromPicker"
-                                                    SelectedDateChanged="Filters_Changed"/>
-                                        <TextBlock Text=" — "/>
+                        SelectedDateChanged="Filters_Changed"/>
+                                        <TextBlock Text=" — "
+                       VerticalAlignment="Center"/>
                                         <DatePicker x:Name="DateToPicker"
-                                                    SelectedDateChanged="Filters_Changed"/>
+                        SelectedDateChanged="Filters_Changed"/>
                                     </StackPanel>
 
-                                    <TextBlock Text="Поставщик" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Поставщик"
+                   Margin="0,10,0,4"
+                   FontWeight="SemiBold"/>
+
                                     <TextBox x:Name="SupplierFilterBox"
-                                             TextChanged="Filters_Changed"/>
+                 TextChanged="Filters_Changed"/>
+
                                 </StackPanel>
                             </Border>
 
+                            <!-- Таблица -->
                             <DataGrid x:Name="JournalGrid"
-                                           AutoGenerateColumns="False"
-                                           IsReadOnly="False"
-                                           CanUserAddRows="False"
-                                           SelectionMode="Extended"
-                                           PreviewKeyDown="JournalGrid_PreviewKeyDown">
+                                      Grid.Row="1"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      SelectionMode="Extended"
+                                      GridLinesVisibility="None"
+                                      PreviewKeyDown="JournalGrid_PreviewKeyDown">
 
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" />
-                                    <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}" />
-                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" />
-                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" />
-                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" />
-                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" />
-                                    <DataGridTextColumn Header="Паспорт" Binding="{Binding Passport}" />
-                                    <DataGridTextColumn Header="СТБ" Binding="{Binding Stb}" />
-                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" />
+                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}"/>
+                                    <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}"/>
+                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}"/>
+                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}"/>
+                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}"/>
+                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}"/>
+                                    <DataGridTextColumn Header="Паспорт" Binding="{Binding Passport}"/>
+                                    <DataGridTextColumn Header="СТБ" Binding="{Binding Stb}"/>
+                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}"/>
                                 </DataGrid.Columns>
 
                             </DataGrid>
-
-
                         </Grid>
-                    </Grid>
-                </TabItem>
+                    </TabItem>
 
-                <!-- ПРИХОД -->
-                <TabItem Header="Приход">
-                    <local:ArrivalControl x:Name="ArrivalPanel"/>
-                </TabItem>
+                    <!-- ===== ПРИХОД ===== -->
+                    <TabItem Header="Приход">
+                        <local:ArrivalControl x:Name="ArrivalPanel"/>
+                    </TabItem>
 
-            </TabControl>
+                </TabControl>
+            </Border>
         </Grid>
     </DockPanel>
 </Window>
