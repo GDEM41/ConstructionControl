@@ -158,20 +158,24 @@
 
             <!-- Кнопки -->
             <StackPanel Grid.Column="1"
-                Orientation="Horizontal">
-                <Button Content="💾 Сохранить шаблон"
-                                 Click="SaveTemplate_Click"
-                                 Margin="20,0,387.1,0"/>
+            Orientation="Horizontal"
+            Margin="0,5,0,0">
 
                 <Button Content="Импорт"
-                Width="100"
-                Margin="0,0,5,0"
-                Click="Import_Click"/>
+            Click="Import_Click"/>
 
-                <Button Content="Отмена"
-                Width="100"
-                Click="Cancel_Click"/>
+                <Button Content="💾 Сохранить шаблон"
+            Click="SaveTemplate_Click"
+            Margin="5,0,0,0"/>
+
+                <ComboBox x:Name="TemplatesCombo"
+              Width="200"
+              Margin="10,0,0,0"
+              SelectionChanged="TemplatesCombo_SelectionChanged"/>
+
             </StackPanel>
+
+
         </Grid>
 
     </Grid>

@@ -28,7 +28,8 @@ namespace ConstructionControl
         public ExcelImportWindow(string filePath, List<string> sheets)
         {
             InitializeComponent();
-            LoadTemplate();
+            LoadTemplatesList();
+
 
 
             _filePath = filePath;
@@ -158,7 +159,7 @@ namespace ConstructionControl
             }
 
             MessageBox.Show($"Импортировано записей: {ImportedRecords.Count}");
-            DialogResult = true;
+            
         }
 
 
@@ -200,6 +201,8 @@ namespace ConstructionControl
 
         private void SaveTemplate_Click(object sender, RoutedEventArgs e)
         {
+            
+
             if (_dateRow == null || _materialColumn == null || _quantityStartColumn == null)
             {
                 MessageBox.Show("Сначала настройте импорт кнопками");
@@ -226,11 +229,75 @@ namespace ConstructionControl
                 template,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
-            File.WriteAllText("excel_template.json", json);
+            string name = Microsoft.VisualBasic.Interaction.InputBox(
+    "Введите имя шаблона:",
+    "Сохранение шаблона");
 
-            MessageBox.Show("Шаблон сохранён");
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            if (!Directory.Exists(TemplatesFolder))
+                Directory.CreateDirectory(TemplatesFolder);
+
+            string path = Path.Combine(TemplatesFolder, name + ".json");
+            File.WriteAllText(path, json);
+
+            LoadTemplatesList();
+
+            MessageBox.Show($"Шаблон «{name}» сохранён");
+
         }
 
+        private const string TemplatesFolder = "Templates";
+
+        private void LoadTemplatesList()
+        {
+            if (!Directory.Exists(TemplatesFolder))
+                Directory.CreateDirectory(TemplatesFolder);
+
+            TemplatesCombo.Items.Clear();
+
+            foreach (var file in Directory.GetFiles(TemplatesFolder, "*.json"))
+            {
+                TemplatesCombo.Items.Add(Path.GetFileNameWithoutExtension(file));
+            }
+        }
+        private void TemplatesCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (TemplatesCombo.SelectedItem == null)
+                return;
+
+            string name = TemplatesCombo.SelectedItem.ToString();
+            string path = Path.Combine(TemplatesFolder, name + ".json");
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var template = System.Text.Json.JsonSerializer.Deserialize<ExcelImportTemplate>(json);
+
+                if (template == null)
+                    return;
+
+                _dateRow = template.DateRow;
+                _materialColumn = template.MaterialColumn;
+                _quantityStartColumn = template.QuantityStartColumn;
+
+                _positionColumn = template.PositionColumn;
+                _unitColumn = template.UnitColumn;
+                _volumeColumn = template.VolumeColumn;
+                _stbColumn = template.StbColumn;
+
+                _ttnRow = template.TtnRow;
+                _supplierRow = template.SupplierRow;
+                _passportRow = template.PassportRow;
+
+                MessageBox.Show($"Шаблон «{name}» применён");
+            }
+            catch
+            {
+                MessageBox.Show("Ошибка загрузки шаблона");
+            }
+        }
 
         private void SelectCell_Click(object sender, RoutedEventArgs e)
         {
