@@ -159,6 +159,9 @@
             <!-- Кнопки -->
             <StackPanel Grid.Column="1"
                 Orientation="Horizontal">
+                <Button Content="💾 Сохранить шаблон"
+                                 Click="SaveTemplate_Click"
+                                 Margin="20,0,387.1,0"/>
 
                 <Button Content="Импорт"
                 Width="100"

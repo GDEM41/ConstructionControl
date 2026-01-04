@@ -4,6 +4,7 @@ using ClosedXML.Excel;
 using System.Data;
 using System.Linq;
 using System.Windows.Controls;
+using System.IO;
 
 namespace ConstructionControl
 {
@@ -27,11 +28,14 @@ namespace ConstructionControl
         public ExcelImportWindow(string filePath, List<string> sheets)
         {
             InitializeComponent();
+            LoadTemplate();
+
 
             _filePath = filePath;
             FilePathText.Text = filePath;
             SheetsList.ItemsSource = sheets;
         }
+
 
         private void SheetsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
@@ -162,6 +166,72 @@ namespace ConstructionControl
         {
             DialogResult = false;
         }
+        private void LoadTemplate()
+        {
+            if (!File.Exists("excel_template.json"))
+                return;
+
+            try
+            {
+                var json = File.ReadAllText("excel_template.json");
+                var template = System.Text.Json.JsonSerializer.Deserialize<ExcelImportTemplate>(json);
+
+                if (template == null)
+                    return;
+
+                _dateRow = template.DateRow;
+                _materialColumn = template.MaterialColumn;
+                _quantityStartColumn = template.QuantityStartColumn;
+
+                _positionColumn = template.PositionColumn;
+                _unitColumn = template.UnitColumn;
+                _volumeColumn = template.VolumeColumn;
+                _stbColumn = template.StbColumn;
+
+                _ttnRow = template.TtnRow;
+                _supplierRow = template.SupplierRow;
+                _passportRow = template.PassportRow;
+            }
+            catch
+            {
+                MessageBox.Show("Не удалось загрузить шаблон импорта");
+            }
+        }
+
+        private void SaveTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_dateRow == null || _materialColumn == null || _quantityStartColumn == null)
+            {
+                MessageBox.Show("Сначала настройте импорт кнопками");
+                return;
+            }
+
+            var template = new ExcelImportTemplate
+            {
+                DateRow = _dateRow.Value,
+                MaterialColumn = _materialColumn.Value,
+                QuantityStartColumn = _quantityStartColumn.Value,
+
+                PositionColumn = _positionColumn,
+                UnitColumn = _unitColumn,
+                VolumeColumn = _volumeColumn,
+                StbColumn = _stbColumn,
+
+                TtnRow = _ttnRow,
+                SupplierRow = _supplierRow,
+                PassportRow = _passportRow
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                template,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            File.WriteAllText("excel_template.json", json);
+
+            MessageBox.Show("Шаблон сохранён");
+        }
+
+
         private void SelectCell_Click(object sender, RoutedEventArgs e)
         {
             if (PreviewGrid.SelectedCells.Count == 0)
