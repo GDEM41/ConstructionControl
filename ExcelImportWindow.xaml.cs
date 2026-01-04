@@ -159,7 +159,7 @@ namespace ConstructionControl
                             Date = date,
                             MaterialGroup = sheetName,
                             MaterialName = material,
-                            Quantity = (int)Math.Round(qty, MidpointRounding.AwayFromZero),
+                            Quantity = qty,
                             Unit = "шт",
                             ObjectName = ""
                         });

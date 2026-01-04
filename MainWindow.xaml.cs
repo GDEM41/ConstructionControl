@@ -649,7 +649,7 @@ namespace ConstructionControl
                 int blocks = Math.Max(1, currentObject.BlocksCount);
 
                 for (int block = 1; block <= blocks; block++)
-                    row.ByBlocks[block] = 0;
+                    row.ByBlocks[block] = 0.0;
 
                 foreach (var rec in mat)
                 {

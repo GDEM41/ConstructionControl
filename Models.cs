@@ -71,7 +71,7 @@ namespace ConstructionControl
         public string MaterialGroup { get; set; }
         public string MaterialName { get; set; }
         public string Unit { get; set; }
-        public int Quantity { get; set; }
+        public double Quantity { get; set; }
         public string Passport { get; set; }
         public string Ttn { get; set; }
         public string Stb { get; set; }
@@ -82,10 +82,10 @@ namespace ConstructionControl
         public string MaterialName { get; set; }
         public string Unit { get; set; }
 
-        // Ключ = номер блока, Значение = сумма
-        public Dictionary<int, int> ByBlocks { get; set; } = new();
-
-        public int Total { get; set; }
+        public Dictionary<int, double> ByBlocks { get; set; } = new();
+        public double Total { get; set; }
     }
 
+
 }
+
