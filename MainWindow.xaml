@@ -44,17 +44,54 @@
 
         <!-- МЕНЮ -->
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="Файл">
-                <MenuItem Header="Создать объект"
-                          Click="CreateObject_Click"/>
-                <Separator/>
-                <MenuItem Header="Выход"
-                          Click="Exit_Click"/>
-            </MenuItem>
+            <MenuItem Header="Создать"
+                      Click="CreateObject_Click"/>
+
+            <MenuItem Header="Настройки объекта"
+                      Click="ObjectSettings_Click"/>
+
+            <MenuItem Header="Выход"
+                      Click="Exit_Click"/>
+
         </Menu>
 
-        <!-- ОСНОВА -->
+        <ToolBarTray DockPanel.Dock="Top">
+            <ToolBar>
+
+                <Button Width="32" Height="32"
+        ToolTip="Сохранить"
+        Click="SaveButton_Click">
+                    <TextBlock Text="💾" FontSize="16"/>
+                </Button>
+
+                <ToggleButton Width="32" Height="32"
+              ToolTip="Блокировка редактирования"
+              Checked="LockToggle_Checked"
+              Unchecked="LockToggle_Unchecked">
+                    <TextBlock Text="🔒" FontSize="16"/>
+                </ToggleButton>
+
+
+
+                <Separator/>
+
+                <Button Width="32" Height="32"
+                ToolTip="Шаг назад"
+                IsEnabled="False">
+                    <TextBlock Text="↩" FontSize="16"/>
+                </Button>
+
+                <Button Width="32" Height="32"
+                ToolTip="Шаг вперёд"
+                IsEnabled="False">
+                    <TextBlock Text="↪" FontSize="16"/>
+                </Button>
+
+            </ToolBar>
+        </ToolBarTray>
+
         <Grid>
+
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="250"/>
                 <ColumnDefinition Width="*"/>
@@ -92,19 +129,42 @@
                                     HorizontalAlignment="Right"
                                     Margin="0,8,10,8">
 
-                            <ToggleButton x:Name="LockButton"
-                                          Style="{StaticResource LockButtonStyle}"
-                                          Content="🔒"
-                                          Checked="LockButton_Checked"
-                                          Unchecked="LockButton_Unchecked"/>
+                            <Button Click="ToggleFilters_Click"
+                                Height="24"
+                                Padding="6,0"
+                                FontSize="12"
+                                Margin="0,0,0,0"
+                                VerticalAlignment="Center">
 
-                            <Button Content="Фильтры"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Click="ToggleFilters_Click"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔍" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Фильтры"/>
+                                </StackPanel>
 
-                            <Button Content="Экспорт"
-                                    Style="{StaticResource SolidButton}"
-                                    Click="ExportToExcel_Click"/>
+                            </Button>
+
+
+
+                            <Button Click="ExportToExcel_Click"
+                                Height="24"
+                                Padding="8,0"
+                                FontSize="12"
+                                Margin="6,0,0,0"
+                                Background="#2B78DA"
+                                Foreground="White"
+                                BorderBrush="#1F5FBF"
+                                BorderThickness="1"
+                                VerticalAlignment="Center">
+
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⬇" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Экспорт"/>
+                                </StackPanel>
+
+                            </Button>
+
+
+
                         </StackPanel>
 
                         <!-- КОНТЕНТ -->

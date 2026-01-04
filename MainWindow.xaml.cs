@@ -54,11 +54,26 @@ namespace ConstructionControl
             }
         }
 
-        private void Exit_Click(object sender, RoutedEventArgs e)
+        private void ObjectSettings_Click(object sender, RoutedEventArgs e)
         {
-            SaveState();
-            Close();
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            var w = new ObjectSettingsWindow(currentObject)
+            {
+                Owner = this
+            };
+
+            if (w.ShowDialog() == true)
+            {
+                SaveState();
+                RefreshTreePreserveState();
+            }
         }
+
 
         // ================= КНОПКИ =================
 
@@ -411,5 +426,33 @@ namespace ConstructionControl
             currentObject = state?.CurrentObject;
             journal = state?.Journal ?? new();
         }
+    
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            SaveState();
+            MessageBox.Show("Данные сохранены");
+        }
+
+        private void LockToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            LockButton_Checked(sender, e);
+        }
+
+        private void LockToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            LockButton_Unchecked(sender, e);
+        }
+       
+
+
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            SaveState();
+            Close();
+        }
+      
+       
+
+
     }
 }

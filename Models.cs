@@ -8,15 +8,34 @@ namespace ConstructionControl
     {
         public string Name { get; set; }
 
+        // ===== НОВЫЕ НАСТРОЙКИ ОБЪЕКТА =====
+
+        // Количество блоков
+        public int BlocksCount { get; set; }
+
+        // Есть ли подвал
+        public bool HasBasement { get; set; }
+
+        // Одинаковое количество этажей во всех блоках
+        public bool SameFloorsInBlocks { get; set; } = true;
+
+        // Если этажи одинаковые
+        public int FloorsPerBlock { get; set; }
+
+        // Если этажи разные (ключ = номер блока, значение = этажи)
+        public Dictionary<int, int> FloorsByBlock { get; set; } = new();
+
+        // ===== СТАРОЕ (НЕ ТРОГАЕМ) =====
+
         public Dictionary<string, List<string>> MaterialNamesByGroup { get; set; } = new();
 
-        // 🔹 запоминаем СТБ и поставщика по типу
         public Dictionary<string, string> StbByGroup { get; set; } = new();
         public Dictionary<string, string> SupplierByGroup { get; set; } = new();
 
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
     }
+
 
     public class MaterialGroup
     {

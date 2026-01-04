@@ -1,0 +1,95 @@
+﻿<Window x:Class="ConstructionControl.ObjectSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки объекта"
+        Width="400"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+
+        <!-- Название объекта -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,4">
+            <TextBlock Text="Название объекта"/>
+            <TextBox x:Name="NameBox"/>
+        </StackPanel>
+
+        <!-- Количество блоков -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,4">
+            <TextBlock Text="Количество блоков"/>
+            <TextBox x:Name="BlocksBox"
+                     TextChanged="BlocksBox_TextChanged"/>
+
+        </StackPanel>
+
+        <!-- Галочка одинаковых этажей -->
+        <CheckBox x:Name="SameFloorsCheck"
+                  Grid.Row="2"
+                  Content="Одинаковое количество этажей во всех блоках"
+                  Margin="0,0,0,4"
+                  Checked="SameFloorsChanged"
+                  Unchecked="SameFloorsChanged"/>
+
+        <!-- Этажи (одинаковые) -->
+        <StackPanel x:Name="SameFloorsPanel"
+                    Grid.Row="3"
+                    Margin="0,0,0,4">
+            <TextBlock Text="Этажей в блоке"/>
+            <TextBox x:Name="FloorsPerBlockBox"/>
+        </StackPanel>
+
+        <!-- Этажи по блокам -->
+    <DataGrid x:Name="FloorsByBlockGrid"
+               Grid.Row="4"
+               AutoGenerateColumns="False"
+               CanUserAddRows="False"
+               Visibility="Collapsed"
+               Height="100"
+               IsReadOnly="False">
+
+
+        <DataGrid.Columns>
+                <DataGridTextColumn Header="Блок"
+                                    Binding="{Binding Block}"
+                                    IsReadOnly="True"/>
+            <DataGridTextColumn Header="Этажей"
+                    Binding="{Binding Floors, UpdateSourceTrigger=PropertyChanged}"/>
+
+        </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Подвал + кнопки -->
+        <StackPanel Grid.Row="5"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+
+            <CheckBox x:Name="BasementCheck"
+                      Content="Есть подвал"
+                      VerticalAlignment="Center"
+                      Margin="0,0,20,0"/>
+
+            <Button Content="ОК"
+                    Width="80"
+                    Margin="0,0,5,0"
+                    Click="Ok_Click"/>
+
+            <Button Content="Отмена"
+                    Width="80"
+                    Click="Cancel_Click"/>
+        </StackPanel>
+
+    </Grid>
+</Window>
