@@ -249,38 +249,26 @@
                             </Border>
 
                             <DataGrid x:Name="JournalGrid"
-                                      AutoGenerateColumns="False"
-                                      Margin="5">
+                                           AutoGenerateColumns="False"
+                                           IsReadOnly="False"
+                                           CanUserAddRows="False"
+                                           SelectionMode="Extended"
+                                           PreviewKeyDown="JournalGrid_PreviewKeyDown">
+
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Дата"
-                                                        Binding="{Binding Date, StringFormat=dd.MM.yyyy}"
-                                                        Width="90"/>
-                                    <DataGridTextColumn Header="Тип материала"
-                                                        Binding="{Binding MaterialGroup}"
-                                                        Width="150"/>
-                                    <DataGridTextColumn Header="Наименование"
-                                                        Binding="{Binding MaterialName}"
-                                                        Width="200"/>
-                                    <DataGridTextColumn Header="Количество"
-                                                        Binding="{Binding Quantity}"
-                                                        Width="90"/>
-                                    <DataGridTextColumn Header="Ед."
-                                                        Binding="{Binding Unit}"
-                                                        Width="60"/>
-                                    <DataGridTextColumn Header="ТТН"
-                                                        Binding="{Binding Ttn}"
-                                                        Width="120"/>
-                                    <DataGridTextColumn Header="Паспорт"
-                                                        Binding="{Binding Passport}"
-                                                        Width="120"/>
-                                    <DataGridTextColumn Header="СТБ"
-                                                        Binding="{Binding Stb}"
-                                                        Width="80"/>
-                                    <DataGridTextColumn Header="Поставщик"
-                                                        Binding="{Binding Supplier}"
-                                                        Width="150"/>
+                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" />
+                                    <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}" />
+                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" />
+                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" />
+                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" />
+                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" />
+                                    <DataGridTextColumn Header="Паспорт" Binding="{Binding Passport}" />
+                                    <DataGridTextColumn Header="СТБ" Binding="{Binding Stb}" />
+                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" />
                                 </DataGrid.Columns>
+
                             </DataGrid>
+
 
                         </Grid>
                     </Grid>

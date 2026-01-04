@@ -59,44 +59,75 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Заголовок -->
                     <TextBlock Text="Предпросмотр листа"
-                                      FontWeight="Bold"
-                                      Margin="0,0,0,5"
-                                      Grid.Row="0"/>
+               FontWeight="Bold"
+               Margin="0,0,0,5"/>
 
                     <!-- Таблица -->
                     <DataGrid x:Name="PreviewGrid"
-                                     Grid.Row="1"
-                                     IsReadOnly="True"
-                                     AutoGenerateColumns="True"
-                                     HeadersVisibility="All"
-                                     GridLinesVisibility="All"
-                                     CanUserAddRows="False"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                                  Grid.Row="1"
+                                  IsReadOnly="True"
+                                  AutoGenerateColumns="True"
+                                  HeadersVisibility="All"
+                                  GridLinesVisibility="All"
+                                  CanUserAddRows="False"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  SelectedCellsChanged="PreviewGrid_SelectedCellsChanged"/>
+
+                    <!-- Кнопки выбора -->
+                    <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    Margin="0,5,0,0">
+
+                        <Button Content="Это строка дат"
+                                    Margin="0,0,5,0"
+                                    Click="SelectDateRow_Click"/>
+
+                        <Button Content="Это колонка материалов"
+                                    Margin="0,0,5,0"
+                                    Click="SelectMaterialColumn_Click"/>
+
+                        <Button Content="Отсюда начинаются количества"
+                                    Click="SelectQuantityStart_Click"/>
+                    </StackPanel>
                 </Grid>
+
 
             </Border>
 
         </Grid>
 
         <!-- Кнопки -->
-        <StackPanel Grid.Row="2"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Margin="0,10,0,0">
+        <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-            <Button Content="Импорт"
-                    Width="100"
-                    Margin="0,0,5,0"
-                    IsEnabled="False"/>
+            <!-- Координата -->
+            <TextBlock x:Name="SelectedCellText"
+               VerticalAlignment="Center"
+               Foreground="Gray"
+               Text="Ячейка не выбрана"/>
 
-            <Button Content="Отмена"
-                    Width="100"
-                    Click="Cancel_Click"/>
-        </StackPanel>
+            <!-- Кнопки -->
+            <StackPanel Grid.Column="1"
+                Orientation="Horizontal">
+
+                <Button Content="Импорт"
+                Width="100"
+                Margin="0,0,5,0"
+                Click="Import_Click"/>
+
+                <Button Content="Отмена"
+                Width="100"
+                Click="Cancel_Click"/>
+            </StackPanel>
+        </Grid>
+
     </Grid>
 </Window>

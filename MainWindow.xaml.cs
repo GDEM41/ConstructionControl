@@ -129,8 +129,28 @@ namespace ConstructionControl
 
         private void OnArrivalAdded(Arrival arrival)
         {
+            // ===== 1. гарантируем, что группа есть =====
+            if (!currentObject.MaterialGroups.Any(g => g.Name == arrival.MaterialGroup))
+            {
+                currentObject.MaterialGroups.Add(new MaterialGroup
+                {
+                    Name = arrival.MaterialGroup
+                });
+
+                currentObject.MaterialNamesByGroup[arrival.MaterialGroup] = new List<string>();
+            }
+
             foreach (var i in arrival.Items)
             {
+                // ===== 2. гарантируем, что материал есть =====
+                if (!currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
+                        .Contains(i.MaterialName))
+                {
+                    currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
+                        .Add(i.MaterialName);
+                }
+
+                // ===== 3. добавляем факт прихода =====
                 journal.Add(new JournalRecord
                 {
                     Date = i.Date,
@@ -150,6 +170,86 @@ namespace ConstructionControl
             RefreshTreePreserveState();
             RefreshFilters();
             ApplyAllFilters();
+
+            // важно: обновляем панель прихода
+            ArrivalPanel.SetObject(currentObject);
+        }
+
+        private void JournalGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            // 1. Проверяем: это Delete?
+            if (e.Key != System.Windows.Input.Key.Delete)
+                return;
+
+            // 2. Проверяем блокировку
+            if (isLocked)
+            {
+                MessageBox.Show("Редактирование заблокировано");
+                return;
+            }
+
+            // 3. Есть ли выбранные строки
+            if (JournalGrid.SelectedItems.Count == 0)
+                return;
+
+            // 4. Подтверждение
+            if (MessageBox.Show(
+                $"Удалить выбранные записи ({JournalGrid.SelectedItems.Count})?",
+                "Подтверждение",
+                MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+                return;
+
+            // 5. Преобразуем выбранные строки в реальные данные
+            var toDelete = JournalGrid.SelectedItems
+                .Cast<JournalRecord>()
+                .ToList();
+
+            // 6. УДАЛЯЕМ ИЗ ОСНОВНЫХ ДАННЫХ
+            foreach (var rec in toDelete)
+                journal.Remove(rec);
+
+            // 7. Чистим справочники
+            CleanupMaterialsAfterDelete();
+
+            // 8. СОХРАНЯЕМ
+            SaveState();
+
+            // 9. Обновляем UI
+            RefreshTreePreserveState();
+            RefreshFilters();
+            ApplyAllFilters();
+
+            // 10. Говорим WPF: мы обработали Delete сами
+            e.Handled = true;
+        }
+        private void CleanupMaterialsAfterDelete()
+        {
+            // Какие группы реально используются
+            var usedGroups = journal
+                .Select(j => j.MaterialGroup)
+                .Distinct()
+                .ToHashSet();
+
+            // 1. Удаляем пустые группы
+            currentObject.MaterialGroups
+                .RemoveAll(g => !usedGroups.Contains(g.Name));
+
+            // 2. Удаляем пустые материалы
+            foreach (var g in currentObject.MaterialNamesByGroup.Keys.ToList())
+            {
+                var usedMaterials = journal
+                    .Where(j => j.MaterialGroup == g)
+                    .Select(j => j.MaterialName)
+                    .Distinct()
+                    .ToHashSet();
+
+                currentObject.MaterialNamesByGroup[g]
+                    .RemoveAll(m => !usedMaterials.Contains(m));
+
+                // если в группе вообще ничего не осталось
+                if (currentObject.MaterialNamesByGroup[g].Count == 0)
+                    currentObject.MaterialNamesByGroup.Remove(g);
+            }
         }
 
         // ================= ДЕРЕВО =================
@@ -475,7 +575,47 @@ namespace ConstructionControl
                 Owner = this
             };
 
-            importWindow.ShowDialog();
+            if (importWindow.ShowDialog() != true)
+                return;
+
+            foreach (var rec in importWindow.ImportedRecords)
+            {
+                rec.ObjectName = currentObject.Name;
+                journal.Add(rec);
+
+                // ====== ВАЖНО: обновляем структуру объекта ======
+
+                // 1. Группа (лист Excel)
+                if (!currentObject.MaterialGroups.Any(g => g.Name == rec.MaterialGroup))
+                {
+                    currentObject.MaterialGroups.Add(new MaterialGroup
+                    {
+                        Name = rec.MaterialGroup
+                    });
+
+                    currentObject.MaterialNamesByGroup[rec.MaterialGroup] = new List<string>();
+                }
+
+                // 2. Наименование внутри группы
+                if (!currentObject.MaterialNamesByGroup[rec.MaterialGroup]
+                        .Contains(rec.MaterialName))
+                {
+                    currentObject.MaterialNamesByGroup[rec.MaterialGroup]
+                        .Add(rec.MaterialName);
+                }
+            }
+
+            // ====== обновляем UI ======
+            SaveState();
+            RefreshTreePreserveState();
+            RefreshFilters();
+            ApplyAllFilters();
+            RefreshSummaryTable();
+            ArrivalPanel.SetObject(currentObject);
+
+
+
+
 
         }
 
