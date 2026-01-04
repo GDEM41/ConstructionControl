@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Импорт из Excel"
         Height="500"
-        Width="800"
+        Width="1000"
         WindowStartupLocation="CenterOwner">
 
     <Grid Margin="10">
@@ -68,32 +68,74 @@
 
                     <!-- Таблица -->
                     <DataGrid x:Name="PreviewGrid"
-                                  Grid.Row="1"
-                                  IsReadOnly="True"
-                                  AutoGenerateColumns="True"
-                                  HeadersVisibility="All"
-                                  GridLinesVisibility="All"
-                                  CanUserAddRows="False"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                  SelectedCellsChanged="PreviewGrid_SelectedCellsChanged"/>
+                             Grid.Row="1"
+                             AutoGenerateColumns="True"
+                             SelectionUnit="Cell"
+                             SelectionMode="Single"
+                             SelectedCellsChanged="PreviewGrid_SelectedCellsChanged"/>
+
 
                     <!-- Кнопки выбора -->
                     <StackPanel Grid.Row="2"
-                                    Orientation="Horizontal"
-                                    Margin="0,5,0,0">
+            Orientation="Horizontal"
+            Margin="0,5,0,0">
 
-                        <Button Content="Это строка дат"
-                                    Margin="0,0,5,0"
-                                    Click="SelectDateRow_Click"/>
+                        <Button Content="📅 Дата"
+            Tag="Date"
+            Click="SelectCell_Click"
+            Margin="1"/>
 
-                        <Button Content="Это колонка материалов"
-                                    Margin="0,0,5,0"
-                                    Click="SelectMaterialColumn_Click"/>
+                        <Button Content="🧱 Наименование"
+            Tag="Material"
+            Click="SelectCell_Click"
+            Margin="1"/>
 
-                        <Button Content="Отсюда начинаются количества"
-                                    Click="SelectQuantityStart_Click"/>
+                        <Button Content="🔢 Кол-во"
+            Tag="Quantity"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Separator Width="8"/>
+
+                        <Button Content="🧾 Позиция"
+            Tag="Position"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Button Content="📐 Ед. изм"
+            Tag="Unit"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Button Content="📦 Объем"
+            Tag="Volume"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Button Content="🏷 СТБ"
+            Tag="Stb"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Separator Width="8"/>
+
+                        <Button Content="🚚 ТТН"
+            Tag="Ttn"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Button Content="🏭 Поставщик"
+            Tag="Supplier"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
+                        <Button Content="📄 Паспорт"
+            Tag="Passport"
+            Click="SelectCell_Click"
+            Margin="1"/>
+
                     </StackPanel>
+
                 </Grid>
 
 

@@ -3,6 +3,7 @@ using System.Windows;
 using ClosedXML.Excel;
 using System.Data;
 using System.Linq;
+using System.Windows.Controls;
 
 namespace ConstructionControl
 {
@@ -11,6 +12,14 @@ namespace ConstructionControl
         private int? _dateRow;
         private int? _materialColumn;
         private int? _quantityStartColumn;
+        private int? _positionColumn;
+        private int? _unitColumn;
+        private int? _volumeColumn;
+        private int? _stbColumn;
+
+        private int? _ttnRow;
+        private int? _supplierRow;
+        private int? _passportRow;
 
 
         private readonly string _filePath;
@@ -94,38 +103,6 @@ namespace ConstructionControl
             return columnName;
         }
 
-        private void SelectDateRow_Click(object sender, RoutedEventArgs e)
-        {
-            if (PreviewGrid.SelectedCells.Count == 0)
-                return;
-
-            var cell = PreviewGrid.SelectedCells[0];
-            _dateRow = PreviewGrid.Items.IndexOf(cell.Item) + 1;
-
-            MessageBox.Show($"Строка дат выбрана: {_dateRow}");
-        }
-
-        private void SelectMaterialColumn_Click(object sender, RoutedEventArgs e)
-        {
-            if (PreviewGrid.SelectedCells.Count == 0)
-                return;
-
-            var cell = PreviewGrid.SelectedCells[0];
-            _materialColumn = cell.Column.DisplayIndex + 1;
-
-            MessageBox.Show($"Колонка материалов выбрана: {ToExcelColumn(_materialColumn.Value)}");
-        }
-
-        private void SelectQuantityStart_Click(object sender, RoutedEventArgs e)
-        {
-            if (PreviewGrid.SelectedCells.Count == 0)
-                return;
-
-            var cell = PreviewGrid.SelectedCells[0];
-            _quantityStartColumn = cell.Column.DisplayIndex + 1;
-
-            MessageBox.Show($"Количества начинаются с колонки: {ToExcelColumn(_quantityStartColumn.Value)}");
-        }
         public List<JournalRecord> ImportedRecords { get; } = new();
         private void Import_Click(object sender, RoutedEventArgs e)
         {
@@ -185,6 +162,84 @@ namespace ConstructionControl
         {
             DialogResult = false;
         }
+        private void SelectCell_Click(object sender, RoutedEventArgs e)
+        {
+            if (PreviewGrid.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("Сначала выберите ячейку в таблице");
+                return;
+            }
+
+            var button = sender as Button;
+            if (button == null)
+                return;
+
+            var cell = PreviewGrid.SelectedCells[0];
+
+            if (cell.Column == null)
+            {
+                MessageBox.Show("Выберите ЯЧЕЙКУ, а не строку");
+                return;
+            }
+
+
+            int row = PreviewGrid.Items.IndexOf(cell.Item) + 1;
+            int col = cell.Column.DisplayIndex + 1;
+
+            switch (button.Tag?.ToString())
+            {
+                case "Date":
+                    _dateRow = row;
+                    MessageBox.Show($"📅 Дата: строка {row} → вправо");
+                    break;
+
+                case "Material":
+                    _materialColumn = col;
+                    MessageBox.Show($"🧱 Наименование: колонка {ToExcelColumn(col)} → вниз");
+                    break;
+
+                case "Quantity":
+                    _quantityStartColumn = col;
+                    MessageBox.Show($"🔢 Кол-во: {ToExcelColumn(col)}{row}");
+                    break;
+
+                case "Position":
+                    _positionColumn = col;
+                    MessageBox.Show($"🧾 Позиция: колонка {ToExcelColumn(col)}");
+                    break;
+
+                case "Unit":
+                    _unitColumn = col;
+                    MessageBox.Show($"📐 Ед. изм: колонка {ToExcelColumn(col)}");
+                    break;
+
+                case "Volume":
+                    _volumeColumn = col;
+                    MessageBox.Show($"📦 Объем: колонка {ToExcelColumn(col)}");
+                    break;
+
+                case "Stb":
+                    _stbColumn = col;
+                    MessageBox.Show($"🏷 СТБ: колонка {ToExcelColumn(col)}");
+                    break;
+
+                case "Ttn":
+                    _ttnRow = row;
+                    MessageBox.Show($"🚚 ТТН: строка {row} → вправо");
+                    break;
+
+                case "Supplier":
+                    _supplierRow = row;
+                    MessageBox.Show($"🏭 Поставщик: строка {row} → вправо");
+                    break;
+
+                case "Passport":
+                    _passportRow = row;
+                    MessageBox.Show($"📄 Паспорт: строка {row} → вправо");
+                    break;
+            }
+        }
+
     }
 
 }

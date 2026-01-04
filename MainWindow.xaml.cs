@@ -43,7 +43,12 @@ namespace ConstructionControl
             var w = new CreateObjectWindow { Owner = this };
             if (w.ShowDialog() == true)
             {
-                currentObject = new ProjectObject { Name = w.ObjectName };
+                currentObject = new ProjectObject
+                {
+                    Name = w.ObjectName,
+                    BlocksCount = 1   // ← КРИТИЧНО
+                };
+
                 journal.Clear();
 
                 ArrivalPanel.SetObject(currentObject);
@@ -629,7 +634,6 @@ namespace ConstructionControl
 
             var result = new List<SummaryRow>();
 
-            // группируем ЖВК по материалу
             var materials = journal
                 .GroupBy(j => new { j.MaterialName, j.Unit });
 
@@ -641,15 +645,14 @@ namespace ConstructionControl
                     Unit = mat.Key.Unit
                 };
 
-                // инициализируем блоки
-                for (int block = 1; block <= currentObject.BlocksCount; block++)
+                // ❗ ГАРАНТИРУЕМ ХОТЯ БЫ 1 БЛОК
+                int blocks = Math.Max(1, currentObject.BlocksCount);
+
+                for (int block = 1; block <= blocks; block++)
                     row.ByBlocks[block] = 0;
 
-                // суммируем
                 foreach (var rec in mat)
                 {
-                    // ПОКА: считаем всё как блок 1
-                    // (этажи и реальное распределение сделаем позже)
                     row.ByBlocks[1] += rec.Quantity;
                     row.Total += rec.Quantity;
                 }
@@ -659,6 +662,7 @@ namespace ConstructionControl
 
             SummaryGrid.ItemsSource = result;
         }
+
 
 
 

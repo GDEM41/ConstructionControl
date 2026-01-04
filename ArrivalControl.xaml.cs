@@ -89,6 +89,13 @@ namespace ConstructionControl
 
         private void AddArrival_Click(object sender, RoutedEventArgs e)
         {
+            // ===== ОБЯЗАТЕЛЬНАЯ ЗАЩИТА =====
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
             var groupName = MaterialGroupBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(groupName))
             {
@@ -122,5 +129,6 @@ namespace ConstructionControl
             items.Clear();
             AddRow();
         }
+
     }
 }

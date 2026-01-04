@@ -1,14 +1,28 @@
-﻿using System.Configuration;
-using System.Data;
+﻿using System;
 using System.Windows;
 
 namespace ConstructionControl
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
-    }
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
+            {
+                MessageBox.Show(
+                    ex.ExceptionObject.ToString(),
+                    "UnhandledException");
+            };
 
+            DispatcherUnhandledException += (s, ex) =>
+            {
+                MessageBox.Show(
+                    ex.Exception.ToString(),
+                    "DispatcherUnhandledException");
+                ex.Handled = true;
+            };
+
+            base.OnStartup(e);
+        }
+    }
 }
