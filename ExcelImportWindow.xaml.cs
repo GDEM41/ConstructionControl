@@ -114,63 +114,86 @@ namespace ConstructionControl
         public List<JournalRecord> ImportedRecords { get; } = new();
         private void Import_Click(object sender, RoutedEventArgs e)
         {
-            if (_appliedTemplates.Count == 0)
-            {
-                MessageBox.Show("Не применён ни один шаблон");
-                return;
-            }
-
             ImportedRecords.Clear();
 
             using var wb = new XLWorkbook(_filePath);
 
-            foreach (var pair in _appliedTemplates)
+            // ===== РЕЖИМ 1: ИМПОРТ ПО ШАБЛОНАМ =====
+            if (_appliedTemplates.Count > 0)
             {
-                string sheetName = pair.Key;
-                var t = pair.Value;
-
-                var ws = wb.Worksheet(sheetName);
-                var range = ws.RangeUsed();
-                if (range == null)
-                    continue;
-
-                int lastRow = range.RowCount();
-                int lastCol = range.ColumnCount();
-
-                for (int r = t.DateRow + 1; r <= lastRow; r++)
+                foreach (var pair in _appliedTemplates)
                 {
-                    string material = ws.Cell(r, t.MaterialColumn).GetValue<string>();
-                    if (string.IsNullOrWhiteSpace(material))
-                        continue;
-
-                    for (int c = t.QuantityStartColumn; c <= lastCol; c++)
-                    {
-                        if (!double.TryParse(ws.Cell(r, c).GetValue<string>(), out double qty))
-                            continue;
-
-                        if (qty <= 0)
-                            continue;
-
-                        if (!DateTime.TryParse(ws.Cell(t.DateRow, c).GetValue<string>(), out DateTime date))
-                            continue;
-
-                        ImportedRecords.Add(new JournalRecord
-                        {
-                            Date = date,
-                            MaterialGroup = sheetName,
-                            MaterialName = material,
-                            Quantity = qty,
-                            Unit = "шт",
-                            ObjectName = ""
-                        });
-                    }
+                    ImportSheet(wb, pair.Key, pair.Value);
                 }
+            }
+            // ===== РЕЖИМ 2: ИМПОРТ БЕЗ ШАБЛОНА (КАК РАНЬШЕ) =====
+            else
+            {
+                if (_dateRow == null || _materialColumn == null || _quantityStartColumn == null)
+                {
+                    MessageBox.Show("Настройте импорт кнопками или примените шаблон");
+                    return;
+                }
+
+                var tempTemplate = new ExcelImportTemplate
+                {
+                    DateRow = _dateRow.Value,
+                    MaterialColumn = _materialColumn.Value,
+                    QuantityStartColumn = _quantityStartColumn.Value,
+                    PositionColumn = _positionColumn,
+                    UnitColumn = _unitColumn,
+                    VolumeColumn = _volumeColumn,
+                    StbColumn = _stbColumn,
+                    TtnRow = _ttnRow,
+                    SupplierRow = _supplierRow,
+                    PassportRow = _passportRow
+                };
+
+                ImportSheet(wb, SheetsList.SelectedItem.ToString(), tempTemplate);
             }
 
             MessageBox.Show($"Импортировано записей: {ImportedRecords.Count}");
             DialogResult = true;
-
         }
+        private void ImportSheet(XLWorkbook wb, string sheetName, ExcelImportTemplate t)
+        {
+            var ws = wb.Worksheet(sheetName);
+            var range = ws.RangeUsed();
+            if (range == null)
+                return;
+
+            int lastRow = range.RowCount();
+            int lastCol = range.ColumnCount();
+
+            for (int r = t.DateRow + 1; r <= lastRow; r++)
+            {
+                string material = ws.Cell(r, t.MaterialColumn).GetValue<string>();
+                if (string.IsNullOrWhiteSpace(material))
+                    continue;
+
+                for (int c = t.QuantityStartColumn; c <= lastCol; c++)
+                {
+                    if (!double.TryParse(ws.Cell(r, c).GetValue<string>(), out double qty))
+                        continue;
+
+                    if (qty <= 0)
+                        continue;
+
+                    if (!DateTime.TryParse(ws.Cell(t.DateRow, c).GetValue<string>(), out DateTime date))
+                        continue;
+
+                    ImportedRecords.Add(new JournalRecord
+                    {
+                        Date = date,
+                        MaterialGroup = sheetName,
+                        MaterialName = material,
+                        Quantity = qty,   // ❗ БЕЗ ОКРУГЛЕНИЯ
+                        Unit = "шт"
+                    });
+                }
+            }
+        }
+
 
 
         private void Cancel_Click(object sender, RoutedEventArgs e)

@@ -90,7 +90,9 @@
                                   SelectionUnit="Cell"
                                   SelectionMode="Single"
                                   HeadersVisibility="Column"
-                                  GridLinesVisibility="None"
+                                  GridLinesVisibility="All"
+                                  HorizontalGridLinesBrush="#E5E7EB"
+                                  VerticalGridLinesBrush="#E5E7EB"
                                   Background="White"
                                   BorderThickness="0"
                                   SelectedCellsChanged="PreviewGrid_SelectedCellsChanged"/>

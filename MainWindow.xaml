@@ -144,7 +144,9 @@
                                   IsReadOnly="True"
                                   AutoGenerateColumns="True"
                                   CanUserAddRows="False"
-                                  GridLinesVisibility="None"/>
+                                  GridLinesVisibility="All"
+                                  HorizontalGridLinesBrush="#E5E7EB"
+                                  VerticalGridLinesBrush="#E5E7EB"/>
                     </TabItem>
 
                     <!-- ===== ЖВК ===== -->
@@ -182,7 +184,17 @@
         Panel.ZIndex="10">
 
                                 <StackPanel>
-
+                                    <Button Content="✖"
+                HorizontalAlignment="Right"
+                Width="24"
+                Height="24"
+                Padding="0"
+                Margin="0,0,0,6"
+                Background="Transparent"
+                BorderThickness="0"
+                Foreground="Gray"
+                ToolTip="Закрыть"
+                Click="CloseFilters_Click"/>
                                     <TextBlock Text="Типы материалов"
                    FontWeight="SemiBold"/>
 
@@ -229,8 +241,10 @@
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       SelectionMode="Extended"
-                                      GridLinesVisibility="None"
-                                      PreviewKeyDown="JournalGrid_PreviewKeyDown">
+                                      GridLinesVisibility="All"
+                                      PreviewKeyDown="JournalGrid_PreviewKeyDown"
+                                      HorizontalGridLinesBrush="#E5E7EB"
+                                      VerticalGridLinesBrush="#E5E7EB">
 
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}"/>

@@ -625,6 +625,10 @@ namespace ConstructionControl
         }
 
 
+        private void CloseFilters_Click(object sender, RoutedEventArgs e)
+        {
+            FiltersPanel.Visibility = Visibility.Collapsed;
+        }
 
 
         private void RefreshSummaryTable()
