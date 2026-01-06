@@ -13,6 +13,9 @@ namespace ConstructionControl
     public partial class MainWindow : Window
     {
         private const string SaveFileName = "data.json";
+        // ===== ИСТОРИЯ ДЛЯ НАЗАД / ВПЕРЁД =====
+        private readonly Stack<AppState> undoStack = new();
+        private readonly Stack<AppState> redoStack = new();
 
         private ProjectObject currentObject;
         private List<JournalRecord> journal = new();
@@ -27,6 +30,11 @@ namespace ConstructionControl
             LoadState();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
+
+            // ⬇️ ВАЖНО: стартовая точка для Undo
+            PushUndo();
+            UpdateUndoRedoButtons();
+
 
             if (currentObject != null)
                 ArrivalPanel.SetObject(currentObject, journal);
@@ -138,34 +146,49 @@ namespace ConstructionControl
 
         private void OnArrivalAdded(Arrival arrival)
         {
-            // ===== 1. гарантируем, что группа есть =====
-            if (!currentObject.MaterialGroups.Any(g => g.Name == arrival.MaterialGroup))
-            {
-                currentObject.MaterialGroups.Add(new MaterialGroup
-                {
-                    Name = arrival.MaterialGroup
-                });
+            PushUndo(); // ⬅️ ВОТ ЭТОГО НЕ ХВАТАЛО
 
-                currentObject.MaterialNamesByGroup[arrival.MaterialGroup] = new List<string>();
+            PushUndo();
+
+            // ===== ТОЛЬКО ДЛЯ ОСНОВНЫХ =====
+            if (arrival.Category == "Основные")
+            {
+                if (!currentObject.MaterialGroups.Any(g => g.Name == arrival.MaterialGroup))
+                {
+                    currentObject.MaterialGroups.Add(new MaterialGroup
+                    {
+                        Name = arrival.MaterialGroup
+                    });
+
+                    currentObject.MaterialNamesByGroup[arrival.MaterialGroup] = new List<string>();
+                }
             }
 
             foreach (var i in arrival.Items)
             {
-                // ===== 2. гарантируем, что материал есть =====
-                if (!currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
-                        .Contains(i.MaterialName))
+                // ===== ТОЛЬКО ДЛЯ ОСНОВНЫХ =====
+                if (arrival.Category == "Основные")
                 {
-                    currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
-                        .Add(i.MaterialName);
+                    if (!currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
+                            .Contains(i.MaterialName))
+                    {
+                        currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
+                            .Add(i.MaterialName);
+                    }
                 }
 
-                // ===== 3. добавляем факт прихода =====
+                // ===== ОБЩЕЕ: добавляем запись =====
                 journal.Add(new JournalRecord
                 {
                     Date = i.Date,
                     ObjectName = currentObject.Name,
+
+                    Category = arrival.Category,
+                    SubCategory = arrival.SubCategory,
+
                     MaterialGroup = arrival.MaterialGroup,
                     MaterialName = i.MaterialName,
+
                     Unit = i.Unit,
                     Quantity = i.Quantity,
                     Passport = i.Passport,
@@ -174,6 +197,7 @@ namespace ConstructionControl
                     Supplier = i.Supplier
                 });
             }
+
 
             SaveState();
             RefreshTreePreserveState();
@@ -216,6 +240,7 @@ namespace ConstructionControl
                 .ToList();
 
             // 6. УДАЛЯЕМ ИЗ ОСНОВНЫХ ДАННЫХ
+            PushUndo(); // ⬅️ ПЕРЕД УДАЛЕНИЕМ
             foreach (var rec in toDelete)
                 journal.Remove(rec);
 
@@ -267,33 +292,6 @@ namespace ConstructionControl
 
         private void RefreshTreePreserveState()
         {
-            var expandedGroups = new HashSet<string>();
-            string selectedGroup = null;
-            string selectedMaterial = null;
-
-            if (ObjectsTree.Items.Count > 0 &&
-                ObjectsTree.Items[0] is TreeViewItem root)
-            {
-                foreach (TreeViewItem group in root.Items)
-                {
-                    if (group.IsExpanded)
-                        expandedGroups.Add(group.Header.ToString());
-
-                    foreach (TreeViewItem mat in group.Items)
-                    {
-                        if (mat.IsSelected)
-                        {
-                            selectedGroup = group.Header.ToString();
-                            selectedMaterial = mat.Header.ToString();
-                        }
-                    }
-
-                    if (group.IsSelected)
-                        selectedGroup = group.Header.ToString();
-                }
-            }
-
-            // пересборка
             ObjectsTree.Items.Clear();
             if (currentObject == null)
                 return;
@@ -305,38 +303,78 @@ namespace ConstructionControl
                 IsExpanded = true
             };
 
-            foreach (var g in currentObject.MaterialGroups)
+            var mainNode = new TreeViewItem
+            {
+                Header = "Основные",
+                Tag = "Category",
+                IsExpanded = true
+            };
+
+            var extraNode = new TreeViewItem
+            {
+                Header = "Допы",
+                Tag = "Category",
+                IsExpanded = true
+            };
+
+            // ===== ОСНОВНЫЕ =====
+            var mainGroups = journal
+                .Where(j => j.Category == "Основные")
+                .GroupBy(j => j.MaterialGroup);
+
+            foreach (var g in mainGroups)
             {
                 var groupNode = new TreeViewItem
                 {
-                    Header = g.Name,
+                    Header = g.Key,
                     Tag = "Group",
-                    IsExpanded = expandedGroups.Contains(g.Name)
+                    IsExpanded = true
                 };
 
-                if (currentObject.MaterialNamesByGroup.TryGetValue(g.Name, out var names))
+                foreach (var m in g.Select(x => x.MaterialName).Distinct())
                 {
-                    foreach (var m in names)
+                    groupNode.Items.Add(new TreeViewItem
                     {
-                        var matNode = new TreeViewItem
-                        {
-                            Header = m,
-                            Tag = "Material",
-                            IsSelected = g.Name == selectedGroup && m == selectedMaterial
-                        };
-
-                        groupNode.Items.Add(matNode);
-                    }
+                        Header = m,
+                        Tag = "Material"
+                    });
                 }
 
-                if (g.Name == selectedGroup && selectedMaterial == null)
-                    groupNode.IsSelected = true;
-
-                newRoot.Items.Add(groupNode);
+                mainNode.Items.Add(groupNode);
             }
+
+            // ===== ДОПЫ =====
+            var extraGroups = journal
+                .Where(j => j.Category == "Допы")
+                .GroupBy(j => j.SubCategory);
+
+            foreach (var g in extraGroups)
+            {
+                var subNode = new TreeViewItem
+                {
+                    Header = g.Key,
+                    Tag = "SubCategory",
+                    IsExpanded = true
+                };
+
+                foreach (var m in g.Select(x => x.MaterialName).Distinct())
+                {
+                    subNode.Items.Add(new TreeViewItem
+                    {
+                        Header = m,
+                        Tag = "Material"
+                    });
+                }
+
+                extraNode.Items.Add(subNode);
+            }
+
+            newRoot.Items.Add(mainNode);
+            newRoot.Items.Add(extraNode);
 
             ObjectsTree.Items.Add(newRoot);
         }
+
 
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
@@ -368,6 +406,7 @@ namespace ConstructionControl
 
             if (string.IsNullOrWhiteSpace(input) || input == oldName)
                 return;
+            PushUndo(); // ⬅️ ВАЖНО: сохраняем состояние ДО переименования
 
             if (node.Tag as string == "Group")
             {
@@ -529,6 +568,57 @@ namespace ConstructionControl
                     Journal = journal
                 }));
         }
+        private AppState CloneState()
+        {
+            return new AppState
+            {
+                CurrentObject = JsonSerializer.Deserialize<ProjectObject>(
+            JsonSerializer.Serialize(currentObject)),
+                Journal = JsonSerializer.Deserialize<List<JournalRecord>>(
+            JsonSerializer.Serialize(journal))
+            };
+        }
+
+        private const int MaxUndoSteps = 10;
+
+        private void PushUndo()
+        {
+            // если превышаем лимит — удаляем самый старый шаг
+            if (undoStack.Count >= MaxUndoSteps)
+            {
+                var temp = undoStack.Reverse().Take(MaxUndoSteps - 1).Reverse().ToList();
+                undoStack.Clear();
+                foreach (var s in temp)
+                    undoStack.Push(s);
+            }
+
+            undoStack.Push(CloneState());
+            redoStack.Clear();
+            UpdateUndoRedoButtons();
+        }
+
+
+
+        private void RestoreState(AppState state)
+        {
+            currentObject = state.CurrentObject;
+            journal = state.Journal ?? new();
+
+            ArrivalPanel.SetObject(currentObject, journal);
+
+            RefreshTreePreserveState();
+            RefreshFilters();
+            ApplyAllFilters();
+            RefreshSummaryTable();
+
+            SaveState();
+        }
+
+        private void UpdateUndoRedoButtons()
+        {
+            UndoButton.IsEnabled = undoStack.Count > 0;
+            RedoButton.IsEnabled = redoStack.Count > 0;
+        }
 
         private void LoadState()
         {
@@ -588,33 +678,35 @@ namespace ConstructionControl
 
             if (importWindow.ShowDialog() != true)
                 return;
-
             foreach (var rec in importWindow.ImportedRecords)
             {
+                PushUndo();
                 rec.ObjectName = currentObject.Name;
                 journal.Add(rec);
 
-                // ====== ВАЖНО: обновляем структуру объекта ======
-
-                // 1. Группа (лист Excel)
-                if (!currentObject.MaterialGroups.Any(g => g.Name == rec.MaterialGroup))
+                // ====== ОБРАБОТКА ТОЛЬКО ОСНОВНЫХ ======
+                if (rec.Category == "Основные")
                 {
-                    currentObject.MaterialGroups.Add(new MaterialGroup
+                    if (!currentObject.MaterialGroups.Any(g => g.Name == rec.MaterialGroup))
                     {
-                        Name = rec.MaterialGroup
-                    });
+                        currentObject.MaterialGroups.Add(new MaterialGroup
+                        {
+                            Name = rec.MaterialGroup
+                        });
 
-                    currentObject.MaterialNamesByGroup[rec.MaterialGroup] = new List<string>();
-                }
+                        currentObject.MaterialNamesByGroup[rec.MaterialGroup] = new List<string>();
+                    }
 
-                // 2. Наименование внутри группы
-                if (!currentObject.MaterialNamesByGroup[rec.MaterialGroup]
-                        .Contains(rec.MaterialName))
-                {
-                    currentObject.MaterialNamesByGroup[rec.MaterialGroup]
-                        .Add(rec.MaterialName);
+                    if (!currentObject.MaterialNamesByGroup[rec.MaterialGroup]
+                            .Contains(rec.MaterialName))
+                    {
+                        currentObject.MaterialNamesByGroup[rec.MaterialGroup]
+                            .Add(rec.MaterialName);
+                    }
                 }
             }
+
+
 
             // ====== обновляем UI ======
             SaveState();
@@ -673,6 +765,28 @@ namespace ConstructionControl
 
             SummaryGrid.ItemsSource = result;
         }
+        private void Undo_Click(object sender, RoutedEventArgs e)
+        {
+            if (undoStack.Count == 0)
+                return;
+
+            redoStack.Push(CloneState());
+            var prev = undoStack.Pop();
+            RestoreState(prev);
+            UpdateUndoRedoButtons();
+        }
+
+        private void Redo_Click(object sender, RoutedEventArgs e)
+        {
+            if (redoStack.Count == 0)
+                return;
+
+            undoStack.Push(CloneState());
+            var next = redoStack.Pop();
+            RestoreState(next);
+            UpdateUndoRedoButtons();
+        }
+
 
 
 

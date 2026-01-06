@@ -11,6 +11,24 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <RadioButton x:Name="MainRadio"
+                 Content="Основные"
+                 IsChecked="True"
+                 Checked="ArrivalTypeChanged"
+                 Margin="500,0,12,0"/>
+
+            <RadioButton x:Name="ExtraRadio"
+                 Content="Допы"
+                 Checked="ArrivalTypeChanged"/>
+        </StackPanel>
+
+        <ComboBox x:Name="ExtraTypeBox"
+          Visibility="Collapsed"
+          Width="150"
+          Margin="0,0,0,8"/>
+
+
         <!-- ВЕРХ -->
         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
             <TextBlock Text="Тип материала:"
@@ -30,6 +48,8 @@
                      Width="150"/>
         </StackPanel>
 
+        
+        
         <!-- ТАБЛИЦА -->
         <DataGrid x:Name="ItemsGrid"
                   Grid.Row="1"

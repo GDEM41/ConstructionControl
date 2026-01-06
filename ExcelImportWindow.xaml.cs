@@ -33,11 +33,30 @@ namespace ConstructionControl
             InitializeComponent();
             LoadTemplatesList();
 
+            MainRadio.Checked += ImportTypeChanged;
+            ExtraRadio.Checked += ImportTypeChanged;
 
 
             _filePath = filePath;
             FilePathText.Text = filePath;
             SheetsList.ItemsSource = sheets;
+        }
+
+        private void ImportTypeChanged(object sender, RoutedEventArgs e)
+        {
+            if (ExtraTypeBox == null)
+                return;
+
+            if (ExtraRadio.IsChecked == true)
+            {
+                ExtraTypeBox.Visibility = Visibility.Visible;
+                ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
+                ExtraTypeBox.SelectedIndex = 0;
+            }
+            else
+            {
+                ExtraTypeBox.Visibility = Visibility.Collapsed;
+            }
         }
 
 
@@ -185,11 +204,19 @@ namespace ConstructionControl
                     ImportedRecords.Add(new JournalRecord
                     {
                         Date = date,
-                        MaterialGroup = sheetName,
+
+                        Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
+                        SubCategory = ExtraRadio.IsChecked == true
+                             ? ExtraTypeBox.SelectedItem?.ToString()
+                             : null,
+
+                        MaterialGroup = MainRadio.IsChecked == true ? sheetName : null,
                         MaterialName = material,
-                        Quantity = qty,   // ❗ БЕЗ ОКРУГЛЕНИЯ
+
+                        Quantity = qty,
                         Unit = "шт"
                     });
+
                 }
             }
         }

@@ -84,8 +84,20 @@
 
                 <Separator Margin="6,0"/>
 
-                <Button Style="{StaticResource IconButton}" IsEnabled="False">↩</Button>
-                <Button Style="{StaticResource IconButton}" IsEnabled="False">↪</Button>
+                <Button x:Name="UndoButton"
+        Style="{StaticResource IconButton}"
+        Click="Undo_Click"
+        IsEnabled="False">
+                    ↩
+                </Button>
+
+                <Button x:Name="RedoButton"
+        Style="{StaticResource IconButton}"
+        Click="Redo_Click"
+        IsEnabled="False">
+                    ↪
+                </Button>
+
 
                 <Separator Margin="10,0"/>
 

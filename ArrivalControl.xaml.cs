@@ -31,7 +31,28 @@ namespace ConstructionControl
 
         // ================= ИНИЦИАЛИЗАЦИЯ =================
 
-      
+        private void ArrivalTypeChanged(object sender, RoutedEventArgs e)
+        {
+            // защита от вызова во время InitializeComponent
+            if (ExtraTypeBox == null || MaterialGroupBox == null)
+                return;
+
+            if (ExtraRadio.IsChecked == true)
+            {
+                ExtraTypeBox.Visibility = Visibility.Visible;
+                ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
+                ExtraTypeBox.SelectedIndex = 0;
+
+                MaterialGroupBox.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                ExtraTypeBox.Visibility = Visibility.Collapsed;
+                MaterialGroupBox.Visibility = Visibility.Visible;
+            }
+        }
+
+
 
         public void SetObject(ProjectObject obj, List<JournalRecord> journalRecords)
         {
@@ -139,10 +160,16 @@ namespace ConstructionControl
 
             ArrivalAdded?.Invoke(new Arrival
             {
-                MaterialGroup = groupName,
+                Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
+                SubCategory = ExtraRadio.IsChecked == true
+                    ? ExtraTypeBox.SelectedItem?.ToString()
+                    : null,
+
+                MaterialGroup = MainRadio.IsChecked == true ? groupName : null,
                 TtnNumber = TtnBox.Text,
                 Items = items.ToList()
             });
+
 
             TtnBox.Clear();
             items.Clear();

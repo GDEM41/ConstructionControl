@@ -135,6 +135,26 @@
                            Foreground="#6B7280"
                            Text="Ячейка не выбрана"/>
 
+
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <RadioButton x:Name="MainRadio"
+                 Content="Основные"
+                 IsChecked="True"
+                 Margin="350,0,12,0"/>
+
+                    <RadioButton x:Name="ExtraRadio"
+                 Content="Дополнительные"/>
+                </StackPanel>
+
+                <ComboBox x:Name="ExtraTypeBox"
+          Visibility="Collapsed"
+          Width="150"
+          Margin="0,0,0,10"/>
+
+
+
+
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal">
 

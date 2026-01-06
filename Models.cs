@@ -46,19 +46,28 @@ namespace ConstructionControl
 
     public class Arrival
     {
+        public string Category { get; set; }     // Основные / Допы
+        public string SubCategory { get; set; }  // Внутренние / Малоценка
+
         public string MaterialGroup { get; set; }
         public string TtnNumber { get; set; }
         public List<ArrivalItem> Items { get; set; } = new();
     }
 
-                          
+
+
 
     public class JournalRecord
     {
         public DateTime Date { get; set; }
         public string ObjectName { get; set; }
+
+        public string Category { get; set; }     // Основные / Допы
+        public string SubCategory { get; set; }  // Внутренние / Малоценка
+
         public string MaterialGroup { get; set; }
         public string MaterialName { get; set; }
+
         public string Unit { get; set; }
         public double Quantity { get; set; }
         public string Passport { get; set; }
@@ -66,6 +75,7 @@ namespace ConstructionControl
         public string Stb { get; set; }
         public string Supplier { get; set; }
     }
+
     public class SummaryRow
     {
         public string MaterialName { get; set; }
