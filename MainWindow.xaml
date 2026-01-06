@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:ConstructionControl"
         Title="Журнал входного контроля"
         Height="650"
-        Width="1150"
+        Width="1250"
         Background="#F6F7FB">
 
     <!-- ================= СТИЛИ ================= -->

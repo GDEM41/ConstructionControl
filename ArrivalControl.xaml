@@ -11,45 +11,84 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton x:Name="MainRadio"
-                 Content="Основные"
-                 IsChecked="True"
-                 Checked="ArrivalTypeChanged"
-                 Margin="500,0,12,0"/>
+        
 
-            <RadioButton x:Name="ExtraRadio"
-                 Content="Допы"
-                 Checked="ArrivalTypeChanged"/>
-        </StackPanel>
-
-        <ComboBox x:Name="ExtraTypeBox"
-          Visibility="Collapsed"
-          Width="150"
-          Margin="0,0,0,8"/>
 
 
         <!-- ВЕРХ -->
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-            <TextBlock Text="Тип материала:"
-                       VerticalAlignment="Center"
-                       Margin="0,0,5,0"/>
 
-            <ComboBox x:Name="MaterialGroupBox"
-                      Width="200"
-                      IsEditable="True"
-                      IsTextSearchEnabled="False"/>
+        <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+        <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="20"/>
 
-            <TextBlock Text="ТТН:"
-                       VerticalAlignment="Center"
-                       Margin="15,0,5,0"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="160"/>
+                <ColumnDefinition Width="30"/>
 
-            <TextBox x:Name="TtnBox"
-                     Width="150"/>
-        </StackPanel>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="160"/>
+            </Grid.ColumnDefinitions>
 
-        
-        
+            <!-- ТИП -->
+            <StackPanel x:Name="MaterialGroupPanel"
+            Grid.Column="0"
+            Grid.ColumnSpan="2"
+            Orientation="Horizontal"
+            VerticalAlignment="Center">
+
+                <TextBlock Text="Тип материала:"
+               VerticalAlignment="Center"
+               Margin="0,0,6,0"/>
+
+                <ComboBox x:Name="MaterialGroupBox"
+              Width="200"
+              IsEditable="True"
+              IsTextSearchEnabled="False"
+              Height="26"/>
+            </StackPanel>
+
+
+            <!-- ТТН -->
+            <TextBlock Grid.Column="3"
+               Text="ТТН:"
+               VerticalAlignment="Center"
+               Margin="0,0,6,0"/>
+
+            <TextBox Grid.Column="4"
+             x:Name="TtnBox"
+             Height="26"/>
+
+            <!-- ОСНОВНЫЕ / ДОПЫ -->
+            <StackPanel Grid.Column="6"
+                Orientation="Horizontal"
+                VerticalAlignment="Center">
+
+                <RadioButton x:Name="MainRadio"
+                     Content="Основные"
+                     IsChecked="True"
+                     Checked="ArrivalTypeChanged"
+                     Margin="0,0,10,0"/>
+
+                <RadioButton x:Name="ExtraRadio"
+                     Content="Допы"
+                     Checked="ArrivalTypeChanged"/>
+            </StackPanel>
+
+            <!-- ПОДТИП ДОПОВ -->
+            <ComboBox Grid.Column="9"
+          x:Name="ExtraTypeBox"
+          Visibility="Collapsed"
+          Height="26"
+          Margin="12,0,0,0"/>
+
+        </Grid>
+
+
         <!-- ТАБЛИЦА -->
         <DataGrid x:Name="ItemsGrid"
                   Grid.Row="1"

@@ -130,27 +130,61 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="SelectedCellText"
-                           VerticalAlignment="Center"
-                           Foreground="#6B7280"
-                           Text="Ячейка не выбрана"/>
 
 
 
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <RadioButton x:Name="MainRadio"
+
+                <!-- ===== Нижняя панель: тип импорта + шаблоны ===== -->
+                <Grid Grid.Row="2"
+      Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+
+                        <!-- Тип импорта -->
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="160"/>
+
+                        <ColumnDefinition Width="30"/>
+
+                        <!-- Шаблоны и импорт -->
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Инфо о выбранной ячейке -->
+                    <TextBlock Grid.Column="0"
+               x:Name="SelectedCellText"
+               VerticalAlignment="Center"
+               Foreground="#6B7280"
+               Text="Ячейка не выбрана"/>
+
+                    <!-- Основные / Дополнительные -->
+                    <RadioButton Grid.Column="1"
+                 x:Name="MainRadio"
                  Content="Основные"
                  IsChecked="True"
-                 Margin="350,0,12,0"/>
+                 VerticalAlignment="Center"
+                 Margin="0,0,10,0"/>
 
-                    <RadioButton x:Name="ExtraRadio"
-                 Content="Дополнительные"/>
-                </StackPanel>
+                    <RadioButton Grid.Column="2"
+                 x:Name="ExtraRadio"
+                 Content="Дополнительные"
+                 VerticalAlignment="Center"/>
 
-                <ComboBox x:Name="ExtraTypeBox"
-          Visibility="Collapsed"
-          Width="150"
-          Margin="0,0,0,10"/>
+                    <!-- Подтип допов -->
+                    <ComboBox Grid.Column="4"
+          x:Name="ExtraTypeBox"
+          Width="60"
+          Height="30"
+          VerticalContentAlignment="Center"
+          VerticalAlignment="Center"
+          Visibility="Hidden"/>
+
+                    <!-- Кнопки справа -->
+
+                </Grid>
+
 
 
 
@@ -159,22 +193,30 @@
                             Orientation="Horizontal">
 
                     <ComboBox x:Name="TemplatesCombo"
-                              Width="200"
-                              Margin="0,0,10,0"
+                         Height="30"
+                         Padding="70"
+                         Margin="0,0,6,0"
                               SelectionChanged="TemplatesCombo_SelectionChanged"/>
 
                     <Button Content="✅ Применить"
-                            Margin="0,0,6,0"
+                         Height="30"
+                         Padding="14,6"
+                         Margin="0,0,6,0"
                             Click="ApplyTemplate_Click"/>
 
                     <Button Content="💾 Сохранить шаблон"
-                            Margin="0,0,6,0"
+                         Height="32"
+                         Padding="14,6"
+                         Margin="0,0,6,0"
                             Click="SaveTemplate_Click"/>
 
                     <Button Content="Импорт"
                             Background="#2563EB"
                             Foreground="White"
                             FontWeight="SemiBold"
+                                                     Height="32"
+                         Padding="14,6"
+                         Margin="0,0,6,0"
                             Click="Import_Click"/>
                 </StackPanel>
             </Grid>

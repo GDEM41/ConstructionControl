@@ -33,24 +33,32 @@ namespace ConstructionControl
 
         private void ArrivalTypeChanged(object sender, RoutedEventArgs e)
         {
-            // защита от вызова во время InitializeComponent
-            if (ExtraTypeBox == null || MaterialGroupBox == null)
+            if (MaterialGroupPanel == null || ExtraTypeBox == null)
                 return;
 
             if (ExtraRadio.IsChecked == true)
             {
-                ExtraTypeBox.Visibility = Visibility.Visible;
-                ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
-                ExtraTypeBox.SelectedIndex = 0;
+                // Допы
+                MaterialGroupPanel.Visibility = Visibility.Hidden;
 
-                MaterialGroupBox.Visibility = Visibility.Collapsed;
+                ExtraTypeBox.Visibility = Visibility.Visible;
+
+                if (ExtraTypeBox.ItemsSource == null)
+                {
+                    ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
+                    ExtraTypeBox.SelectedIndex = 0;
+                }
             }
             else
             {
-                ExtraTypeBox.Visibility = Visibility.Collapsed;
-                MaterialGroupBox.Visibility = Visibility.Visible;
+                // Основные
+                MaterialGroupPanel.Visibility = Visibility.Visible;
+                ExtraTypeBox.Visibility = Visibility.Hidden;
             }
         }
+
+
+
 
 
 
