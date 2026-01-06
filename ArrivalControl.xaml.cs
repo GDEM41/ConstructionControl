@@ -9,8 +9,9 @@ namespace ConstructionControl
     public partial class ArrivalControl : UserControl
     {
         private ProjectObject currentObject;
+        private List<JournalRecord> journal;
         private ObservableCollection<ArrivalItem> items = new();
-
+   
         public event System.Action<Arrival> ArrivalAdded;
 
         public ArrivalControl()
@@ -30,9 +31,12 @@ namespace ConstructionControl
 
         // ================= ИНИЦИАЛИЗАЦИЯ =================
 
-        public void SetObject(ProjectObject obj)
+      
+
+        public void SetObject(ProjectObject obj, List<JournalRecord> journalRecords)
         {
             currentObject = obj;
+            journal = journalRecords;
 
             MaterialGroupBox.ItemsSource =
                 currentObject.MaterialGroups.Select(g => g.Name).ToList();
@@ -40,6 +44,8 @@ namespace ConstructionControl
             items.Clear();
             AddRow();
         }
+
+
 
         // ================= ТИП МАТЕРИАЛА =================
 
@@ -70,15 +76,21 @@ namespace ConstructionControl
             var item = new ArrivalItem
             {
                 Date = System.DateTime.Today,
-                AvailableNames = new ObservableCollection<string>(),
-                AvailableUnits = new ObservableCollection<string>
-                {
-                    "шт", "м3", "т", "кг"
-                }
+                AvailableNames = new ObservableCollection<string>()
             };
 
             items.Add(item);
+
+            item.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(ArrivalItem.MaterialName))
+                {
+                    TryAutofillUnitAndStb(item);
+                }
+            };
         }
+
+
 
         private void AddRow_Click(object sender, RoutedEventArgs e)
         {
@@ -116,7 +128,14 @@ namespace ConstructionControl
                 {
                     currentObject.MaterialNamesByGroup[groupName].Add(i.MaterialName);
                 }
+
+                // ===== ШАГ 6: ЗАПОМИНАЕМ ЕД. ИЗМ И СТБ =====
+                if (!string.IsNullOrWhiteSpace(i.MaterialName))
+                {
+                  
+                }
             }
+
 
             ArrivalAdded?.Invoke(new Arrival
             {
@@ -129,6 +148,49 @@ namespace ConstructionControl
             items.Clear();
             AddRow();
         }
+        private void TryAutofillUnitAndStb(ArrivalItem item)
+        {
+            if (item == null)
+                return;
+
+            // очищаем при смене материала
+            item.Unit = null;
+            item.Stb = null;
+
+            if (string.IsNullOrWhiteSpace(item.MaterialName))
+                return;
+
+            if (journal == null || journal.Count == 0)
+                return;
+
+            var last = journal
+                .Where(j => j.MaterialName == item.MaterialName)
+                .OrderByDescending(j => j.Date)
+                .FirstOrDefault();
+
+            if (last == null)
+                return;
+
+            item.Unit = last.Unit;
+            item.Stb = last.Stb;
+        }
+
+
+
+
+
+
+
+        private void Material_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is ComboBox cb && cb.DataContext is ArrivalItem item)
+            {
+                TryAutofillUnitAndStb(item);
+            }
+        }
+
+
 
     }
 }
+

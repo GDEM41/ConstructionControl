@@ -51,9 +51,11 @@
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
                             <ComboBox IsEditable="True"
-                                      IsTextSearchEnabled="False"
-                                      Text="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
-                                      ItemsSource="{Binding AvailableNames}"/>
+          IsTextSearchEnabled="False"
+          Text="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
+          ItemsSource="{Binding AvailableNames}"
+          LostFocus="Material_LostFocus"/>
+
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
@@ -63,13 +65,21 @@
                                     Width="90"/>
 
                 <DataGridTemplateColumn Header="Ед." Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Unit}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
-                            <ComboBox ItemsSource="{Binding AvailableUnits}"
-                                      SelectedItem="{Binding Unit}"/>
+                            <TextBox Text="{Binding Unit, UpdateSourceTrigger=PropertyChanged}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
+
+
+
 
                 <DataGridTextColumn Header="Паспорт"
                                     Binding="{Binding Passport}"

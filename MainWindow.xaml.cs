@@ -29,7 +29,9 @@ namespace ConstructionControl
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
 
             if (currentObject != null)
-                ArrivalPanel.SetObject(currentObject);
+                ArrivalPanel.SetObject(currentObject, journal);
+
+
 
             RefreshTreePreserveState();
             RefreshFilters();
@@ -51,7 +53,9 @@ namespace ConstructionControl
 
                 journal.Clear();
 
-                ArrivalPanel.SetObject(currentObject);
+                ArrivalPanel.SetObject(currentObject, journal);
+
+
 
                 SaveState();
                 RefreshTreePreserveState();
@@ -177,7 +181,9 @@ namespace ConstructionControl
             ApplyAllFilters();
 
             // важно: обновляем панель прихода
-            ArrivalPanel.SetObject(currentObject);
+            ArrivalPanel.SetObject(currentObject, journal);
+
+
         }
 
         private void JournalGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -616,7 +622,8 @@ namespace ConstructionControl
             RefreshFilters();
             ApplyAllFilters();
             RefreshSummaryTable();
-            ArrivalPanel.SetObject(currentObject);
+            ArrivalPanel.SetObject(currentObject, journal);
+
 
 
 

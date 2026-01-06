@@ -1,6 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace ConstructionControl
 {
@@ -50,19 +51,7 @@ namespace ConstructionControl
         public List<ArrivalItem> Items { get; set; } = new();
     }
 
-    public class ArrivalItem
-    {
-        public DateTime Date { get; set; } = DateTime.Today;
-        public string MaterialName { get; set; }
-        public string Unit { get; set; }
-        public int Quantity { get; set; }
-        public string Passport { get; set; }
-        public string Stb { get; set; }
-        public string Supplier { get; set; }
-
-        public ObservableCollection<string> AvailableNames { get; set; } = new();
-        public ObservableCollection<string> AvailableUnits { get; set; } = new();
-    }
+                          
 
     public class JournalRecord
     {
@@ -86,6 +75,9 @@ namespace ConstructionControl
         public double Total { get; set; }
     }
 
+
+
+   
 
 }
 
