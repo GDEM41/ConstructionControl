@@ -154,10 +154,10 @@
 
                     <!-- Инфо о выбранной ячейке -->
                     <TextBlock Grid.Column="0"
-               x:Name="SelectedCellText"
-               VerticalAlignment="Center"
-               Foreground="#6B7280"
-               Text="Ячейка не выбрана"/>
+                                 x:Name="SelectedCellText"
+                                 VerticalAlignment="Center"
+                                 Foreground="#6B7280"
+                                 Text="Ячейка не выбрана"/>
 
                     <!-- Основные / Дополнительные -->
                     <RadioButton Grid.Column="1"
@@ -174,12 +174,12 @@
 
                     <!-- Подтип допов -->
                     <ComboBox Grid.Column="4"
-          x:Name="ExtraTypeBox"
-          Width="60"
-          Height="30"
-          VerticalContentAlignment="Center"
-          VerticalAlignment="Center"
-          Visibility="Hidden"/>
+                            x:Name="ExtraTypeBox"
+                            Width="60"
+                            Height="30"
+                            VerticalContentAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="Hidden"/>
 
                     <!-- Кнопки справа -->
 
@@ -217,7 +217,7 @@
                                                      Height="32"
                          Padding="14,6"
                          Margin="0,0,6,0"
-                            Click="Import_Click"/>
+                         Click="Import_Click"/>
                 </StackPanel>
             </Grid>
         </Grid>
