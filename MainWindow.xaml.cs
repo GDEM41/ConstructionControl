@@ -577,6 +577,25 @@ namespace ConstructionControl
 
             if (DateToPicker.SelectedDate != null)
                 data = data.Where(j => j.Date <= DateToPicker.SelectedDate);
+            // ===== ГЛОБАЛЬНЫЙ ПОИСК =====
+            if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
+            {
+                var text = GlobalSearchBox.Text.Trim();
+
+                data = data.Where(j =>
+                    (j.MaterialName != null &&
+                     j.MaterialName.Contains(text, StringComparison.OrdinalIgnoreCase))
+
+                    || (j.MaterialGroup != null &&
+                        j.MaterialGroup.Contains(text, StringComparison.OrdinalIgnoreCase))
+
+                    || (j.Ttn != null &&
+                        j.Ttn.Contains(text, StringComparison.OrdinalIgnoreCase))
+
+                    || (j.Passport != null &&
+                        j.Passport.Contains(text, StringComparison.OrdinalIgnoreCase))
+                );
+            }
 
 
 

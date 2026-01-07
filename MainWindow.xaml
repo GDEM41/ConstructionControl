@@ -175,11 +175,29 @@
 
                             <!-- Панель кнопок -->
                             <StackPanel Grid.Row="0"
-                                        Orientation="Horizontal"
-                                        HorizontalAlignment="Right"
-                                        Margin="0,4,0,6">
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Margin="0,4,0,6">
 
-                                <Button Style="{StaticResource SecondaryButton}"
+                                <!-- ПОИСК -->
+                                <TextBox x:Name="GlobalSearchBox"
+             Width="260"
+             Height="32"
+             Margin="0,0,10,0"
+             VerticalContentAlignment="Center"
+             FontSize="13"
+             ToolTip="Поиск: наименование, позиция, ТТН, паспорт"
+             TextChanged="Filters_Changed"
+             />
+
+                                <!-- ФИЛЬТРЫ -->
+                               
+
+                                <!-- ЭКСПОРТ -->
+
+
+
+                            <Button Style="{StaticResource SecondaryButton}"
                                         Click="ToggleFilters_Click">
                                     🔍 Фильтры
                                 </Button>
