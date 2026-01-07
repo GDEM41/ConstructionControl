@@ -27,24 +27,28 @@ namespace ConstructionControl
         {
             InitializeComponent();
 
-            LoadState();
+            // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
+            isLocked = true;
 
+            LoadState();
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
 
-            // ⬇️ ВАЖНО: стартовая точка для Undo
             PushUndo();
             UpdateUndoRedoButtons();
 
-
             if (currentObject != null)
                 ArrivalPanel.SetObject(currentObject, journal);
-
-
 
             RefreshTreePreserveState();
             RefreshFilters();
             ApplyAllFilters();
         }
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            // гарантированно после создания всех контролов
+            JournalGrid.IsReadOnly = true;
+        }
+
 
         // ================= МЕНЮ =================
 
@@ -133,14 +137,19 @@ namespace ConstructionControl
         private void LockButton_Checked(object sender, RoutedEventArgs e)
         {
             isLocked = true;
-            JournalGrid.IsReadOnly = true;
+
+            if (JournalGrid != null)
+                JournalGrid.IsReadOnly = true;
         }
 
         private void LockButton_Unchecked(object sender, RoutedEventArgs e)
         {
             isLocked = false;
-            JournalGrid.IsReadOnly = false;
+
+            if (JournalGrid != null)
+                JournalGrid.IsReadOnly = false;
         }
+
 
         // ================= ПРИХОД =================
 

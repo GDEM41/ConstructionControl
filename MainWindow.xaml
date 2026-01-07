@@ -5,7 +5,8 @@
         Title="Журнал входного контроля"
         Height="650"
         Width="1250"
-        Background="#F6F7FB">
+        Background="#F6F7FB"
+         Loaded="MainWindow_Loaded">
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
@@ -76,11 +77,14 @@
                 </Button>
 
                 <ToggleButton Style="{StaticResource IconToggle}"
-                              ToolTip="Блокировка"
-                              Checked="LockToggle_Checked"
-                              Unchecked="LockToggle_Unchecked">
+              ToolTip="Блокировка"
+              IsChecked="True"
+              Checked="LockToggle_Checked"
+              Unchecked="LockToggle_Unchecked">
                     🔒
                 </ToggleButton>
+
+
 
                 <Separator Margin="6,0"/>
 
