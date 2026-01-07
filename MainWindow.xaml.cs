@@ -520,6 +520,32 @@ namespace ConstructionControl
         {
             IEnumerable<JournalRecord> data = journal;
 
+
+            // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ =====
+            // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ (ДОПЫ ПО УМОЛЧАНИЮ СКРЫТЫ) =====
+            bool showLowCost = LowCostCheckBox.IsChecked == true;
+            bool showInternal = InternalCheckBox.IsChecked == true;
+
+            data = data.Where(j =>
+                // основные всегда видны
+                j.Category == "Основные"
+
+                // допы — только если включены галочки
+                || (
+                    j.Category == "Допы" &&
+                    (
+                        // если включены ОБЕ — показываем ВСЕ допы
+                        (showLowCost && showInternal)
+
+                        // если включена только одна
+                        || (showLowCost && j.SubCategory == "Малоценка")
+                        || (showInternal && j.SubCategory == "Внутренние")
+                    )
+                )
+            );
+
+
+
             if (ObjectsTree.SelectedItem is TreeViewItem node &&
                 node.Tag is string tag)
             {
@@ -543,16 +569,16 @@ namespace ConstructionControl
             if (DateToPicker.SelectedDate != null)
                 data = data.Where(j => j.Date <= DateToPicker.SelectedDate);
 
-            if (!string.IsNullOrWhiteSpace(SupplierFilterBox.Text))
-                data = data.Where(j =>
-                    j.Supplier != null &&
-                    j.Supplier.Contains(SupplierFilterBox.Text,
-                        StringComparison.OrdinalIgnoreCase));
 
-                     filteredJournal = data.ToList();
-                     JournalGrid.ItemsSource = filteredJournal;
+
+            filteredJournal = data
+                .OrderByDescending(j => j.Date) // ⬅️ СОРТИРОВКА ПО ДАТЕ (НОВЫЕ СВЕРХУ)
+                .ToList();
+
+            JournalGrid.ItemsSource = filteredJournal;
 
             RefreshSummaryTable();
+
 
         }
 
@@ -655,6 +681,23 @@ namespace ConstructionControl
             SaveState();
             Close();
         }
+
+        private void ExtraFiltersToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            ExtraFiltersPanel.Visibility = Visibility.Visible;
+        }
+
+        private void ExtraFiltersToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            ExtraFiltersPanel.Visibility = Visibility.Collapsed;
+
+            LowCostCheckBox.IsChecked = false;
+            InternalCheckBox.IsChecked = false;
+
+            ApplyAllFilters();
+        }
+
+
         private void ImportExcel_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
