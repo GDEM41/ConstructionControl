@@ -74,6 +74,9 @@ namespace ConstructionControl
         public string Ttn { get; set; }
         public string Stb { get; set; }
         public string Supplier { get; set; }
+        public string Position { get; set; }
+        public string Volume { get; set; }
+
     }
 
     public class SummaryRow

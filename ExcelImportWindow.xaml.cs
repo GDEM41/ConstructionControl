@@ -204,7 +204,6 @@ namespace ConstructionControl
                     ImportedRecords.Add(new JournalRecord
                     {
                         Date = date,
-
                         Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
                         SubCategory = ExtraRadio.IsChecked == true
                              ? ExtraTypeBox.SelectedItem?.ToString()
@@ -214,8 +213,18 @@ namespace ConstructionControl
                         MaterialName = material,
 
                         Quantity = qty,
-                        Unit = "шт"
+                        Unit = t.UnitColumn != null ? ws.Cell(r, t.UnitColumn.Value).GetValue<string>() : "шт",
+
+                        Position = t.PositionColumn != null ? ws.Cell(r, t.PositionColumn.Value).GetValue<string>() : null,
+                        Volume = t.VolumeColumn != null ? ws.Cell(r, t.VolumeColumn.Value).GetValue<string>() : null,
+
+                        Passport = t.PassportRow != null ? ws.Cell(t.PassportRow.Value, c).GetValue<string>() : null,
+                        Supplier = t.SupplierRow != null ? ws.Cell(t.SupplierRow.Value, c).GetValue<string>() : null,
+                        Ttn = t.TtnRow != null ? ws.Cell(t.TtnRow.Value, c).GetValue<string>() : null,
+                        Stb = t.StbColumn != null ? ws.Cell(r, t.StbColumn.Value).GetValue<string>() : null,
                     });
+
+
 
                 }
             }
