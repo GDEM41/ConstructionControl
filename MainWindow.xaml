@@ -165,177 +165,200 @@
                                   VerticalGridLinesBrush="#E5E7EB"/>
                     </TabItem>
 
-                    <!-- ===== ЖВК ===== -->
                     <TabItem Header="ЖВК">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <!-- фильтры -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- шапка -->
                                 <RowDefinition Height="*"/>
+                                <!-- прокрутка -->
                             </Grid.RowDefinitions>
 
-                            <!-- Панель кнопок -->
+
+                            <!-- ===== Панель фильтров и поиск ===== -->
                             <StackPanel Grid.Row="0"
-            Orientation="Horizontal"
-            HorizontalAlignment="Right"
-            Margin="0,4,0,6">
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,4,0,6">
 
-                                <!-- ПОИСК -->
                                 <TextBox x:Name="GlobalSearchBox"
-             Width="260"
-             Height="32"
-             Margin="0,0,10,0"
-             VerticalContentAlignment="Center"
-             FontSize="13"
-             ToolTip="Поиск: наименование, позиция, ТТН, паспорт"
-             TextChanged="Filters_Changed"
-             />
+                     Width="260"
+                     Height="32"
+                     Margin="0,0,10,0"
+                     VerticalContentAlignment="Center"
+                     FontSize="13"
+                     ToolTip="Поиск: наименование, позиция, ТТН, паспорт"
+                     TextChanged="Filters_Changed"/>
 
-                                <!-- ФИЛЬТРЫ -->
-                               
-
-                                <!-- ЭКСПОРТ -->
-
-
-
-                            <Button Style="{StaticResource SecondaryButton}"
-                                        Click="ToggleFilters_Click">
+                                <Button Style="{StaticResource SecondaryButton}"
+                    Click="ToggleFilters_Click">
                                     🔍 Фильтры
                                 </Button>
 
                                 <Button Style="{StaticResource PrimaryButton}"
-                                        Click="ExportToExcel_Click">
+                    Click="ExportToExcel_Click">
                                     ⬇ Экспорт
                                 </Button>
                             </StackPanel>
+
+                            <!-- ===== Фильтры ===== -->
                             <Border x:Name="FiltersPanel"
-        Background="White"
-        BorderBrush="#E5E7EB"
-        BorderThickness="1"
-        CornerRadius="8"
-        Padding="10"
-        Visibility="Collapsed"
-        Margin="10"
-        Panel.ZIndex="10">
+                Grid.Row="0"
+                Background="White"
+                BorderBrush="#E5E7EB"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="10"
+                Visibility="Collapsed"
+                Margin="10"
+                Panel.ZIndex="10">
 
                                 <StackPanel>
                                     <Button Content="✖"
-                HorizontalAlignment="Right"
-                Width="24"
-                Height="24"
-                Padding="0"
-                Margin="0,0,0,6"
-                Background="Transparent"
-                BorderThickness="0"
-                Foreground="Gray"
-                ToolTip="Закрыть"
-                Click="CloseFilters_Click"/>
-                                    <StackPanel Orientation="Horizontal"
-            VerticalAlignment="Center">
+                        HorizontalAlignment="Right"
+                        Width="24"
+                        Height="24"
+                        Padding="0"
+                        Margin="0,0,0,6"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="Gray"
+                        ToolTip="Закрыть"
+                        Click="CloseFilters_Click"/>
 
+                                    <StackPanel Orientation="Horizontal"
+                            VerticalAlignment="Center">
                                         <TextBlock Text="Типы материалов"
-               FontWeight="SemiBold"
-               VerticalAlignment="Center"/>
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
 
                                         <ToggleButton x:Name="ExtraFiltersToggle"
-                  Width="26"
-                  Height="26"
-                  Margin="8,0,0,0"
-                  FontSize="14"
-                  Content="⚙"
-                  ToolTip="Дополнительные фильтры"
-                  Background="#F3F4F6"
-                  BorderBrush="#E5E7EB"
-                  BorderThickness="1"
-                  Checked="ExtraFiltersToggle_Checked"
-                  Unchecked="ExtraFiltersToggle_Unchecked"/>
+                                  Width="26"
+                                  Height="26"
+                                  Margin="8,0,0,0"
+                                  FontSize="14"
+                                  Content="⚙"
+                                  ToolTip="Дополнительные фильтры"
+                                  Background="#F3F4F6"
+                                  BorderBrush="#E5E7EB"
+                                  BorderThickness="1"
+                                  Checked="ExtraFiltersToggle_Checked"
+                                  Unchecked="ExtraFiltersToggle_Unchecked"/>
                                     </StackPanel>
 
-
                                     <ListBox x:Name="FilterGroupsList"
-                 Height="100"
-                 SelectionMode="Extended"
-                 SelectionChanged="Filters_Changed"/>
+                         Height="100"
+                         SelectionMode="Extended"
+                         SelectionChanged="Filters_Changed"/>
 
                                     <Border x:Name="ExtraFiltersPanel"
-        Margin="0,8,0,0"
-        Padding="8"
-        Background="#F9FAFB"
-        BorderBrush="#E5E7EB"
-        BorderThickness="1"
-        CornerRadius="6"
-        Visibility="Collapsed">
-
+                        Margin="0,8,0,0"
+                        Padding="8"
+                        Background="#F9FAFB"
+                        BorderBrush="#E5E7EB"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Visibility="Collapsed">
                                         <StackPanel>
-
                                             <TextBlock Text="Дополнительные"
-                   FontSize="12"
-                   FontWeight="SemiBold"
-                   Foreground="#6B7280"
-                   Margin="0,0,0,6"/>
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#6B7280"
+                                   Margin="0,0,0,6"/>
 
                                             <CheckBox x:Name="LowCostCheckBox"
-                  Content="Малоценка"
-                  FontSize="13"
-                  Checked="Filters_Changed"
-                  Unchecked="Filters_Changed"/>
+                                  Content="Малоценка"
+                                  FontSize="13"
+                                  Checked="Filters_Changed"
+                                  Unchecked="Filters_Changed"/>
 
                                             <CheckBox x:Name="InternalCheckBox"
-                  Content="Внутренние"
-                  FontSize="13"
-                  Margin="0,4,0,0"
-                  Checked="Filters_Changed"
-                  Unchecked="Filters_Changed"/>
-
+                                  Content="Внутренние"
+                                  FontSize="13"
+                                  Margin="0,4,0,0"
+                                  Checked="Filters_Changed"
+                                  Unchecked="Filters_Changed"/>
                                         </StackPanel>
                                     </Border>
 
-
-                                    <StackPanel Orientation="Horizontal"
-                    Margin="0,6,0,0">
-                                        <Button Content="Все"
-                    Click="SelectAllGroups_Click"/>
-                                        <Button Content="Очистить"
-                    Margin="6,0,0,0"
-                    Click="ClearGroups_Click"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="Все" Click="SelectAllGroups_Click"/>
+                                        <Button Content="Очистить" Margin="6,0,0,0" Click="ClearGroups_Click"/>
                                     </StackPanel>
 
-                                    <TextBlock Text="Период"
-                   Margin="0,10,0,4"
-                   FontWeight="SemiBold"/>
+                                    <TextBlock Text="Период" Margin="0,10,0,4" FontWeight="SemiBold"/>
 
                                     <StackPanel Orientation="Horizontal">
                                         <DatePicker x:Name="DateFromPicker"
-                        SelectedDateChanged="Filters_Changed"/>
-                                        <TextBlock Text=" — "
-                       VerticalAlignment="Center"/>
+                                SelectedDateChanged="Filters_Changed"/>
+                                        <TextBlock Text=" — " VerticalAlignment="Center"/>
                                         <DatePicker x:Name="DateToPicker"
-                        SelectedDateChanged="Filters_Changed"/>
+                                SelectedDateChanged="Filters_Changed"/>
                                     </StackPanel>
-
-                                 
-
-                                   
-
-
                                 </StackPanel>
                             </Border>
+                            <!-- ===== Шапка таблицы ===== -->
+                            <Border Grid.Row="1"
+        Background="#F2F4F7"
+        BorderBrush="#D1D5DB"
+        BorderThickness="0,0,0,1"
+        Padding="6,4"
+        CornerRadius="4">
 
-                            
-                            <!-- Таблица -->
-                            <ScrollViewer Grid.Row="1"
-              HorizontalScrollBarVisibility="Auto"
-              VerticalScrollBarVisibility="Auto"
-              CanContentScroll="True"
-              Margin="0,4,0,0">
                                 <Grid>
-                                    <StackPanel x:Name="JvkPanel"
-                    Orientation="Vertical"/>
-                                </Grid>
-                            </ScrollViewer>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="95"/>
+                                        <!-- дата -->
+                                        <ColumnDefinition Width="130"/>
+                                        <!-- ТТН -->
+                                        <ColumnDefinition Width="250"/>
+                                        <!-- имя -->
+                                        <ColumnDefinition Width="70"/>
+                                        <!-- СТБ -->
+                                        <ColumnDefinition Width="45"/>
+                                        <!-- ед -->
+                                        <ColumnDefinition Width="70"/>
+                                        <!-- кол-во -->
+                                        <ColumnDefinition Width="180"/>
+                                        <!-- поставщик -->
+                                        <ColumnDefinition Width="260"/>
+                                        <!-- паспорт -->
+                                    </Grid.ColumnDefinitions>
 
+                                    <TextBlock Text="Дата" Grid.Column="0"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="ТТН" Grid.Column="1"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Наименование" Grid.Column="2"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="СТБ" Grid.Column="3"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Ед." Grid.Column="4"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Кол-во" Grid.Column="5"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Поставщик" Grid.Column="6"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Паспорт" Grid.Column="7"
+                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </Grid>
+
+                            </Border>
+
+                            <!-- ===== Таблица ===== -->
+                            <ScrollViewer Grid.Row="2"
+              VerticalScrollBarVisibility="Auto"
+              HorizontalScrollBarVisibility="Auto"
+              Margin="0,4,0,0">
+                                <StackPanel x:Name="JvkPanel"/>
+                            </ScrollViewer>
 
                         </Grid>
                     </TabItem>
+
+
 
                     <!-- ===== ПРИХОД ===== -->
                     <TabItem Header="Приход">

@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+﻿using ClosedXML.Excel;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,7 +7,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
-using ClosedXML.Excel;
 using System.Windows.Media;
 
 namespace ConstructionControl
@@ -829,29 +829,48 @@ namespace ConstructionControl
             RestoreState(next);
             UpdateUndoRedoButtons();
         }
-        void AddCell(Grid g, int r, int c, string text, int rowSpan = 1)
+        void AddCell(Grid g, int r, int c, string text, int rowspan = 1, bool wrap = false, Brush bg = null)
         {
-            var border = new Border
-            {
-                BorderBrush = Brushes.Black,
-                BorderThickness = new Thickness(0.5)
-            };
-
             var tb = new TextBlock
             {
                 Text = text,
-                Margin = new Thickness(2),
-                VerticalAlignment = VerticalAlignment.Center
+                Margin = new Thickness(3),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap
+            };
+
+            var border = new Border
+            {
+                BorderBrush = Brushes.Black,
+                BorderThickness = new Thickness(0.5),
+                Background = bg
             };
 
             border.Child = tb;
 
             Grid.SetRow(border, r);
             Grid.SetColumn(border, c);
-            if (rowSpan > 1)
-                Grid.SetRowSpan(border, rowSpan);
+
+            if (rowspan > 1)
+                Grid.SetRowSpan(border, rowspan);
 
             g.Children.Add(border);
+        }
+
+
+        Color GetSoftColor(string ttn)
+        {
+            if (string.IsNullOrEmpty(ttn))
+                ttn = "NO_TTN";
+
+            int h = ttn.GetHashCode();
+
+            byte r = (byte)(80 + (h & 0x7F));
+            byte g = (byte)(80 + ((h >> 7) & 0x7F));
+            byte b = (byte)(80 + ((h >> 14) & 0x7F));
+
+            // 45 = прозрачность ~18%
+            return Color.FromArgb(45, r, g, b);
         }
 
 
@@ -859,126 +878,107 @@ namespace ConstructionControl
         {
             JvkPanel.Children.Clear();
 
-            // ===== ШАПКА =====
-            var header = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            if (!filteredJournal.Any())
+                return;
 
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) }); // Дата/ТТН
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) }); // Наименование
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });  // СТБ
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });  // Ед
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });  // Кол-во
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) }); // Поставщик
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) }); // Паспорт
+            // ===== авто размер колонок =====
+            int maxName = filteredJournal.Max(j => j.MaterialName?.Length ?? 0);
+            int maxPassport = filteredJournal.Max(j => j.Passport?.Length ?? 0);
+            int maxSupplier = filteredJournal.Max(j => j.Supplier?.Length ?? 0);
+            int maxTtn = filteredJournal.Max(j => j.Ttn?.Length ?? 0);
 
-            AddHeaderCell(header, 0, "ТТН");
-            AddHeaderCell(header, 1, "Наименование");
-            AddHeaderCell(header, 2, "СТБ");
-            AddHeaderCell(header, 3, "Ед.");
-            AddHeaderCell(header, 4, "Кол-во");
-            AddHeaderCell(header, 5, "Поставщик");
-            AddHeaderCell(header, 6, "Паспорт");
+            int colDate = 95;
+            int colTtn = Math.Max(120, maxTtn * 7);
+            int colName = Math.Max(250, maxName * 7);
+            int colStb = 70;
+            int colUnit = 45;
+            int colQty = 70;
+            int colSupplier = Math.Max(180, maxSupplier * 7);
+            int colPassport = Math.Max(260, maxPassport * 7);
 
-            JvkPanel.Children.Add(header);
+            int maxTotalWidth = 1400;
+            int total = colDate + colTtn + colName + colStb + colUnit + colQty + colSupplier + colPassport;
 
-            void AddHeaderCell(Grid g, int c, string text)
+            if (total > maxTotalWidth)
             {
-                var tb = new TextBlock
+                double overflow = total - maxTotalWidth;
+
+                void shrink(ref int c, double factor)
                 {
-                    Text = text,
-                    FontWeight = FontWeights.Bold,
-                    Margin = new Thickness(2),
-                    TextAlignment = TextAlignment.Center
-                };
-                Grid.SetColumn(tb, c);
-                g.Children.Add(tb);
+                    int reduce = (int)(overflow * factor);
+                    c -= reduce;
+                    if (c < 100) c = 100;
+                }
+
+                shrink(ref colName, 0.45);
+                shrink(ref colPassport, 0.25);
+                shrink(ref colSupplier, 0.20);
+                shrink(ref colTtn, 0.10);
             }
+
+            // ===== шапка =====
 
 
             var structured = filteredJournal
                 .Where(j => j.Category == "Основные")
                 .GroupBy(j => j.Date.Date)
-                .OrderByDescending(g => g.Key)
-                .Select(g => new JvkDay
-                {
-                    Date = g.Key,
-                    Ttns = g.GroupBy(x => new { x.Ttn, x.MaterialGroup }) // <= лист учитывать
-                        .Select(t => new JvkTtn
-                        {
-                            MaterialGroup = t.Key.MaterialGroup,
-                            Ttn = t.Key.Ttn,
-                            Supplier = t.Select(x => x.Supplier).Distinct().SingleOrDefault(),
-                            Unit = t.Select(x => x.Unit).Distinct().SingleOrDefault(),
-                            Stb = t.Select(x => x.Stb).Distinct().SingleOrDefault(),
-                            Positions = t.Select(x => new JvkPosition
-                            {
-                                Name = x.MaterialName,
-                                Quantity = x.Quantity,
-                                Passport = x.Passport
-                            }).ToList()
-                        }).ToList()
-                }).ToList();
+                .OrderByDescending(g => g.Key);
 
             foreach (var day in structured)
             {
-                int totalRows = day.Ttns.Sum(t => t.Positions.Count);
-
-                var dateGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-                dateGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-
-                dateGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                var dateCell = new TextBlock
+                var dateHeader = new TextBlock
                 {
-                    Text = day.Date.ToString("dd.MM.yyyy"),
-                    FontWeight = FontWeights.Bold,
-                    Margin = new Thickness(2),
-                    VerticalAlignment = VerticalAlignment.Center
+                    Text = day.Key.ToString("dd.MM.yyyy"),
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 12, 0, 6),
+                    FontSize = 15
                 };
-                Grid.SetColumn(dateCell, 0);
-                Grid.SetRowSpan(dateCell, totalRows);
-                dateGrid.Children.Add(dateCell);
 
-                JvkPanel.Children.Add(dateGrid);
+                JvkPanel.Children.Add(dateHeader);
 
+                var ttnGroups = day.GroupBy(x => new { x.Ttn, x.MaterialGroup });
 
-                foreach (var ttn in day.Ttns)
+                foreach (var ttn in ttnGroups)
                 {
-                    var grid = new Grid
+                    var items = ttn.ToList();
+                    int rows = items.Count;
+
+                    var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                    var bg = new SolidColorBrush(GetSoftColor(ttn.Key.Ttn));
+
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colDate) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colTtn) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colName) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colStb) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colUnit) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colQty) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colSupplier) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colPassport) });
+
+                    for (int i = 0; i < rows; i++)
+                        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                    AddCell(grid, 0, 0, day.Key.ToString("dd.MM.yyyy"), rows, bg: bg);
+                    AddCell(grid, 0, 1, ttn.Key.Ttn, rows, bg: bg);
+
+                    for (int r = 0; r < rows; r++)
                     {
-                        Margin = new Thickness(0, 0, 0, 6)
-
-                    };
-                    grid.Background = GetColor(ttn.MaterialGroup);
-
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
-
-                    int row = 0;
-                    foreach (var pos in ttn.Positions)
-                    {
-                        grid.RowDefinitions.Add(new RowDefinition());
-
-                        AddCell(grid, row, 1, pos.Name);
-                        AddCell(grid, row, 2, ttn.Stb ?? "—");
-                        AddCell(grid, row, 3, ttn.Unit ?? "—");
-                        AddCell(grid, row, 4, pos.Quantity.ToString());
-                        AddCell(grid, row, 5, ttn.Supplier ?? "—");
-                        AddCell(grid, row, 6, pos.Passport ?? "—");
-
-                        row++;
+                        var x = items[r];
+                        AddCell(grid, r, 2, x.MaterialName, wrap: true, bg: bg);
+                        AddCell(grid, r, 3, x.Stb ?? "—", bg: bg);
+                        AddCell(grid, r, 4, x.Unit ?? "—", bg: bg);
+                        AddCell(grid, r, 5, x.Quantity.ToString(), bg: bg);
+                        AddCell(grid, r, 6, x.Supplier ?? "—", wrap: true, bg: bg);
+                        AddCell(grid, r, 7, x.Passport ?? "—", wrap: true, bg: bg);
                     }
 
-                    AddCell(grid, 0, 0, ttn.Ttn ?? "—", rowSpan: row);
-
                     JvkPanel.Children.Add(grid);
+
                 }
             }
         }
+
+
 
 
 
