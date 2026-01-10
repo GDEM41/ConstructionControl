@@ -837,11 +837,12 @@ namespace ConstructionControl
             var tb = new TextBlock
             {
                 Text = text,
-                Margin = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(6, 4, 6, 4),
                 VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
-                TextAlignment = align
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.None
             };
+
 
             var border = new Border
             {
@@ -1158,7 +1159,8 @@ namespace ConstructionControl
                     for (int i = 0; i < rows; i++)
                         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-                    AddCell(grid, 0, 0, grp.Ttn, rows, bg: bg, align: TextAlignment.Center);
+                    AddCell(grid, 0, 0, grp.Ttn, rows, wrap: true, bg: bg, align: TextAlignment.Left);
+
 
                     for (int r = 0; r < rows; r++)
                     {
