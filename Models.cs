@@ -59,6 +59,8 @@ namespace ConstructionControl
 
     public class JournalRecord
     {
+        public string SheetName { get; set; }
+
         public DateTime Date { get; set; }
         public string ObjectName { get; set; }
 
@@ -88,9 +90,31 @@ namespace ConstructionControl
         public double Total { get; set; }
     }
 
+    public class JvkDay
+    {
+        public DateTime Date { get; set; }
+        public List<JvkTtn> Ttns { get; set; } = new();
+    }
+    public class JvkTtn
+    {
+        public string Ttn { get; set; }
+        public string Supplier { get; set; }
+        public string Unit { get; set; }
+        public string Stb { get; set; }
+        public string MaterialGroup { get; set; }
+        public List<JvkPosition> Positions { get; set; } = new();
+    }
 
 
-   
+    public class JvkPosition
+    {
+        public string Name { get; set; }
+        public double Quantity { get; set; }
+        public string Passport { get; set; }
+    }
+
+
+
 
 }
 

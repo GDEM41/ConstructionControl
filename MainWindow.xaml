@@ -320,31 +320,20 @@
                                 </StackPanel>
                             </Border>
 
+                            
                             <!-- Таблица -->
-                            <DataGrid x:Name="JournalGrid"
-                                      Grid.Row="1"
-                                      AutoGenerateColumns="False"
-                                      CanUserAddRows="False"
-                                      SelectionUnit="Cell"
-                                      SelectionMode="Single"
-                                      GridLinesVisibility="All"
-                                      PreviewKeyDown="JournalGrid_PreviewKeyDown"
-                                      HorizontalGridLinesBrush="#E5E7EB"
-                                      VerticalGridLinesBrush="#E5E7EB">
+                            <ScrollViewer Grid.Row="1"
+              HorizontalScrollBarVisibility="Auto"
+              VerticalScrollBarVisibility="Auto"
+              CanContentScroll="True"
+              Margin="0,4,0,0">
+                                <Grid>
+                                    <StackPanel x:Name="JvkPanel"
+                    Orientation="Vertical"/>
+                                </Grid>
+                            </ScrollViewer>
 
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}"/>
-                                    <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}"/>
-                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}"/>
-                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}"/>
-                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}"/>
-                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}"/>
-                                    <DataGridTextColumn Header="Паспорт" Binding="{Binding Passport}"/>
-                                    <DataGridTextColumn Header="СТБ" Binding="{Binding Stb}"/>
-                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}"/>
-                                </DataGrid.Columns>
 
-                            </DataGrid>
                         </Grid>
                     </TabItem>
 
