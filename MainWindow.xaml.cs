@@ -8,6 +8,13 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+public enum ExportMode
+{
+    Merged,
+    Detailed
+}
+
+
 
 namespace ConstructionControl
 {
@@ -139,24 +146,312 @@ namespace ConstructionControl
                 return;
             }
 
+            var win = new ExportModeWindow() { Owner = this };
+            if (win.ShowDialog() != true)
+                return;
+
+            ExportMode mode = win.Mode;
+
             var dlg = new SaveFileDialog
             {
-                Filter = "CSV (*.csv)|*.csv",
-                FileName = "ЖВК.csv"
+                Filter = "Excel (*.xlsx)|*.xlsx",
+                FileName = "ЖВК.xlsx"
             };
 
             if (dlg.ShowDialog() != true)
                 return;
 
-            using var sw = new StreamWriter(dlg.FileName, false, System.Text.Encoding.UTF8);
-            sw.WriteLine("Дата;Тип;Наименование;Кол-во;Ед.;ТТН;Паспорт;СТБ;Поставщик");
-
-            foreach (var j in filteredJournal)
+            using (var wb = new XLWorkbook())
             {
-                sw.WriteLine(
-                    $"{j.Date:dd.MM.yyyy};{j.MaterialGroup};{j.MaterialName};{j.Quantity};{j.Unit};{j.Ttn};{j.Passport};{j.Stb};{j.Supplier}");
+                var ws = wb.Worksheets.Add("ЖВК");
+
+                if (mode == ExportMode.Merged)
+                    ExportMerged(ws);
+                else
+                    ExportDetailed(ws);
+
+
+                wb.SaveAs(dlg.FileName);
             }
+
+            MessageBox.Show("Экспорт завершён");
         }
+
+        string Normalize(string v)
+        {
+            if (string.IsNullOrWhiteSpace(v))
+                return null;
+
+            v = v.Trim();
+
+            // любые пустые формы
+            if (v == "—" || v == "-" || v == "--" || v == "_" || v == "null" || v == "None")
+                return null;
+
+            return v;
+        }
+
+
+
+        void ExportMerged(IXLWorksheet ws)
+        {
+            int row = 1;
+
+            // ===== ЗАГОЛОВОК =====
+            ws.Cell(row, 1).Value = "Дата";
+            ws.Cell(row, 2).Value = "ТТН";
+            ws.Cell(row, 3).Value = "Наименование";
+            ws.Cell(row, 4).Value = "СТБ";
+            ws.Cell(row, 5).Value = "Ед.";
+            ws.Cell(row, 6).Value = "Кол-во";
+            ws.Cell(row, 7).Value = "Поставщик";
+            ws.Cell(row, 8).Value = "Паспорт";
+
+            ws.Range(row, 1, row, 8).Style.Font.Bold = true;
+            ws.Range(row, 1, row, 8).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(row, 1, row, 8).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Range(row, 1, row, 8).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF6");
+            row++;
+
+            var structured = filteredJournal
+                .Where(j => j.Category == "Основные")
+                .GroupBy(j => j.Date.Date)
+                .OrderByDescending(g => g.Key)
+                .ToList();
+
+            foreach (var day in structured)
+            {
+                int dayStart = row;
+
+                var ttnGroups = day
+                    .GroupBy(x => x.Ttn)
+                    .ToList();
+
+                foreach (var grp in ttnGroups)
+                {
+                    var items = grp.ToList();
+                    int grpStart = row;
+                    int rows = items.Count;
+
+                    // STB
+                    string firstStb = Normalize(items[0].Stb);
+                    bool stbSame = items.All(x => Normalize(x.Stb) == firstStb);
+                    string mergedStb = stbSame ? (firstStb ?? "—") : null;
+
+                    // UNIT
+                    string firstUnit = Normalize(items[0].Unit);
+                    bool unitSame = items.All(x => Normalize(x.Unit) == firstUnit);
+                    string mergedUnit = unitSame ? (firstUnit ?? "—") : null;
+
+                    // SUPPLIER
+                    string firstSupplier = Normalize(items[0].Supplier);
+                    bool supplierSame = items.All(x => Normalize(x.Supplier) == firstSupplier);
+                    string mergedSupplier = supplierSame ? (firstSupplier ?? "—") : null;
+
+                    // выводим строки
+                    foreach (var x in items)
+                    {
+                        ws.Cell(row, 3).Value = Normalize(x.MaterialName) ?? "—";
+                        ws.Cell(row, 6).Value = x.Quantity;
+                        ws.Cell(row, 8).Value = Normalize(x.Passport) ?? "—";
+
+                        row++;
+                    }
+
+                    // merge TTN
+                    ws.Range(grpStart, 2, row - 1, 2).Merge();
+                    ws.Cell(grpStart, 2).Value = grp.Key;
+                    ws.Cell(grpStart, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                    ws.Cell(grpStart, 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+                    // merge STB
+                    if (mergedStb != null)
+                    {
+                        ws.Range(grpStart, 4, row - 1, 4).Merge();
+                        ws.Cell(grpStart, 4).Value = mergedStb;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 4).Value = Normalize(items[i].Stb) ?? "—";
+                    }
+
+                    // merge UNIT
+                    if (mergedUnit != null)
+                    {
+                        ws.Range(grpStart, 5, row - 1, 5).Merge();
+                        ws.Cell(grpStart, 5).Value = mergedUnit;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 5).Value = Normalize(items[i].Unit) ?? "—";
+
+                    }
+
+                    // merge SUPPLIER
+                    if (mergedSupplier != null)
+                    {
+                        ws.Range(grpStart, 7, row - 1, 7).Merge();
+                        ws.Cell(grpStart, 7).Value = mergedSupplier;
+                        ws.Cell(grpStart, 7).Style.Alignment.WrapText = true;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 7).Value = Normalize(items[i].Supplier) ?? "—";
+
+                    }
+
+                    // заливка всего блока
+                    var c = GetSoftColor(grp.Key);
+                    var fill = XLColor.FromColor(System.Drawing.Color.FromArgb(55, c.R, c.G, c.B));
+                    ws.Range(grpStart, 2, row - 1, 8).Style.Fill.BackgroundColor = fill;
+
+                    // рамка блока
+                    ws.Range(grpStart, 2, row - 1, 8).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                }
+
+                // merge DATE
+                ws.Range(dayStart, 1, row - 1, 1).Merge();
+                ws.Cell(dayStart, 1).Value = day.Key.ToString("dd.MM.yyyy");
+                ws.Cell(dayStart, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Cell(dayStart, 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                ws.Range(dayStart, 1, row - 1, 8).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            }
+
+            ws.Columns().AdjustToContents();
+            ws.Range(1, 1, row - 1, 8).SetAutoFilter();
+        }
+
+
+
+
+
+
+
+        void ExportDetailed(IXLWorksheet ws)
+        {
+            int row = 1;
+
+            // Заголовок
+            ws.Cell(row, 1).Value = "Дата";
+            ws.Cell(row, 2).Value = "ТТН";
+            ws.Cell(row, 3).Value = "Наименование";
+            ws.Cell(row, 4).Value = "СТБ";
+            ws.Cell(row, 5).Value = "Ед.";
+            ws.Cell(row, 6).Value = "Кол-во";
+            ws.Cell(row, 7).Value = "Поставщик";
+            ws.Cell(row, 8).Value = "Паспорт";
+
+            ws.Range(row, 1, row, 8).Style.Font.Bold = true;
+            ws.Range(row, 1, row, 8).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF6");
+            row++;
+
+            var days = filteredJournal
+                .Where(j => j.Category == "Основные")
+                .GroupBy(j => j.Date.Date)
+                .OrderByDescending(g => g.Key);
+
+            foreach (var day in days)
+            {
+                int dayStart = row;
+
+                var dayGroups = day.GroupBy(x => x.Ttn);
+
+                foreach (var grp in dayGroups)
+                {
+                    var items = grp.ToList();
+                    int grpStart = row;
+                    int rows = items.Count;
+
+                    // === анализ одинаковости ===
+                    string firstStb = Normalize(items[0].Stb);
+                    bool stbSame = items.All(x => Normalize(x.Stb) == firstStb);
+                    string mergedStb = stbSame ? (firstStb ?? "—") : null;
+
+                    string firstUnit = Normalize(items[0].Unit);
+                    bool unitSame = items.All(x => Normalize(x.Unit) == firstUnit);
+                    string mergedUnit = unitSame ? (firstUnit ?? "—") : null;
+
+                    string firstSupplier = Normalize(items[0].Supplier);
+                    bool supplierSame = items.All(x => Normalize(x.Supplier) == firstSupplier);
+                    string mergedSupplier = supplierSame ? (firstSupplier ?? "—") : null;
+
+
+                    // === строки ===
+                    foreach (var x in items)
+                    {
+                        ws.Cell(row, 2).Value = x.Ttn;
+                        ws.Cell(row, 3).Value = x.MaterialName;
+                        ws.Cell(row, 6).Value = x.Quantity;
+                        ws.Cell(row, 8).Value = x.Passport ?? "—";
+                        ws.Cell(row, 4).Value = Normalize(x.Stb) ?? "—";
+                        ws.Cell(row, 5).Value = Normalize(x.Unit) ?? "—";
+                        ws.Cell(row, 7).Value = Normalize(x.Supplier) ?? "—";
+
+
+                        var c = GetSoftColor(x.Ttn);
+                        var draw = System.Drawing.Color.FromArgb(35, c.R, c.G, c.B);
+                        ws.Range(row, 2, row, 8).Style.Fill.BackgroundColor = XLColor.FromColor(draw);
+
+                        row++;
+                    }
+
+                    // === STB ===
+                    if (mergedStb != null)
+                    {
+                        ws.Range(grpStart, 4, row - 1, 4).Merge();
+                        ws.Cell(grpStart, 4).Value = mergedStb;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 4).Value = Normalize(items[i].Stb) ?? "—";
+                    }
+
+                    // === UNIT ===
+                    if (mergedUnit != null)
+                    {
+                        ws.Range(grpStart, 5, row - 1, 5).Merge();
+                        ws.Cell(grpStart, 5).Value = mergedUnit;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 5).Value = Normalize(items[i].Unit) ?? "—";
+                    }
+
+                    // === SUPPLIER ===
+                    if (mergedSupplier != null)
+                    {
+                        ws.Range(grpStart, 7, row - 1, 7).Merge();
+                        ws.Cell(grpStart, 7).Value = mergedSupplier;
+                        ws.Cell(grpStart, 7).Style.Alignment.WrapText = true;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < rows; i++)
+                            ws.Cell(grpStart + i, 7).Value = Normalize(items[i].Supplier) ?? "—";
+                    }
+
+
+                }
+
+                ws.Range(dayStart, 1, row - 1, 1).Merge();
+                ws.Cell(dayStart, 1).Value = day.Key.ToString("dd.MM.yyyy");
+                ws.Range(dayStart, 1, row - 1, 8).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            }
+
+
+            // автоподгон
+            ws.Columns().AdjustToContents();
+            ws.Rows().AdjustToContents();
+            ws.Range(1, 1, row - 1, 8).SetAutoFilter();
+        }
+
+
+
 
         private void LockButton_Checked(object sender, RoutedEventArgs e)
         {
@@ -1030,6 +1325,31 @@ namespace ConstructionControl
 
                     var items = ttn.ToList();
                     int rows = items.Count;
+                    bool stbSame = true;
+
+                    for (int i = 1; i < items.Count; i++)
+                    {
+                        if (items[i].Stb != items[0].Stb)
+                            stbSame = false;
+                    }
+
+                    string mergedStb = stbSame ? items[0].Stb : null;
+
+                    bool unitSame = true;
+                    bool supplierSame = true;
+
+                    for (int i = 1; i < items.Count; i++)
+                    {
+                        if (items[i].Unit != items[0].Unit)
+                            unitSame = false;
+
+                        if (items[i].Supplier != items[0].Supplier)
+                            supplierSame = false;
+                    }
+
+                    string mergedUnit = unitSame ? items[0].Unit : null;
+                    string mergedSupplier = supplierSame ? items[0].Supplier : null;
+
 
                     var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
                     var bg = new SolidColorBrush(GetSoftColor(ttn.Key.Ttn));
@@ -1055,10 +1375,41 @@ namespace ConstructionControl
                     {
                         var x = items[r];
                         AddCell(grid, r, 1, x.MaterialName, wrap: true, bg: bg, align: TextAlignment.Left);
-                        AddCell(grid, r, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
-                        AddCell(grid, r, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
+                        // --- STB ---
+                        if (mergedStb != null)
+                        {
+                            if (r == 0)
+                                AddCell(grid, r, 2, mergedStb ?? "—", rowspan: rows, bg: bg, align: TextAlignment.Center);
+                        }
+                        else
+                        {
+                            AddCell(grid, r, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
+                        }
+
+                        // --- UNIT ---
+                        if (mergedUnit != null)
+                        {
+                            if (r == 0)
+                                AddCell(grid, r, 3, mergedUnit, rowspan: rows, bg: bg, align: TextAlignment.Center);
+                        }
+                        else
+                        {
+                            AddCell(grid, r, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
+                        }
+
+                        // --- SUPPLIER ---
+                        if (mergedSupplier != null)
+                        {
+                            if (r == 0)
+                                AddCell(grid, r, 5, mergedSupplier, rowspan: rows, wrap: true, bg: bg, align: TextAlignment.Left);
+                        }
+                        else
+                        {
+                            AddCell(grid, r, 5, x.Supplier ?? "—", wrap: true, bg: bg, align: TextAlignment.Left);
+                        }
+
                         AddCell(grid, r, 4, x.Quantity.ToString(), bg: bg, align: TextAlignment.Right);
-                        AddCell(grid, r, 5, x.Supplier ?? "—", wrap: true, bg: bg, align: TextAlignment.Left);
+
                         AddCell(grid, r, 6, x.Passport ?? "—", wrap: true, bg: bg, align: TextAlignment.Left);
 
                     }
@@ -1118,75 +1469,131 @@ namespace ConstructionControl
             HeaderAutoPanel.Children.Add(grid);
         }
         void RenderMerged(
-    IEnumerable<dynamic> merged,
-    int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
+            IEnumerable<dynamic> merged,
+            int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
         {
             foreach (var day in merged)
             {
-                var daySeparator = new Border
-                {
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
-                    BorderThickness = new Thickness(0, 1, 0, 0),
-                    Margin = new Thickness(0, 12, 0, 8)
-                };
-                JvkPanel.Children.Add(daySeparator);
-
+                // ====== ДАТА ======
                 var dateHeader = new TextBlock
                 {
                     Text = day.Date.ToString("dd.MM.yyyy"),
                     FontWeight = FontWeights.SemiBold,
-                    Margin = new Thickness(0, 0, 0, 6),
-                    FontSize = 15
+                    FontSize = 15,
+                    Margin = new Thickness(0, 12, 0, 6)
                 };
+
                 JvkPanel.Children.Add(dateHeader);
 
+                // ====== ТАБЛИЦА ДНЯ ======
+                var dayGrid = new Grid
+                {
+                    Margin = new Thickness(0, 0, 0, 6)
+                };
+
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colTtn) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colName) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colStb) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colUnit) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colQty) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colSupplier) });
+                dayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colPassport) });
+
+                int rowIndex = 0;
                 foreach (var grp in day.Groups)
                 {
                     var items = grp.Items;
+                    int start = rowIndex;
                     int rows = items.Count;
+                    bool stbSame = true;
 
-                    var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-                    var bg = new SolidColorBrush(GetSoftColor(grp.Ttn ?? ""));
-
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colTtn) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colName) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colStb) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colUnit) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colQty) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colSupplier) });
-                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colPassport) });
-
-                    for (int i = 0; i < rows; i++)
-                        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                    AddCell(grid, 0, 0, grp.Ttn, rows, wrap: true, bg: bg, align: TextAlignment.Left);
-
-
-                    for (int r = 0; r < rows; r++)
+                    for (int i = 1; i < items.Count; i++)
                     {
-                        var x = items[r];
-                        AddCell(grid, r, 1, x.Name, wrap: true, bg: bg);
-                        AddCell(grid, r, 2, x.Stb, bg: bg, align: TextAlignment.Center);
-                        AddCell(grid, r, 3, x.Unit, bg: bg, align: TextAlignment.Center);
-                        AddCell(grid, r, 4, x.Qty.ToString(), bg: bg, align: TextAlignment.Right);
-                        AddCell(grid, r, 5, x.Supplier, wrap: true, bg: bg);
-                        AddCell(grid, r, 6, x.Passport, wrap: true, bg: bg);
+                        if (items[i].Stb != items[0].Stb)
+                            stbSame = false;
                     }
 
-                    JvkPanel.Children.Add(grid);
+                    string mergedStb = stbSame ? items[0].Stb : null;
+
+                    var bg = new SolidColorBrush(GetSoftColor(grp.Ttn ?? ""));
+
+                    // UNIT + SUPPLIER анализ
+                    bool unitSame = true;
+                    bool supplierSame = true;
+
+                    for (int i = 1; i < items.Count; i++)
+                    {
+                        if (items[i].Unit != items[0].Unit)
+                            unitSame = false;
+
+                        if (items[i].Supplier != items[0].Supplier)
+                            supplierSame = false;
+                    }
+
+
+                    string mergedUnit = unitSame ? items[0].Unit : null;
+                    string mergedSupplier = supplierSame ? items[0].Supplier : null;
+
+                    // ===== ТТН ОДИН РАЗ =====
+                    AddCell(dayGrid, start, 0, grp.Ttn, rowspan: rows, bg: bg, align: TextAlignment.Center);
+
+                    foreach (var x in items)
+                    {
+                        dayGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                        AddCell(dayGrid, rowIndex, 1, x.Name, wrap: true, bg: bg);
+                        // STB
+                        if (mergedStb != null)
+                        {
+                            if (rowIndex == start)
+                                AddCell(dayGrid, rowIndex, 2, mergedStb ?? "—", rowspan: rows, bg: bg, align: TextAlignment.Center);
+                        }
+                        else
+                        {
+                            AddCell(dayGrid, rowIndex, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
+                        }
+
+
+                        // UNIT
+                        if (mergedUnit != null)
+                        {
+                            if (rowIndex == start)
+                                AddCell(dayGrid, rowIndex, 3, mergedUnit, rowspan: rows, bg: bg, align: TextAlignment.Center);
+                        }
+                        else
+                        {
+                            AddCell(dayGrid, rowIndex, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
+                        }
+
+                        AddCell(dayGrid, rowIndex, 4, x.Qty.ToString(), bg: bg, align: TextAlignment.Right);
+
+                        // SUPPLIER
+                        if (mergedSupplier != null)
+                        {
+                            if (rowIndex == start)
+                                AddCell(dayGrid, rowIndex, 5, mergedSupplier, rowspan: rows, wrap: true, bg: bg);
+                        }
+                        else
+                        {
+                            AddCell(dayGrid, rowIndex, 5, x.Supplier ?? "—", wrap: true, bg: bg);
+                        }
+
+                        AddCell(dayGrid, rowIndex, 6, x.Passport ?? "—", wrap: true, bg: bg);
+
+                        rowIndex++;
+                    }
+
+                    // пустой отступ между группами
+                    dayGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
+                    rowIndex++;
                 }
+
+
+
+                JvkPanel.Children.Add(dayGrid);
             }
         }
 
-
-
-
-
-
-
-
-
-
-
     }
+
 }
