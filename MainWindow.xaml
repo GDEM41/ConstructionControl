@@ -192,6 +192,13 @@
                      ToolTip="Поиск: наименование, позиция, ТТН, паспорт"
                      TextChanged="Filters_Changed"/>
 
+                                <Button x:Name="MergeButton"
+        Style="{StaticResource SecondaryButton}"
+        Content="⇆ Объединить"
+        Margin="0,0,10,0"
+        Click="MergeButton_Click"/>
+
+
                                 <Button Style="{StaticResource SecondaryButton}"
                     Click="ToggleFilters_Click">
                                     🔍 Фильтры
@@ -306,46 +313,10 @@
         BorderThickness="0,0,0,1"
         Padding="6,4"
         CornerRadius="4">
-
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="95"/>
-                                        <!-- дата -->
-                                        <ColumnDefinition Width="130"/>
-                                        <!-- ТТН -->
-                                        <ColumnDefinition Width="250"/>
-                                        <!-- имя -->
-                                        <ColumnDefinition Width="70"/>
-                                        <!-- СТБ -->
-                                        <ColumnDefinition Width="45"/>
-                                        <!-- ед -->
-                                        <ColumnDefinition Width="70"/>
-                                        <!-- кол-во -->
-                                        <ColumnDefinition Width="180"/>
-                                        <!-- поставщик -->
-                                        <ColumnDefinition Width="260"/>
-                                        <!-- паспорт -->
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBlock Text="Дата" Grid.Column="0"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="ТТН" Grid.Column="1"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Наименование" Grid.Column="2"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="СТБ" Grid.Column="3"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Ед." Grid.Column="4"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Кол-во" Grid.Column="5"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Поставщик" Grid.Column="6"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Паспорт" Grid.Column="7"
-                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </Grid>
-
+                                <StackPanel x:Name="HeaderAutoPanel"/>
                             </Border>
+
+
 
                             <!-- ===== Таблица ===== -->
                             <ScrollViewer Grid.Row="2"
