@@ -7,6 +7,8 @@ namespace ConstructionControl
 {
     public class ProjectObject
     {
+        public ObjectArchive Archive { get; set; } = new();
+
         public string Name { get; set; }
 
         // ===== НОВЫЕ НАСТРОЙКИ ОБЪЕКТА =====
@@ -79,6 +81,16 @@ namespace ConstructionControl
         public string Position { get; set; }
         public string Volume { get; set; }
 
+    }
+    public class ObjectArchive
+    {
+        public List<string> Groups { get; set; } = new();
+        public Dictionary<string, List<string>> Materials { get; set; } = new();
+
+        public List<string> Units { get; set; } = new();
+        public List<string> Suppliers { get; set; } = new();
+        public List<string> Passports { get; set; } = new();
+        public List<string> Stb { get; set; } = new();
     }
 
     public class SummaryRow

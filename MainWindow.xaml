@@ -57,6 +57,8 @@
               Background="White"
               BorderThickness="0">
             <MenuItem Header="Создать" Click="CreateObject_Click"/>
+            <MenuItem Header="Архив" Click="OpenArchive_Click" />
+
             <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
             <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>

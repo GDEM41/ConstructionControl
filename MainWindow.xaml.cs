@@ -954,8 +954,92 @@ namespace ConstructionControl
 
             currentObject = state?.CurrentObject;
             journal = state?.Journal ?? new();
+            // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
+            if (currentObject != null)
+            {
+                if (currentObject.Archive == null)
+                    currentObject.Archive = new ObjectArchive();
+
+                var archive = currentObject.Archive;
+
+                // группы
+                foreach (var g in currentObject.MaterialGroups)
+                {
+                    if (!archive.Groups.Contains(g.Name))
+                        archive.Groups.Add(g.Name);
+
+                    if (!archive.Materials.ContainsKey(g.Name))
+                        archive.Materials[g.Name] = new();
+
+                    if (currentObject.MaterialNamesByGroup.TryGetValue(g.Name, out var list))
+                    {
+                        foreach (var m in list)
+                            if (!archive.Materials[g.Name].Contains(m))
+                                archive.Materials[g.Name].Add(m);
+                    }
+                }
+
+                // из журнала добираем остальное
+                foreach (var rec in journal)
+                {
+                    if (!string.IsNullOrWhiteSpace(rec.Unit) && !archive.Units.Contains(rec.Unit))
+                        archive.Units.Add(rec.Unit);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Supplier) && !archive.Suppliers.Contains(rec.Supplier))
+                        archive.Suppliers.Add(rec.Supplier);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Passport) && !archive.Passports.Contains(rec.Passport))
+                        archive.Passports.Add(rec.Passport);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Stb) && !archive.Stb.Contains(rec.Stb))
+                        archive.Stb.Add(rec.Stb);
+                }
+            }
+
+            // === АВТОФОРМИРОВАНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
+            if (currentObject != null && currentObject.Archive == null)
+            {
+                currentObject.Archive = new ObjectArchive();
+
+                // группы
+                foreach (var g in currentObject.MaterialGroups)
+                {
+                    if (!currentObject.Archive.Groups.Contains(g.Name))
+                        currentObject.Archive.Groups.Add(g.Name);
+
+                    if (!currentObject.Archive.Materials.ContainsKey(g.Name))
+                        currentObject.Archive.Materials[g.Name] = new();
+                }
+
+                // материалы
+                foreach (var kv in currentObject.MaterialNamesByGroup)
+                {
+                    foreach (var m in kv.Value)
+                    {
+                        if (!currentObject.Archive.Materials[kv.Key].Contains(m))
+                            currentObject.Archive.Materials[kv.Key].Add(m);
+                    }
+                }
+
+                // дополняем из журнала всё остальное
+                foreach (var rec in journal)
+                {
+                    if (!string.IsNullOrWhiteSpace(rec.Unit) && !currentObject.Archive.Units.Contains(rec.Unit))
+                        currentObject.Archive.Units.Add(rec.Unit);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Supplier) && !currentObject.Archive.Suppliers.Contains(rec.Supplier))
+                        currentObject.Archive.Suppliers.Add(rec.Supplier);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Passport) && !currentObject.Archive.Passports.Contains(rec.Passport))
+                        currentObject.Archive.Passports.Add(rec.Passport);
+
+                    if (!string.IsNullOrWhiteSpace(rec.Stb) && !currentObject.Archive.Stb.Contains(rec.Stb))
+                        currentObject.Archive.Stb.Add(rec.Stb);
+                }
+            }
+
         }
-    
+
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             SaveState();
@@ -1024,6 +1108,33 @@ namespace ConstructionControl
                 PushUndo();
                 rec.ObjectName = currentObject.Name;
                 journal.Add(rec);
+                // === ПОПОЛНЕНИЕ АРХИВА ===
+                var archive = currentObject.Archive;
+
+                if (!string.IsNullOrWhiteSpace(rec.MaterialGroup))
+                {
+                    if (!archive.Groups.Contains(rec.MaterialGroup))
+                        archive.Groups.Add(rec.MaterialGroup);
+
+                    if (!archive.Materials.ContainsKey(rec.MaterialGroup))
+                        archive.Materials[rec.MaterialGroup] = new();
+
+                    if (!archive.Materials[rec.MaterialGroup].Contains(rec.MaterialName))
+                        archive.Materials[rec.MaterialGroup].Add(rec.MaterialName);
+                }
+
+                if (!string.IsNullOrWhiteSpace(rec.Unit) && !archive.Units.Contains(rec.Unit))
+                    archive.Units.Add(rec.Unit);
+
+                if (!string.IsNullOrWhiteSpace(rec.Supplier) && !archive.Suppliers.Contains(rec.Supplier))
+                    archive.Suppliers.Add(rec.Supplier);
+
+                if (!string.IsNullOrWhiteSpace(rec.Passport) && !archive.Passports.Contains(rec.Passport))
+                    archive.Passports.Add(rec.Passport);
+
+                if (!string.IsNullOrWhiteSpace(rec.Stb) && !archive.Stb.Contains(rec.Stb))
+                    archive.Stb.Add(rec.Stb);
+
 
                 // ====== ОБРАБОТКА ТОЛЬКО ОСНОВНЫХ ======
                 if (rec.Category == "Основные")
@@ -1062,6 +1173,31 @@ namespace ConstructionControl
 
 
 
+        }
+
+        private void OpenArchive_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            var w = new ArchiveWindow(currentObject, journal)
+            {
+                Owner = this
+            };
+
+
+            if (w.ShowDialog() == true)
+            {
+                // после изменений — обновляем всё
+                SaveState();
+                RefreshTreePreserveState();
+                RefreshFilters();
+                ApplyAllFilters();
+                ArrivalPanel.SetObject(currentObject, journal);
+            }
         }
 
 
@@ -1593,6 +1729,11 @@ namespace ConstructionControl
                 JvkPanel.Children.Add(dayGrid);
             }
         }
+        public List<JournalRecord> GetJournal()
+        {
+            return journal;
+        }
+
 
     }
 

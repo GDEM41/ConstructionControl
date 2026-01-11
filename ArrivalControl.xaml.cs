@@ -67,11 +67,16 @@ namespace ConstructionControl
             currentObject = obj;
             journal = journalRecords;
 
-            MaterialGroupBox.ItemsSource =
-                currentObject.MaterialGroups.Select(g => g.Name).ToList();
+            MaterialGroupBox.ItemsSource = currentObject.Archive.Groups;
+
 
             items.Clear();
             AddRow();
+            foreach (var item in items)
+            {
+                item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
+            }
+
         }
 
 
@@ -90,11 +95,12 @@ namespace ConstructionControl
                 if (string.IsNullOrWhiteSpace(group))
                     continue;
 
-                if (currentObject.MaterialNamesByGroup.TryGetValue(group, out var names))
+                if (currentObject.Archive.Materials.TryGetValue(group, out var names))
                 {
                     foreach (var n in names)
                         item.AvailableNames.Add(n);
                 }
+
             }
         }
 
@@ -107,6 +113,9 @@ namespace ConstructionControl
                 Date = System.DateTime.Today,
                 AvailableNames = new ObservableCollection<string>()
             };
+
+            // заполняем Units из архива
+            item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
 
             items.Add(item);
 
@@ -121,7 +130,9 @@ namespace ConstructionControl
 
 
 
+
         private void AddRow_Click(object sender, RoutedEventArgs e)
+        
         {
             AddRow();
         }
@@ -165,6 +176,41 @@ namespace ConstructionControl
                 }
             }
 
+            // === ПОПОЛНЕНИЕ АРХИВА ===
+            var archive = currentObject.Archive;
+
+            if (!archive.Groups.Contains(groupName))
+                archive.Groups.Add(groupName);
+
+            if (!archive.Materials.ContainsKey(groupName))
+                archive.Materials[groupName] = new();
+
+            foreach (var i in items)
+            {
+                if (!string.IsNullOrWhiteSpace(i.MaterialName) && !archive.Materials[groupName].Contains(i.MaterialName))
+                    archive.Materials[groupName].Add(i.MaterialName);
+
+                if (!string.IsNullOrWhiteSpace(i.Unit) && !archive.Units.Contains(i.Unit))
+                    archive.Units.Add(i.Unit);
+
+                if (!string.IsNullOrWhiteSpace(i.Supplier) && !archive.Suppliers.Contains(i.Supplier))
+                    archive.Suppliers.Add(i.Supplier);
+
+                if (!string.IsNullOrWhiteSpace(i.Passport) && !archive.Passports.Contains(i.Passport))
+                    archive.Passports.Add(i.Passport);
+
+                if (!string.IsNullOrWhiteSpace(i.Stb) && !archive.Stb.Contains(i.Stb))
+                    archive.Stb.Add(i.Stb);
+            }
+
+
+            // === ПОПОЛНЕНИЕ АРХИВА ===
+
+            foreach (var item in items)
+            {
+                item.AvailableUnits = new ObservableCollection<string>(archive.Units);
+            }
+
 
             ArrivalAdded?.Invoke(new Arrival
             {
@@ -191,6 +237,19 @@ namespace ConstructionControl
             // очищаем при смене материала
             item.Unit = null;
             item.Stb = null;
+
+            var archive = currentObject.Archive;
+
+            // если в архиве единица одна — ставим автоматом
+            if (archive.Units.Count == 1)
+            {
+                item.Unit = archive.Units[0];
+                return;
+            }
+
+            // если несколько — формируем список выбора
+            item.AvailableUnits = new ObservableCollection<string>(archive.Units);
+
 
             if (string.IsNullOrWhiteSpace(item.MaterialName))
                 return;

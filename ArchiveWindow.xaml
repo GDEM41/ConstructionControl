@@ -1,0 +1,31 @@
+﻿<Window x:Class="ConstructionControl.ArchiveWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Архив" Height="450" Width="900">
+
+    <DockPanel Margin="10">
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0 0 0 10">
+            <Button Content="Удалить выбранное" Width="150" Margin="0 0 10 0" Click="Delete_Click"/>
+            <Button Content="Очистить архив" Width="150" Click="Clear_Click"/>
+        </StackPanel>
+
+        <DataGrid x:Name="ArchiveGrid"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserAddRows="False"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow">
+
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Группа" Binding="{Binding Group}" Width="*" />
+                <DataGridTextColumn Header="Материал" Binding="{Binding Material}" Width="2*" />
+                <DataGridTextColumn Header="Ед. изм." Binding="{Binding Unit}" Width="70" />
+                <DataGridTextColumn Header="Поставщики" Binding="{Binding Suppliers}" Width="2*" />
+                <DataGridTextColumn Header="Паспорта" Binding="{Binding Passports}" Width="2*" />
+                <DataGridTextColumn Header="СТБ" Binding="{Binding Stb}" Width="*" />
+                <DataGridTextColumn Header="Последний приход" Binding="{Binding LastArrival}" Width="120" />
+                <DataGridTextColumn Header="Кол-во" Binding="{Binding ArrivalsCount}" Width="70" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
