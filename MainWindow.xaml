@@ -95,6 +95,7 @@
         Click="Undo_Click"
         IsEnabled="False">
                     ↩
+                    
                 </Button>
 
                 <Button x:Name="RedoButton"

@@ -474,7 +474,7 @@ namespace ConstructionControl
         {
             PushUndo(); // ⬅️ ВОТ ЭТОГО НЕ ХВАТАЛО
 
-            PushUndo();
+
 
             // ===== ТОЛЬКО ДЛЯ ОСНОВНЫХ =====
             if (arrival.Category == "Основные")
@@ -492,29 +492,38 @@ namespace ConstructionControl
 
             foreach (var i in arrival.Items)
             {
-                // ===== ТОЛЬКО ДЛЯ ОСНОВНЫХ =====
                 if (arrival.Category == "Основные")
                 {
+                    // === список на дереве ===
                     if (!currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
                             .Contains(i.MaterialName))
                     {
                         currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
                             .Add(i.MaterialName);
                     }
+
+                    // === список для ComboBox ===
+                    var archive = currentObject.Archive;
+
+                    if (!archive.Materials.ContainsKey(arrival.MaterialGroup))
+                        archive.Materials[arrival.MaterialGroup] = new();
+
+                    if (!archive.Materials[arrival.MaterialGroup]
+                            .Contains(i.MaterialName))
+                    {
+                        archive.Materials[arrival.MaterialGroup].Add(i.MaterialName);
+                    }
                 }
 
-                // ===== ОБЩЕЕ: добавляем запись =====
+                // === запись журнала ===
                 journal.Add(new JournalRecord
                 {
                     Date = i.Date,
                     ObjectName = currentObject.Name,
-
                     Category = arrival.Category,
                     SubCategory = arrival.SubCategory,
-
                     MaterialGroup = arrival.MaterialGroup,
                     MaterialName = i.MaterialName,
-
                     Unit = i.Unit,
                     Quantity = i.Quantity,
                     Passport = i.Passport,
@@ -523,6 +532,8 @@ namespace ConstructionControl
                     Supplier = i.Supplier
                 });
             }
+
+
 
 
             SaveState();

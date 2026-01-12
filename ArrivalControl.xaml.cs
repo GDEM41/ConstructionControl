@@ -89,7 +89,6 @@ namespace ConstructionControl
 
             foreach (var item in items)
             {
-                item.MaterialName = null;
                 item.AvailableNames.Clear();
 
                 if (string.IsNullOrWhiteSpace(group))
@@ -102,7 +101,22 @@ namespace ConstructionControl
                 }
 
             }
+            // ДОБАВЛЯЕМ ВРЕМЕННО ВВЕДЁННЫЕ МАТЕРИАЛЫ ИЗ ТЕКУЩИХ СТРОК
+            foreach (var it in items)
+            {
+                if (!string.IsNullOrWhiteSpace(it.MaterialName))
+                {
+                    foreach (var row in items)
+                    {
+                        if (!row.AvailableNames.Contains(it.MaterialName))
+                            row.AvailableNames.Add(it.MaterialName);
+                    }
+                }
+            }
+
         }
+
+
 
         // ================= СТРОКИ =================
 
@@ -118,6 +132,14 @@ namespace ConstructionControl
             item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
 
             items.Add(item);
+            // КОПИРУЕМ СПИСОК МАТЕРИАЛОВ ИЗ ПЕРВОЙ СТРОКИ В НОВУЮ
+            if (items.Count > 1)
+            {
+                var first = items[0];
+                foreach (var n in first.AvailableNames)
+                    item.AvailableNames.Add(n);
+            }
+
 
             item.PropertyChanged += (s, e) =>
             {
@@ -228,6 +250,8 @@ namespace ConstructionControl
             TtnBox.Clear();
             items.Clear();
             AddRow();
+            MaterialGroupTextChanged(null, null);
+
         }
         private void TryAutofillUnitAndStb(ArrivalItem item)
         {
