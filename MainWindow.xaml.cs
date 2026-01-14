@@ -84,40 +84,36 @@ namespace ConstructionControl
         }
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Проверяем чтобы событие было от TabControl, а не от внутренних DataGrid
-            if (e.Source is TabControl tab)
+            if (e.Source is TabControl tab &&
+                tab.SelectedItem is TabItem item &&
+                item.Header.ToString() == "Приход")
             {
-                // Определяем выбранную вкладку
-                if (tab.SelectedItem is TabItem selectedTab)
-                {
-                    // Если перешли во вкладку "Приход"
-                    if (selectedTab.Header.ToString() == "Приход")
-                    {
-                        // Восстанавливаем визуальное состояние панели
-                        ArrivalPanel.Visibility = arrivalPanelVisible
-                            ? Visibility.Visible
-                            : Visibility.Collapsed;
+                ArrivalPopup.Visibility = arrivalPanelVisible
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
 
-                        ToggleArrivalButton.Content = arrivalPanelVisible
-                            ? "✖ Скрыть"
-                            : "➕ Добавить приход";
-                    }
-                }
+                ShowArrivalButton.Visibility = arrivalPanelVisible
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
             }
         }
 
-        private void ToggleArrivalButton_Click(object sender, RoutedEventArgs e)
+        private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
         {
-            arrivalPanelVisible = !arrivalPanelVisible;
-
-            ArrivalPanel.Visibility = arrivalPanelVisible
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
-            ToggleArrivalButton.Content = arrivalPanelVisible
-                ? "✖ Скрыть"
-                : "➕ Добавить приход";
+            arrivalPanelVisible = true;
+            ArrivalPopup.Visibility = Visibility.Visible;
+            ShowArrivalButton.Visibility = Visibility.Collapsed;
         }
+
+        private void HideArrivalButton_Click(object sender, RoutedEventArgs e)
+        {
+            arrivalPanelVisible = false;
+            ArrivalPopup.Visibility = Visibility.Collapsed;
+            ShowArrivalButton.Visibility = Visibility.Visible;
+        }
+
+
+
 
 
         // ================= МЕНЮ =================

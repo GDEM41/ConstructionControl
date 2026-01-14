@@ -336,34 +336,24 @@
 
 
 
-                    <!-- ===== ПРИХОД ===== -->
                     <TabItem Header="Приход">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
 
-                            <!-- Блок ввода -->
-                            <!-- Кнопка -->
-                            <Button x:Name="ToggleArrivalButton"
-        Content="➕ Добавить приход"
-        Height="32"
-        Width="180"
-        Margin="0,0,0,6"
-        Click="ToggleArrivalButton_Click"/>
+                            <!-- ====== КНОПКА ДОБАВИТЬ ПРИХОД ====== -->
+                            <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,0,0,10">
+                                <Button x:Name="ShowArrivalButton"
+                    Content="➕ Добавить приход"
+                    Height="34"
+                    Width="200"
+                    Click="ShowArrivalButton_Click"/>
+                            </StackPanel>
 
-                            <!-- Блок ввода -->
-                            <local:ArrivalControl x:Name="ArrivalPanel" Visibility="Collapsed"/>
-
-
-                            <!-- Таблица -->
+                            <!-- ====== ТАБЛИЦА ПРИХОДОВ ====== -->
                             <DataGrid x:Name="ArrivalLiveTable"
-                  Grid.Row="1"
+                  Margin="0,50,0,0"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
-                  IsReadOnly="True"
-                  Margin="0,12,0,0">
+                  IsReadOnly="True">
 
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="80"/>
@@ -374,10 +364,37 @@
                                     <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" Width="120"/>
                                     <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="200"/>
                                 </DataGrid.Columns>
-
                             </DataGrid>
+
+                            <!-- ====== ПАНЕЛЬ ДОБАВЛЕНИЯ (ОКНО СВЕРХУ) ====== -->
+                            <Border x:Name="ArrivalPopup"
+                Background="#AA000000"
+                Visibility="Collapsed"
+                Panel.ZIndex="10">
+                                <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <Border Background="White"
+                        CornerRadius="6"
+                        Padding="10"
+                        Width="800"
+                        MinHeight="300">
+
+                                        <StackPanel>
+                                            <local:ArrivalControl x:Name="ArrivalPanel"/>
+
+                                            <Button Content="✖ Закрыть"
+                                HorizontalAlignment="Right"
+                                Width="120"
+                                Height="32"
+                                Margin="0,10,0,0"
+                                Click="HideArrivalButton_Click"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
                         </Grid>
                     </TabItem>
+
 
 
 
