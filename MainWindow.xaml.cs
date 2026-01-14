@@ -20,6 +20,7 @@ namespace ConstructionControl
 {
     public partial class MainWindow : Window
     {
+        private bool arrivalPanelVisible = false;
         private readonly Dictionary<string, double> columnWidths = new();
 
         private readonly List<string> colorPalette = new()
@@ -62,6 +63,8 @@ namespace ConstructionControl
             isLocked = true;
 
             LoadState();
+            ApplyAllFilters();
+
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
 
             PushUndo();
@@ -78,6 +81,42 @@ namespace ConstructionControl
         {
             // гарантированно после создания всех контролов
             
+        }
+        private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Проверяем чтобы событие было от TabControl, а не от внутренних DataGrid
+            if (e.Source is TabControl tab)
+            {
+                // Определяем выбранную вкладку
+                if (tab.SelectedItem is TabItem selectedTab)
+                {
+                    // Если перешли во вкладку "Приход"
+                    if (selectedTab.Header.ToString() == "Приход")
+                    {
+                        // Восстанавливаем визуальное состояние панели
+                        ArrivalPanel.Visibility = arrivalPanelVisible
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
+
+                        ToggleArrivalButton.Content = arrivalPanelVisible
+                            ? "✖ Скрыть"
+                            : "➕ Добавить приход";
+                    }
+                }
+            }
+        }
+
+        private void ToggleArrivalButton_Click(object sender, RoutedEventArgs e)
+        {
+            arrivalPanelVisible = !arrivalPanelVisible;
+
+            ArrivalPanel.Visibility = arrivalPanelVisible
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            ToggleArrivalButton.Content = arrivalPanelVisible
+                ? "✖ Скрыть"
+                : "➕ Добавить приход";
         }
 
 
@@ -881,12 +920,17 @@ namespace ConstructionControl
 
 
             filteredJournal = data
-                .OrderByDescending(j => j.Date) // ⬅️ СОРТИРОВКА ПО ДАТЕ (НОВЫЕ СВЕРХУ)
+                .OrderByDescending(j => j.Date)
                 .ToList();
 
             RenderJvk();
-
             RefreshSummaryTable();
+
+            if (ArrivalLiveTable != null)
+                ArrivalLiveTable.ItemsSource = filteredJournal;
+
+
+
 
 
         }

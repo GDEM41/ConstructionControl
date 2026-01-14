@@ -154,7 +154,9 @@
                     BorderBrush="#E5E7EB"
                     BorderThickness="1">
 
-                <TabControl BorderThickness="0">
+                <TabControl BorderThickness="0"
+            SelectionChanged="TabControl_SelectionChanged">
+
 
                     <!-- ===== СВОДНАЯ ===== -->
                     <TabItem Header="Сводная таблица">
@@ -336,8 +338,49 @@
 
                     <!-- ===== ПРИХОД ===== -->
                     <TabItem Header="Приход">
-                        <local:ArrivalControl x:Name="ArrivalPanel"/>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Блок ввода -->
+                            <!-- Кнопка -->
+                            <Button x:Name="ToggleArrivalButton"
+        Content="➕ Добавить приход"
+        Height="32"
+        Width="180"
+        Margin="0,0,0,6"
+        Click="ToggleArrivalButton_Click"/>
+
+                            <!-- Блок ввода -->
+                            <local:ArrivalControl x:Name="ArrivalPanel" Visibility="Collapsed"/>
+
+
+                            <!-- Таблица -->
+                            <DataGrid x:Name="ArrivalLiveTable"
+                  Grid.Row="1"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  IsReadOnly="True"
+                  Margin="0,12,0,0">
+
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="80"/>
+                                    <DataGridTextColumn Header="Тип" Binding="{Binding Category}" Width="120"/>
+                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" Width="220"/>
+                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" Width="60"/>
+                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="80"/>
+                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" Width="120"/>
+                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="200"/>
+                                </DataGrid.Columns>
+
+                            </DataGrid>
+                        </Grid>
                     </TabItem>
+
+
+
 
                 </TabControl>
             </Border>
