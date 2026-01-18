@@ -1892,6 +1892,87 @@ namespace ConstructionControl
         {
             ApplyAllFilters();
         }
+        private void ExportArrival_Click(object sender, RoutedEventArgs e)
+        {
+            if (!filteredJournal.Any())
+            {
+                MessageBox.Show("Нет данных для экспорта");
+                return;
+            }
+
+            var dlg = new SaveFileDialog
+            {
+                Filter = "Excel (*.xlsx)|*.xlsx",
+                FileName = "Приход.xlsx"
+            };
+
+            if (dlg.ShowDialog() != true)
+                return;
+
+            using (var wb = new XLWorkbook())
+            {
+                ExportArrival(wb);
+                wb.SaveAs(dlg.FileName);
+            }
+
+
+            MessageBox.Show("Экспорт завершён");
+        }
+        void ExportArrival(IXLWorkbook wb)
+        {
+            // получаем уникальные группы
+            var groups = filteredJournal
+                .Where(j => !string.IsNullOrWhiteSpace(j.MaterialGroup))
+                .Select(j => j.MaterialGroup)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                // создаём лист с именем группы
+                var ws = wb.Worksheets.Add(group);
+
+                int row = 1;
+
+                // заголовок
+                ws.Cell(row, 1).Value = "Дата";
+                ws.Cell(row, 2).Value = "Тип";
+                ws.Cell(row, 3).Value = "Наименование";
+                ws.Cell(row, 4).Value = "Ед.";
+                ws.Cell(row, 5).Value = "Кол-во";
+                ws.Cell(row, 6).Value = "ТТН";
+                ws.Cell(row, 7).Value = "Поставщик";
+                ws.Cell(row, 8).Value = "Паспорт";
+
+                ws.Range(row, 1, row, 8).Style.Font.Bold = true;
+                ws.Range(row, 1, row, 8).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF6");
+                row++;
+
+                // строки только этого типа
+                var data = filteredJournal
+                    .Where(j => j.MaterialGroup == group)
+                    .OrderByDescending(j => j.Date);
+
+                foreach (var rec in data)
+                {
+                    ws.Cell(row, 1).Value = rec.Date.ToString("dd.MM.yyyy");
+                    ws.Cell(row, 2).Value = rec.MaterialGroup;
+                    ws.Cell(row, 3).Value = rec.MaterialName;
+                    ws.Cell(row, 4).Value = rec.Unit;
+                    ws.Cell(row, 5).Value = rec.Quantity;
+                    ws.Cell(row, 6).Value = rec.Ttn;
+                    ws.Cell(row, 7).Value = rec.Supplier;
+                    ws.Cell(row, 8).Value = rec.Passport;
+                    row++;
+                }
+
+                ws.Columns().AdjustToContents();
+                ws.Range(1, 1, row - 1, 8).SetAutoFilter();
+            }
+        }
+
+
 
 
     }

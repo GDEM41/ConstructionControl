@@ -254,14 +254,17 @@
 
                     <TabItem Header="Приход">
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170*"/>
+                                <ColumnDefinition Width="769*"/>
+                            </Grid.ColumnDefinitions>
 
                             <!-- ====== КНОПКА ДОБАВИТЬ ПРИХОД ====== -->
                             <!-- ====== КНОПКИ ПРИХОДА ====== -->
                             <StackPanel Orientation="Horizontal"
     VerticalAlignment="Top"
     HorizontalAlignment="Right"
-    Margin="0,0,0,10"
-    Panel.ZIndex="1">
+    Panel.ZIndex="1" Grid.Column="1">
 
                                 <!-- 🔍 Локальный поиск -->
                                 <TextBox x:Name="ArrivalSearchBox"
@@ -281,6 +284,13 @@
         Margin="0,0,10,0"
         Click="ArrivalFilterButton_Click"/>
 
+                                <Button Style="{StaticResource PrimaryButton}"
+        Margin="0,0,10,0"
+        Click="ExportArrival_Click">
+                                    ⬇ Экспорт
+                                </Button>
+
+
                                 <!-- Кнопка добавления -->
                                 <Button x:Name="ShowArrivalButton"
         Content="➕ Добавить приход"
@@ -295,7 +305,7 @@
                             <DataGrid x:Name="ArrivalLiveTable"
                   Margin="0,50,0,0"
                   AutoGenerateColumns="False"
-                  CanUserAddRows="False">
+                  CanUserAddRows="False" Grid.ColumnSpan="2">
 
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="80"/>
@@ -314,7 +324,7 @@
                             <Grid x:Name="ArrivalFiltersOverlay"
       Visibility="Collapsed"
       Background="#80000000"
-      Panel.ZIndex="50">
+      Panel.ZIndex="50" Grid.ColumnSpan="2">
 
                                 <Border Background="White"
             Padding="20"
@@ -450,7 +460,7 @@
                             <Border x:Name="ArrivalPopup"
                 Background="#AA000000"
                 Visibility="Collapsed"
-                Panel.ZIndex="10">
+                Panel.ZIndex="10" Grid.ColumnSpan="2">
                                 <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
                                     <Border Background="White"
                         CornerRadius="6"
