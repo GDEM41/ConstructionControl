@@ -130,95 +130,151 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <TextBlock x:Name="SelectedCellText"
+           Margin="1,15,874,10"
+           Foreground="#6B7280"
+           FontSize="12"
+           Text="Ячейка не выбрана"/>
 
 
 
 
                 <!-- ===== Нижняя панель: тип импорта + шаблоны ===== -->
-                <Grid Grid.Row="2"
-      Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                <Grid Grid.Row="2" Margin="12,10,12,10" HorizontalAlignment="Right">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
+                        <StackPanel.Resources>
+                            <!-- Универсальные отступы между элементами -->
+                            <Style TargetType="FrameworkElement">
+                                <Setter Property="Margin" Value="8,0,0,0"/>
+                            </Style>
+                        </StackPanel.Resources>
+
+                        <!-- Типы импорта -->
                         <!-- Тип импорта -->
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="16"/>
-                        <ColumnDefinition Width="160"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel.Resources>
+                                <Style TargetType="RadioButton">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="RadioButton">
+                                                <Border x:Name="Border"
+                                Padding="10,4"
+                                CornerRadius="6"
+                                Background="#E5E7EB"
+                                BorderBrush="#D1D5DB"
+                                BorderThickness="1"
+                                Cursor="Hand">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Border" Property="Background" Value="#2563EB"/>
+                                                        <Setter TargetName="Border" Property="BorderBrush" Value="#1D4ED8"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Border" Property="Background" Value="#E2E8F0"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter Property="Margin" Value="0,0,6,0"/>
+                                </Style>
+                            </StackPanel.Resources>
 
-                        <ColumnDefinition Width="30"/>
-
-                        <!-- Шаблоны и импорт -->
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Инфо о выбранной ячейке -->
-                    <TextBlock Grid.Column="0"
-                                 x:Name="SelectedCellText"
-                                 VerticalAlignment="Center"
-                                 Foreground="#6B7280"
-                                 Text="Ячейка не выбрана"/>
-
-                    <!-- Основные / Дополнительные -->
-                    <RadioButton Grid.Column="1"
-                 x:Name="MainRadio"
+                            <RadioButton x:Name="MainRadio"
                  Content="Основные"
                  IsChecked="True"
-                 VerticalAlignment="Center"
-                 Margin="0,0,10,0"/>
+                 VerticalAlignment="Center"/>
 
-                    <RadioButton Grid.Column="2"
-                 x:Name="ExtraRadio"
+                            <RadioButton x:Name="ExtraRadio"
                  Content="Дополнительные"
                  VerticalAlignment="Center"/>
 
-                    <!-- Подтип допов -->
-                    <ComboBox Grid.Column="4"
-                            x:Name="ExtraTypeBox"
-                            Width="60"
-                            Height="30"
-                            VerticalContentAlignment="Center"
-                            VerticalAlignment="Center"
-                            Visibility="Hidden"/>
+                            <!-- выпадающий тип допов -->
+                            <ComboBox x:Name="ExtraTypeBox"
+              Width="140"
+              Height="32"
+              VerticalAlignment="Center"
+              Visibility="Collapsed"
+              Margin="4,0,0,0">
+                                <ComboBoxItem>Внутренние</ComboBoxItem>
+                                <ComboBoxItem>Малоценка</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
 
-                    <!-- Кнопки справа -->
 
+                        <!-- Разделитель №1 -->
+                        <Rectangle Fill="#D1D5DB"
+                   Width="1"
+                   Height="22"
+                   Margin="12,0,12,0"/>
+
+                        <!-- Шаблоны -->
+                        <TextBlock Text="Шаблон:"
+                   VerticalAlignment="Center"/>
+
+                        <ComboBox x:Name="TemplatesBox"
+                  Width="200"
+                  Height="32"
+                  VerticalContentAlignment="Center"
+                  ToolTip="Выбор шаблона"/>
+
+                        <Button Content="⟳"
+                Width="32"
+                Height="32"
+                ToolTip="Обновить"
+                Click="RefreshTemplates_Click"/>
+
+                        <Button Content="✖"
+                Width="32"
+                Height="32"
+                ToolTip="Удалить"
+                Click="DeleteTemplate_Click"/>
+
+                        <!-- Отображение текущего шаблона -->
+                        <TextBlock x:Name="CurrentTemplateText"
+                   VerticalAlignment="Center"
+                   Foreground="#6B7280"/>
+
+                        <!-- Разделитель №2 -->
+                        <Rectangle Fill="#D1D5DB"
+                   Width="1"
+                   Height="22"
+                   Margin="12,0,12,0"/>
+
+                        <!-- Кнопки -->
+                        <Button Content="⚙ Применить"
+                Padding="12,4"
+                Background="#E5E7EB"
+                Foreground="#111"
+                Click="ApplyTemplate_Click"/>
+
+                        <Button Content="💾 Сохранить"
+                Padding="12,4"
+                Background="#9CA3AF"
+                Foreground="White"
+                Click="SaveTemplate_Click"/>
+
+                        <Button Content="🚀 Импорт"
+                Padding="14,4"
+                Background="#2563EB"
+                Foreground="White"
+                FontWeight="SemiBold"
+                Click="Import_Click"/>
+                    </StackPanel>
                 </Grid>
 
 
 
 
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal">
 
-                    <ComboBox x:Name="TemplatesCombo"
-                         Height="30"
-                         Padding="70"
-                         Margin="0,0,6,0"
-                              SelectionChanged="TemplatesCombo_SelectionChanged"/>
 
-                    <Button Content="✅ Применить"
-                         Height="30"
-                         Padding="14,6"
-                         Margin="0,0,6,0"
-                            Click="ApplyTemplate_Click"/>
 
-                    <Button Content="💾 Сохранить шаблон"
-                         Height="32"
-                         Padding="14,6"
-                         Margin="0,0,6,0"
-                            Click="SaveTemplate_Click"/>
-
-                    <Button Content="Импорт"
-                            Background="#2563EB"
-                            Foreground="White"
-                            FontWeight="SemiBold"
-                                                     Height="32"
-                         Padding="14,6"
-                         Margin="0,0,6,0"
-                         Click="Import_Click"/>
-                </StackPanel>
             </Grid>
         </Grid>
     </Border>

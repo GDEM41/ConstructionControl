@@ -44,20 +44,11 @@ namespace ConstructionControl
 
         private void ImportTypeChanged(object sender, RoutedEventArgs e)
         {
-            if (ExtraTypeBox == null)
-                return;
-
-            if (ExtraRadio.IsChecked == true)
-            {
-                ExtraTypeBox.Visibility = Visibility.Visible;
-                ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
-                ExtraTypeBox.SelectedIndex = 0;
-            }
-            else
-            {
-                ExtraTypeBox.Visibility = Visibility.Collapsed;
-            }
+            ExtraTypeBox.Visibility = ExtraRadio.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
+
 
 
         private void SheetsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -324,49 +315,46 @@ namespace ConstructionControl
             if (!Directory.Exists(TemplatesFolder))
                 Directory.CreateDirectory(TemplatesFolder);
 
-            TemplatesCombo.Items.Clear();
+            TemplatesBox.Items.Clear();
 
             foreach (var file in Directory.GetFiles(TemplatesFolder, "*.json"))
-            {
-                TemplatesCombo.Items.Add(Path.GetFileNameWithoutExtension(file));
-            }
+                TemplatesBox.Items.Add(Path.GetFileNameWithoutExtension(file));
         }
-        private void TemplatesCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void TemplatesBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (TemplatesCombo.SelectedItem == null)
+            if (TemplatesBox.SelectedItem == null)
                 return;
 
-            string name = TemplatesCombo.SelectedItem.ToString();
+            string name = TemplatesBox.SelectedItem.ToString();
+            CurrentTemplateText.Text = $"Выбран: {name}";
+        }
+        private void DeleteTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (TemplatesBox.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите шаблон для удаления.");
+                return;
+            }
+
+            string name = TemplatesBox.SelectedItem.ToString();
             string path = Path.Combine(TemplatesFolder, name + ".json");
 
-            try
-            {
-                var json = File.ReadAllText(path);
-                var template = System.Text.Json.JsonSerializer.Deserialize<ExcelImportTemplate>(json);
+            if (File.Exists(path))
+                File.Delete(path);
 
-                if (template == null)
-                    return;
-
-                _dateRow = template.DateRow;
-                _materialColumn = template.MaterialColumn;
-                _quantityStartColumn = template.QuantityStartColumn;
-
-                _positionColumn = template.PositionColumn;
-                _unitColumn = template.UnitColumn;
-                _volumeColumn = template.VolumeColumn;
-                _stbColumn = template.StbColumn;
-
-                _ttnRow = template.TtnRow;
-                _supplierRow = template.SupplierRow;
-                _passportRow = template.PassportRow;
-
-                MessageBox.Show($"Шаблон «{name}» применён");
-            }
-            catch
-            {
-                MessageBox.Show("Ошибка загрузки шаблона");
-            }
+            LoadTemplatesList();
+            CurrentTemplateText.Text = "";
         }
+
+
+        private void RefreshTemplates_Click(object sender, RoutedEventArgs e)
+        {
+            LoadTemplatesList();
+            CurrentTemplateText.Text = "";
+        }
+
+
+
 
         private void SelectCell_Click(object sender, RoutedEventArgs e)
         {
@@ -449,18 +437,18 @@ namespace ConstructionControl
         {
             if (SheetsList.SelectedItem == null)
             {
-                MessageBox.Show("Выберите лист Excel");
+                MessageBox.Show("Выберите лист Excel.");
                 return;
             }
 
-            if (TemplatesCombo.SelectedItem == null)
+            if (TemplatesBox.SelectedItem == null)
             {
-                MessageBox.Show("Выберите шаблон");
+                MessageBox.Show("Выберите шаблон.");
                 return;
             }
 
             string sheetName = SheetsList.SelectedItem.ToString();
-            string templateName = TemplatesCombo.SelectedItem.ToString();
+            string templateName = TemplatesBox.SelectedItem.ToString();
             string path = Path.Combine(TemplatesFolder, templateName + ".json");
 
             var json = File.ReadAllText(path);
@@ -471,8 +459,9 @@ namespace ConstructionControl
 
             _appliedTemplates[sheetName] = template;
 
-            SelectedCellText.Text = $"Лист «{sheetName}» → шаблон «{templateName}» применён";
+            CurrentTemplateText.Text = $"Применён: {templateName}";
         }
+
 
 
     }
