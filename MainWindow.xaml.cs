@@ -1552,52 +1552,25 @@ namespace ConstructionControl
                     for (int i = 0; i < rows; i++)
                         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-                    AddCell(grid, 0, 0, "", rows, bg: bg, align: TextAlignment.Center);
 
 
-                    AddCell(grid, 0, 0, ttn.Key.Ttn, rows, bg: bg, align: TextAlignment.Center);
 
 
                     for (int r = 0; r < rows; r++)
                     {
-                        var x = items[r];
-                        AddCell(grid, r, 1, x.MaterialName, wrap: true, bg: bg, align: TextAlignment.Left);
-                        // --- STB ---
-                        if (mergedStb != null)
-                        {
-                            if (r == 0)
-                                AddCell(grid, r, 2, mergedStb ?? "—", rowspan: rows, bg: bg, align: TextAlignment.Center);
-                        }
-                        else
-                        {
+                        
+                        
+                            var x = items[r];
+
+                            AddCell(grid, r, 0, x.Ttn ?? "", bg: bg, align: TextAlignment.Center);
+                            AddCell(grid, r, 1, x.MaterialName, wrap: true, bg: bg);
                             AddCell(grid, r, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
-                        }
-
-                        // --- UNIT ---
-                        if (mergedUnit != null)
-                        {
-                            if (r == 0)
-                                AddCell(grid, r, 3, mergedUnit, rowspan: rows, bg: bg, align: TextAlignment.Center);
-                        }
-                        else
-                        {
                             AddCell(grid, r, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
-                        }
+                            AddCell(grid, r, 4, x.Quantity.ToString(), bg: bg, align: TextAlignment.Right);
+                            AddCell(grid, r, 5, x.Supplier ?? "—", wrap: true, bg: bg);
+                            AddCell(grid, r, 6, x.Passport ?? "—", wrap: true, bg: bg);
+                        
 
-                        // --- SUPPLIER ---
-                        if (mergedSupplier != null)
-                        {
-                            if (r == 0)
-                                AddCell(grid, r, 5, mergedSupplier, rowspan: rows, wrap: true, bg: bg, align: TextAlignment.Left);
-                        }
-                        else
-                        {
-                            AddCell(grid, r, 5, x.Supplier ?? "—", wrap: true, bg: bg, align: TextAlignment.Left);
-                        }
-
-                        AddCell(grid, r, 4, x.Quantity.ToString(), bg: bg, align: TextAlignment.Right);
-
-                        AddCell(grid, r, 6, x.Passport ?? "—", wrap: true, bg: bg, align: TextAlignment.Left);
 
                     }
                     columnWidths["Ttn"] = colTtn;
@@ -1722,7 +1695,10 @@ namespace ConstructionControl
                     string mergedSupplier = supplierSame ? items[0].Supplier : null;
 
                     // ===== ТТН ОДИН РАЗ =====
-                    AddCell(dayGrid, start, 0, grp.Ttn, rowspan: rows, bg: bg, align: TextAlignment.Center);
+                    AddCell(dayGrid, rowIndex, 0, grp.Ttn ?? "", rowspan: rows, bg: bg, align: TextAlignment.Center);
+
+
+
 
                     foreach (var x in items)
                     {
@@ -1730,40 +1706,19 @@ namespace ConstructionControl
 
                         AddCell(dayGrid, rowIndex, 1, x.Name, wrap: true, bg: bg);
                         // STB
-                        if (mergedStb != null)
-                        {
-                            if (rowIndex == start)
-                                AddCell(dayGrid, rowIndex, 2, mergedStb ?? "—", rowspan: rows, bg: bg, align: TextAlignment.Center);
-                        }
-                        else
-                        {
-                            AddCell(dayGrid, rowIndex, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
-                        }
+                        AddCell(dayGrid, rowIndex, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
+
 
 
                         // UNIT
-                        if (mergedUnit != null)
-                        {
-                            if (rowIndex == start)
-                                AddCell(dayGrid, rowIndex, 3, mergedUnit, rowspan: rows, bg: bg, align: TextAlignment.Center);
-                        }
-                        else
-                        {
-                            AddCell(dayGrid, rowIndex, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
-                        }
+                        AddCell(dayGrid, rowIndex, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
+
 
                         AddCell(dayGrid, rowIndex, 4, x.Qty.ToString(), bg: bg, align: TextAlignment.Right);
 
                         // SUPPLIER
-                        if (mergedSupplier != null)
-                        {
-                            if (rowIndex == start)
-                                AddCell(dayGrid, rowIndex, 5, mergedSupplier, rowspan: rows, wrap: true, bg: bg);
-                        }
-                        else
-                        {
-                            AddCell(dayGrid, rowIndex, 5, x.Supplier ?? "—", wrap: true, bg: bg);
-                        }
+                        AddCell(dayGrid, rowIndex, 5, x.Supplier ?? "—", wrap: true, bg: bg);
+
 
                         AddCell(dayGrid, rowIndex, 6, x.Passport ?? "—", wrap: true, bg: bg);
 
