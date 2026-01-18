@@ -1558,21 +1558,25 @@ namespace ConstructionControl
 
                     for (int r = 0; r < rows; r++)
                     {
-                        
-                        
-                            var x = items[r];
+                        var x = items[r];
 
-                            AddCell(grid, r, 0, x.Ttn ?? "", bg: bg, align: TextAlignment.Center);
-                            AddCell(grid, r, 1, x.MaterialName, wrap: true, bg: bg);
-                            AddCell(grid, r, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
-                            AddCell(grid, r, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
-                            AddCell(grid, r, 4, x.Quantity.ToString(), bg: bg, align: TextAlignment.Right);
-                            AddCell(grid, r, 5, x.Supplier ?? "—", wrap: true, bg: bg);
-                            AddCell(grid, r, 6, x.Passport ?? "—", wrap: true, bg: bg);
-                        
+                        string ttnVal = string.IsNullOrWhiteSpace(x.Ttn) ? "—" : x.Ttn;
+                        string name = string.IsNullOrWhiteSpace(x.MaterialName) ? "—" : x.MaterialName;
+                        string stb = string.IsNullOrWhiteSpace(x.Stb) ? "—" : x.Stb;
+                        string unit = string.IsNullOrWhiteSpace(x.Unit) ? "—" : x.Unit;
+                        string supplier = string.IsNullOrWhiteSpace(x.Supplier) ? "—" : x.Supplier;
+                        string passport = string.IsNullOrWhiteSpace(x.Passport) ? "—" : x.Passport;
+                        string qty = x.Quantity > 0 ? x.Quantity.ToString() : "—";
 
-
+                        AddCell(grid, r, 0, ttnVal, bg: bg, align: TextAlignment.Center);
+                        AddCell(grid, r, 1, name, wrap: true, bg: bg);
+                        AddCell(grid, r, 2, stb, bg: bg, align: TextAlignment.Center);
+                        AddCell(grid, r, 3, unit, bg: bg, align: TextAlignment.Center);
+                        AddCell(grid, r, 4, qty, bg: bg, align: TextAlignment.Right);
+                        AddCell(grid, r, 5, supplier, wrap: true, bg: bg);
+                        AddCell(grid, r, 6, passport, wrap: true, bg: bg);
                     }
+
                     columnWidths["Ttn"] = colTtn;
                     columnWidths["Name"] = colName;
                     columnWidths["Stb"] = colStb;
@@ -1662,9 +1666,44 @@ namespace ConstructionControl
                 int rowIndex = 0;
                 foreach (var grp in day.Groups)
                 {
-                    var items = grp.Items;
+                    var items = ((IEnumerable<dynamic>)grp.Items).ToList();
                     int start = rowIndex;
                     int rows = items.Count;
+                    // === АГРЕГАЦИЯ СТБ ===
+                    var stbRaw = items
+                        .Select(x => Normalize(x.Stb))
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+
+                    string stbMerged = stbRaw.Count == 0 ? "—"
+                                     : stbRaw.Count == 1 ? stbRaw[0]
+                                     : string.Join(", ", stbRaw);
+
+
+                    // === АГРЕГАЦИЯ UNIT ===
+                    var unitRaw = items
+                        .Select(x => Normalize(x.Unit))
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+
+                    string unitMerged = unitRaw.Count == 0 ? "—"
+                                      : unitRaw.Count == 1 ? unitRaw[0]
+                                      : string.Join(", ", unitRaw);
+
+
+                    // === АГРЕГАЦИЯ SUPPLIER ===
+                    var supplierRaw = items
+                        .Select(x => Normalize(x.Supplier))
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+
+                    string supplierMerged = supplierRaw.Count == 0 ? "—"
+                                          : supplierRaw.Count == 1 ? supplierRaw[0]
+                                          : string.Join(", ", supplierRaw);
+
                     bool stbSame = true;
 
                     for (int i = 1; i < items.Count; i++)
@@ -1698,32 +1737,50 @@ namespace ConstructionControl
                     AddCell(dayGrid, rowIndex, 0, grp.Ttn ?? "", rowspan: rows, bg: bg, align: TextAlignment.Center);
 
 
+                    // === АГРЕГАЦИЯ ПАСПОРТОВ ===
+                    var passportsRaw = items
+                        .Select(x => (x.Passport ?? "").Trim())
+                        .ToList();
+
+                    var nonEmpty = passportsRaw
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+
+                    string passportMerged;
+
+                    if (nonEmpty.Count == 0)
+                        passportMerged = "—";
+                    else if (nonEmpty.Count == 1)
+                        passportMerged = nonEmpty[0];
+                    else
+                        passportMerged = string.Join(", ", nonEmpty);
 
 
                     foreach (var x in items)
                     {
                         dayGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-                        AddCell(dayGrid, rowIndex, 1, x.Name, wrap: true, bg: bg);
-                        // STB
-                        AddCell(dayGrid, rowIndex, 2, x.Stb ?? "—", bg: bg, align: TextAlignment.Center);
+                        string name = string.IsNullOrWhiteSpace(x.Name) ? "—" : x.Name;
+                        string stb = string.IsNullOrWhiteSpace(x.Stb) ? "—" : x.Stb;
+                        string unit = string.IsNullOrWhiteSpace(x.Unit) ? "—" : x.Unit;
+                        string supplier = string.IsNullOrWhiteSpace(x.Supplier) ? "—" : x.Supplier;
+                        string passport = string.IsNullOrWhiteSpace(x.Passport) ? "—" : x.Passport;
+                        string qty = x.Qty > 0 ? x.Qty.ToString() : "—";
 
+                        AddCell(dayGrid, rowIndex, 1, name, wrap: true, bg: bg);
+                        
+                        AddCell(dayGrid, rowIndex, 4, qty, bg: bg, align: TextAlignment.Right);
+        
 
-
-                        // UNIT
-                        AddCell(dayGrid, rowIndex, 3, x.Unit ?? "—", bg: bg, align: TextAlignment.Center);
-
-
-                        AddCell(dayGrid, rowIndex, 4, x.Qty.ToString(), bg: bg, align: TextAlignment.Right);
-
-                        // SUPPLIER
-                        AddCell(dayGrid, rowIndex, 5, x.Supplier ?? "—", wrap: true, bg: bg);
-
-
-                        AddCell(dayGrid, rowIndex, 6, x.Passport ?? "—", wrap: true, bg: bg);
 
                         rowIndex++;
                     }
+                    AddCell(dayGrid, start, 2, stbMerged, rowspan: rows, bg: bg, align: TextAlignment.Center);
+                    AddCell(dayGrid, start, 3, unitMerged, rowspan: rows, bg: bg, align: TextAlignment.Center);
+                    AddCell(dayGrid, start, 5, supplierMerged, rowspan: rows, wrap: true, bg: bg);
+                    AddCell(dayGrid, start, 6, passportMerged, rowspan: rows, wrap: true, bg: bg);
+
 
                     // пустой отступ между группами
                     dayGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
