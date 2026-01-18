@@ -53,13 +53,19 @@ namespace ConstructionControl
         private ProjectObject currentObject;
         private List<JournalRecord> journal = new();
         private List<JournalRecord> filteredJournal = new();
-        private bool mergeEnabled = false;
+      
 
         private bool isLocked;
+        private bool mergeEnabled = false;
+
 
         public MainWindow()
         {
             InitializeComponent();
+            ArrivalLiveTable.IsReadOnly = true;
+            ArrivalLiveTable.CanUserAddRows = false;
+            ArrivalLiveTable.CanUserDeleteRows = false;
+
 
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
@@ -78,8 +84,7 @@ namespace ConstructionControl
             RefreshArrivalNames();
 
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
@@ -141,8 +146,7 @@ namespace ConstructionControl
 
                 SaveState();
                 RefreshTreePreserveState();
-                RefreshFilters();
-                ApplyAllFilters();
+              
             }
         }
 
@@ -169,13 +173,7 @@ namespace ConstructionControl
 
         // ================= КНОПКИ =================
 
-        private void ToggleFilters_Click(object sender, RoutedEventArgs e)
-        {
-            FiltersPanel.Visibility =
-                FiltersPanel.Visibility == Visibility.Visible
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-        }
+
 
         private void ExportToExcel_Click(object sender, RoutedEventArgs e)
         {
@@ -496,15 +494,27 @@ namespace ConstructionControl
         {
             isLocked = true;
 
-
+            if (ArrivalLiveTable != null)
+            {
+                ArrivalLiveTable.IsReadOnly = true;
+                ArrivalLiveTable.CanUserAddRows = false;
+                ArrivalLiveTable.CanUserDeleteRows = false;
+            }
         }
+
 
         private void LockButton_Unchecked(object sender, RoutedEventArgs e)
         {
             isLocked = false;
 
-
+            if (ArrivalLiveTable != null)
+            {
+                ArrivalLiveTable.IsReadOnly = false;
+                ArrivalLiveTable.CanUserAddRows = true;
+                ArrivalLiveTable.CanUserDeleteRows = true;
+            }
         }
+
 
         private void ArrivalFilterButton_Click(object sender, RoutedEventArgs e)
         {
@@ -586,8 +596,7 @@ namespace ConstructionControl
 
             SaveState();
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+   
 
             // важно: обновляем панель прихода
             ArrivalPanel.SetObject(currentObject, journal);
@@ -780,8 +789,7 @@ namespace ConstructionControl
 
             SaveState();
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+           
         }
 
         private void DeleteTreeItem_Click(object sender, RoutedEventArgs e)
@@ -822,46 +830,16 @@ namespace ConstructionControl
 
             SaveState();
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+          
         }
 
         private void ArrivalFilters_Changed(object sender, RoutedEventArgs e)
         {
-            ApplyAllFilters();
-            RefreshFilters();
+
 
         }
 
 
-
-
-
-        // ================= ФИЛЬТРЫ =================
-
-        private void RefreshFilters()
-        {
-            if (currentObject == null)
-                return;
-        }
-
-
-        private void Filters_Changed(object sender, EventArgs e)
-        {
-            ApplyAllFilters();
-        }
-
-        private void SelectAllGroups_Click(object sender, RoutedEventArgs e)
-        {
-            FilterGroupsList.SelectAll();
-            ApplyAllFilters();
-        }
-
-        private void ClearGroups_Click(object sender, RoutedEventArgs e)
-        {
-            FilterGroupsList.UnselectAll();
-            ApplyAllFilters();
-        }
 
         private void ApplyAllFilters()
         {
@@ -915,60 +893,19 @@ namespace ConstructionControl
                     data = data.Where(j => j.MaterialName == value);
             }
 
-            if (FilterGroupsList.SelectedItems.Count > 0)
-            {
-                var groups = FilterGroupsList.SelectedItems.Cast<string>().ToList();
-                data = data.Where(j => groups.Contains(j.MaterialGroup));
-            }
-            // === ПРИХОД: ГРУППЫ ===
 
-
-            // === ПРИХОД: МАТЕРИАЛЫ ===
-
-
-
-            if (DateFromPicker.SelectedDate != null)
-                data = data.Where(j => j.Date >= DateFromPicker.SelectedDate);
-
-            if (DateToPicker.SelectedDate != null)
-                data = data.Where(j => j.Date <= DateToPicker.SelectedDate);
             // === ПРИХОД: ДАТЫ ===
             if (ArrivalDateFrom?.SelectedDate != null)
                 data = data.Where(j => j.Date >= ArrivalDateFrom.SelectedDate);
 
             if (ArrivalDateTo?.SelectedDate != null)
                 data = data.Where(j => j.Date <= ArrivalDateTo.SelectedDate);
-            // === ЛОКАЛЬНЫЙ ПОИСК ПО ТТН И НАИМЕНОВАНИЮ ===
-            if (!string.IsNullOrWhiteSpace(ArrivalSearchBox?.Text))
-            {
-                var q = ArrivalSearchBox.Text.Trim();
-
-                data = data.Where(j =>
-                    (j.MaterialName != null && j.MaterialName.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
-                    (j.Ttn != null && j.Ttn.Contains(q, StringComparison.OrdinalIgnoreCase))
-                );
-            }
 
 
-            // ===== ГЛОБАЛЬНЫЙ ПОИСК =====
-            if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
-            {
-                var text = GlobalSearchBox.Text.Trim();
 
-                data = data.Where(j =>
-                    (j.MaterialName != null &&
-                     j.MaterialName.Contains(text, StringComparison.OrdinalIgnoreCase))
 
-                    || (j.MaterialGroup != null &&
-                        j.MaterialGroup.Contains(text, StringComparison.OrdinalIgnoreCase))
+       
 
-                    || (j.Ttn != null &&
-                        j.Ttn.Contains(text, StringComparison.OrdinalIgnoreCase))
-
-                    || (j.Passport != null &&
-                        j.Passport.Contains(text, StringComparison.OrdinalIgnoreCase))
-                );
-            }
 
 
             // === ПРИХОД: СОРТ ПО УМОЛЧАНИЮ ===
@@ -1063,8 +1000,7 @@ namespace ConstructionControl
             ArrivalPanel.SetObject(currentObject, journal);
 
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+
             RefreshSummaryTable();
 
             SaveState();
@@ -1196,20 +1132,8 @@ namespace ConstructionControl
             Close();
         }
 
-        private void ExtraFiltersToggle_Checked(object sender, RoutedEventArgs e)
-        {
-            ExtraFiltersPanel.Visibility = Visibility.Visible;
-        }
 
-        private void ExtraFiltersToggle_Unchecked(object sender, RoutedEventArgs e)
-        {
-            ExtraFiltersPanel.Visibility = Visibility.Collapsed;
 
-            LowCostCheckBox.IsChecked = false;
-            InternalCheckBox.IsChecked = false;
-
-            ApplyAllFilters();
-        }
 
 
         private void ImportExcel_Click(object sender, RoutedEventArgs e)
@@ -1295,8 +1219,7 @@ namespace ConstructionControl
             // ====== обновляем UI ======
             SaveState();
             RefreshTreePreserveState();
-            RefreshFilters();
-            ApplyAllFilters();
+
             RefreshSummaryTable();
             ArrivalPanel.SetObject(currentObject, journal);
 
@@ -1326,17 +1249,13 @@ namespace ConstructionControl
                 // после изменений — обновляем всё
                 SaveState();
                 RefreshTreePreserveState();
-                RefreshFilters();
-                ApplyAllFilters();
+
                 ArrivalPanel.SetObject(currentObject, journal);
             }
         }
 
 
-        private void CloseFilters_Click(object sender, RoutedEventArgs e)
-        {
-            FiltersPanel.Visibility = Visibility.Collapsed;
-        }
+
 
 
         private void RefreshSummaryTable()
@@ -1870,10 +1789,6 @@ namespace ConstructionControl
             var item = ((FrameworkElement)e.OriginalSource).DataContext as string;
             if (item == null) return;
 
-
-
-            RefreshFilters();
-            ApplyAllFilters();
         }
 
         private void ArrivalNames_Toggle(object sender, MouseButtonEventArgs e)
