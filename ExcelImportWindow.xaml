@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Импорт из Excel"
         Height="550"
-        Width="1100"
+        Width="1300"
         WindowStartupLocation="CenterOwner"
         Background="#F6F7FB">
 
@@ -70,28 +70,73 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
                         <Grid>
+
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
                             <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8"/>
 
-                            <ContentPresenter Margin="10,0,28,0"
-                                      VerticalAlignment="Center"/>
+                            <ContentPresenter Grid.Column="0"
+                  Margin="10,0,10,0"
+                  VerticalAlignment="Center"
+                  Content="{TemplateBinding SelectionBoxItem}"
+                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                  RecognizesAccessKey="True"/>
 
+                            <!-- Кнопка раскрытия -->
                             <ToggleButton x:Name="PART_ToggleButton"
-              Grid.Column="1"
+              Width="32"
+              Height="32"
               Background="Transparent"
               BorderThickness="0"
               Focusable="False"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
               Cursor="Hand"
               IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}">
-                                <Path Width="12"
-          Height="8"
-          Margin="0,0,10,0"
-          Fill="#6B7280"
-          Data="M 0 0 L 12 0 L 6 8 Z"/>
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ArrowBg"
+                    CornerRadius="6"
+                    Padding="6"
+                    Background="Transparent">
+                                            <Path x:Name="ArrowIcon"
+                      Width="12"
+                      Height="8"
+                      Fill="#6B7280"
+                      Data="M 0 0 L 12 0 L 6 8 Z"/>
+                                        </Border>
+
+                                        <ControlTemplate.Triggers>
+                                            <!-- Hover -->
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#F3F4F6"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="#374151"/>
+                                            </Trigger>
+
+                                            <!-- Pressed -->
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#E5E7EB"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="#111827"/>
+                                            </Trigger>
+
+                                            <!-- Checked (dropdown открыт) -->
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#E5E7EB"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="#111827"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
                             </ToggleButton>
+
 
 
                             <Popup x:Name="PART_Popup"
@@ -385,26 +430,28 @@
 
                         <!-- Кнопки выбора -->
                         <WrapPanel Grid.Row="2"
-                                   Margin="0,8,0,0"
-                                   HorizontalAlignment="Right">
+           Margin="0,8,0,0"
+           HorizontalAlignment="Left">
 
-                            <Button Content="📅 Дата" Tag="Date" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="🧱 Наименование" Tag="Material" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="🔢 Кол-во" Tag="Quantity" Click="SelectCell_Click" Margin="2"/>
+                            <!-- Группа 1 -->
+                            <Button Content="🧾 Позиция" Tag="Position" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="🧱 Наименование" Tag="Material" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="🏷 СТБ" Tag="Stb" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="📐 Ед. изм" Tag="Unit" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="📦 Объем" Tag="Volume" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
 
-                            <Separator Width="12"/>
+                            <!-- разделитель -->
+                            <Rectangle Width="20"/>
 
-                            <Button Content="🧾 Позиция" Tag="Position" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="📐 Ед. изм" Tag="Unit" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="📦 Объем" Tag="Volume" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="🏷 СТБ" Tag="Stb" Click="SelectCell_Click" Margin="2"/>
+                            <!-- Группа 2 -->
+                            <Button Content="📅 Дата" Tag="Date" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="🚚 ТТН" Tag="Ttn" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="🏭 Поставщик" Tag="Supplier" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="📄 Паспорт" Tag="Passport" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                            <Button Content="🔢 Кол-во" Tag="Quantity" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
 
-                            <Separator Width="12"/>
-
-                            <Button Content="🚚 ТТН" Tag="Ttn" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="🏭 Поставщик" Tag="Supplier" Click="SelectCell_Click" Margin="2"/>
-                            <Button Content="📄 Паспорт" Tag="Passport" Click="SelectCell_Click" Margin="2"/>
                         </WrapPanel>
+
                     </Grid>
                 </Border>
             </Grid>
@@ -467,14 +514,19 @@
                                 </Style>
 
                             </StackPanel.Resources>
-                            <RadioButton x:Name="MainRadio"
-             Style="{StaticResource ModernRadio}"
-             Content="Основные"
-             IsChecked="True"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <RadioButton x:Name="MainRadio"
+                 Style="{StaticResource ModernRadio}"
+                 Content="Основные"
+                 Margin="0,0,8,0"
+                 IsChecked="True"/>
 
-                            <RadioButton x:Name="ExtraRadio"
-             Style="{StaticResource ModernRadio}"
-             Content="Дополнительные"/>
+                                <RadioButton x:Name="ExtraRadio"
+                 Style="{StaticResource ModernRadio}"
+                 Content="Дополнительные"
+                 Margin="0,0,8,0"/>
+                            </StackPanel>
+
 
 
                             <!-- выпадающий тип допов -->
@@ -494,10 +546,14 @@
                    Width="1"
                    Height="22"
                    Margin="12,0,12,0"/>
+                        
+                        <Rectangle Width="12"/>
 
                         <!-- Шаблоны -->
                         <TextBlock Text="Шаблон:"
-                   VerticalAlignment="Center"/>
+           VerticalAlignment="Center"
+           Margin="0,0,6,0"/>
+
 
                         <ComboBox x:Name="TemplatesBox"
           Style="{StaticResource ModernComboBox}"
