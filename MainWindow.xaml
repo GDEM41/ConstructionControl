@@ -11,6 +11,41 @@
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
 
+        <Style x:Key="ChipToggle" TargetType="ToggleButton">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="4,4,4,4"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="#F3F4F6"/>
+            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="root"
+                        CornerRadius="6"
+                        BorderThickness="1"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="root" Property="Background" Value="#2563EB"/>
+                                <Setter TargetName="root" Property="BorderBrush" Value="#1E40AF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Кнопка основная -->
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Height" Value="34"/>
@@ -95,7 +130,7 @@
         Click="Undo_Click"
         IsEnabled="False">
                     ↩
-                    
+
                 </Button>
 
                 <Button x:Name="RedoButton"
@@ -298,6 +333,8 @@
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                         <Button Content="Все" Click="SelectAllGroups_Click"/>
                                         <Button Content="Очистить" Margin="6,0,0,0" Click="ClearGroups_Click"/>
+
+
                                     </StackPanel>
 
                                     <TextBlock Text="Период" Margin="0,10,0,4" FontWeight="SemiBold"/>
@@ -340,13 +377,40 @@
                         <Grid>
 
                             <!-- ====== КНОПКА ДОБАВИТЬ ПРИХОД ====== -->
-                            <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,0,0,10">
+                            <!-- ====== КНОПКИ ПРИХОДА ====== -->
+                            <StackPanel Orientation="Horizontal"
+    VerticalAlignment="Top"
+    HorizontalAlignment="Right"
+    Margin="0,0,0,10"
+    Panel.ZIndex="1">
+
+                                <!-- 🔍 Локальный поиск -->
+                                <TextBox x:Name="ArrivalSearchBox"
+        Width="240"
+        Height="32"
+        VerticalContentAlignment="Center"
+        FontSize="13"
+        Margin="0,0,10,0"
+        ToolTip="Поиск: наименование / ТТН"
+        TextChanged="ArrivalSearchBox_TextChanged"/>
+
+                                <!-- Кнопка фильтры -->
+                                <Button x:Name="ArrivalFilterButton"
+        Content="Фильтры"
+        Width="130"
+        Height="34"
+        Margin="0,0,10,0"
+        Click="ArrivalFilterButton_Click"/>
+
+                                <!-- Кнопка добавления -->
                                 <Button x:Name="ShowArrivalButton"
-                    Content="➕ Добавить приход"
-                    Height="34"
-                    Width="200"
-                    Click="ShowArrivalButton_Click"/>
+        Content="➕ Добавить приход"
+        Width="200"
+        Height="34"
+        Click="ShowArrivalButton_Click"/>
                             </StackPanel>
+
+
 
                             <!-- ====== ТАБЛИЦА ПРИХОДОВ ====== -->
                             <DataGrid x:Name="ArrivalLiveTable"
@@ -365,6 +429,143 @@
                                     <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="200"/>
                                 </DataGrid.Columns>
                             </DataGrid>
+
+                            <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
+                            <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
+                            <Grid x:Name="ArrivalFiltersOverlay"
+      Visibility="Collapsed"
+      Background="#80000000"
+      Panel.ZIndex="50">
+
+                                <Border Background="White"
+            Padding="20"
+            CornerRadius="10"
+            Width="450"
+            MinHeight="450"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+
+                                    <StackPanel>
+
+                                        <!-- Кнопка закрыть -->
+                                        <Button Content="✖"
+                    HorizontalAlignment="Right"
+                    Width="28"
+                    Height="28"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    FontSize="14"
+                    Click="CloseArrivalFilters_Click"/>
+
+                                        <TextBlock Text="Фильтры прихода"
+                       FontWeight="SemiBold"
+                       FontSize="16"
+                       Margin="0,0,0,16"/>
+
+                                        <!-- ====== ТИПЫ (ГРУППЫ) ====== -->
+                                        <TextBlock Text="Тип материалов"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,4"/>
+
+                                        <WrapPanel x:Name="ArrivalTypesPanel"
+                       Margin="0,6,0,10"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Top"
+                       Width="400"/>
+
+                                        <!-- ====== КАТЕГОРИЯ ====== -->
+                                        <TextBlock Text="Категория"
+                       FontWeight="SemiBold"
+                       Margin="0,10,0,6"/>
+
+                                        <StackPanel>
+                                            <CheckBox x:Name="ArrivalMainCheck"
+                          Content="Основные"
+                          IsChecked="True"
+                          Checked="ArrivalFilters_Changed"
+                          Unchecked="ArrivalFilters_Changed"/>
+
+                                            <CheckBox x:Name="ArrivalExtraCheck"
+                          Content="Дополнительные"
+                          IsChecked="True"
+                          Checked="ArrivalFilters_Changed"
+                          Unchecked="ArrivalFilters_Changed"/>
+
+                                            <StackPanel Margin="20,6,0,0">
+                                                <CheckBox x:Name="ArrivalLowCostCheck"
+                              Content="Малоценка"
+                              IsChecked="True"
+                              Checked="ArrivalFilters_Changed"
+                              Unchecked="ArrivalFilters_Changed"/>
+
+                                                <CheckBox x:Name="ArrivalInternalCheck"
+                              Content="Внутренние"
+                              IsChecked="True"
+                              Checked="ArrivalFilters_Changed"
+                              Unchecked="ArrivalFilters_Changed"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- ====== НАИМЕНОВАНИЕ ====== -->
+                                        <TextBlock Text="Наименование"
+                       FontWeight="SemiBold"
+                       Margin="0,12,0,6"/>
+
+                                        <ScrollViewer Height="180"
+                          VerticalScrollBarVisibility="Auto">
+                                            <WrapPanel x:Name="ArrivalNamesPanel"
+                           Margin="0,6,0,0"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Width="400"/>
+                                        </ScrollViewer>
+
+                                        <!-- ====== ПЕРИОД ====== -->
+                                        <TextBlock Text="Период"
+                       FontWeight="SemiBold"
+                       Margin="0,12,0,4"/>
+
+                                        <StackPanel Orientation="Horizontal">
+                                            <DatePicker x:Name="ArrivalDateFrom"
+                Margin="0,0,8,0"
+                SelectedDateChanged="ArrivalFilters_Changed"
+                Width="150"/>
+
+                                            <TextBlock Text=" — "
+               VerticalAlignment="Center"
+               Margin="0,0,8,0"/>
+
+                                            <DatePicker x:Name="ArrivalDateTo"
+                SelectedDateChanged="ArrivalFilters_Changed"
+                Width="150"/>
+                                        </StackPanel>
+
+
+                                        <!-- ====== КНОПКИ ====== -->
+                                        <StackPanel Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Margin="0,20,0,0">
+
+                                            <Button Content="🔄 Сбросить фильтры"
+            Width="160"
+            Height="34"
+            Padding="10,0"
+            Background="#EFEFF4"
+            BorderBrush="#D0D0D5"
+            Foreground="#444"
+            FontSize="13"
+            FontWeight="SemiBold"
+            Click="ArrivalClearFilters_Click"/>
+                                        </StackPanel>
+
+
+
+                                    </StackPanel>
+
+                                </Border>
+                            </Grid>
+
+
 
                             <!-- ====== ПАНЕЛЬ ДОБАВЛЕНИЯ (ОКНО СВЕРХУ) ====== -->
                             <Border x:Name="ArrivalPopup"

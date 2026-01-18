@@ -7,7 +7,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Controls.Primitives;
 public enum ExportMode
 {
     Merged,
@@ -72,6 +74,8 @@ namespace ConstructionControl
 
             if (currentObject != null)
                 ArrivalPanel.SetObject(currentObject, journal);
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
 
             RefreshTreePreserveState();
             RefreshFilters();
@@ -80,7 +84,7 @@ namespace ConstructionControl
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // гарантированно после создания всех контролов
-            
+
         }
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -502,6 +506,15 @@ namespace ConstructionControl
 
         }
 
+        private void ArrivalFilterButton_Click(object sender, RoutedEventArgs e)
+        {
+            ArrivalFiltersOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void CloseArrivalFilters_Click(object sender, RoutedEventArgs e)
+        {
+            ArrivalFiltersOverlay.Visibility = Visibility.Collapsed;
+        }
 
         // ================= ПРИХОД =================
 
@@ -578,11 +591,14 @@ namespace ConstructionControl
 
             // важно: обновляем панель прихода
             ArrivalPanel.SetObject(currentObject, journal);
+            // === обновляем чипы типов и материалов ===
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
 
 
         }
 
-        
+
         private void CleanupMaterialsAfterDelete()
         {
             // Какие группы реально используются
@@ -810,19 +826,25 @@ namespace ConstructionControl
             ApplyAllFilters();
         }
 
+        private void ArrivalFilters_Changed(object sender, RoutedEventArgs e)
+        {
+            ApplyAllFilters();
+            RefreshFilters();
+
+        }
+
+
+
+
+
         // ================= ФИЛЬТРЫ =================
 
         private void RefreshFilters()
         {
             if (currentObject == null)
                 return;
-
-            FilterGroupsList.ItemsSource =
-                currentObject.MaterialGroups
-                    .Select(g => g.Name)
-                    .OrderBy(x => x)
-                    .ToList();
         }
+
 
         private void Filters_Changed(object sender, EventArgs e)
         {
@@ -844,30 +866,41 @@ namespace ConstructionControl
         private void ApplyAllFilters()
         {
             IEnumerable<JournalRecord> data = journal;
+            // === ПРИХОД: КАТЕГОРИЯ ОСНОВНЫЕ/ДОПЫ ===
+            bool showMain = ArrivalMainCheck?.IsChecked == true;
+            bool showExtra = ArrivalExtraCheck?.IsChecked == true;
+
+            data = data.Where(j =>
+                (showMain && j.Category == "Основные")
+                || (showExtra && j.Category == "Допы")
+            );
+
 
 
             // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ =====
             // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ (ДОПЫ ПО УМОЛЧАНИЮ СКРЫТЫ) =====
-            bool showLowCost = LowCostCheckBox.IsChecked == true;
-            bool showInternal = InternalCheckBox.IsChecked == true;
+            // === ПРИХОД: ДОПОЛНИТЕЛЬНЫЕ ПОДТИПЫ ===
+            bool showLowCost = ArrivalLowCostCheck?.IsChecked == true;
+            bool showInternal = ArrivalInternalCheck?.IsChecked == true;
 
             data = data.Where(j =>
-                // основные всегда видны
-                j.Category == "Основные"
-
-                // допы — только если включены галочки
+                j.Category != "Допы"
                 || (
-                    j.Category == "Допы" &&
-                    (
-                        // если включены ОБЕ — показываем ВСЕ допы
-                        (showLowCost && showInternal)
-
-                        // если включена только одна
-                        || (showLowCost && j.SubCategory == "Малоценка")
-                        || (showInternal && j.SubCategory == "Внутренние")
-                    )
+                    (showLowCost && j.SubCategory == "Малоценка")
+                    || (showInternal && j.SubCategory == "Внутренние")
                 )
             );
+            // === ПРИХОД: ФИЛЬТР ПО ТИПАМ ===
+            if (selectedArrivalTypes.Count > 0)
+            {
+                data = data.Where(j => selectedArrivalTypes.Contains(j.MaterialGroup));
+            }
+            // === ПРИХОД: ФИЛЬТР ПО НАИМЕНОВАНИЯМ ===
+            if (selectedArrivalNames.Count > 0)
+            {
+                data = data.Where(j => selectedArrivalNames.Contains(j.MaterialName));
+            }
+
 
 
 
@@ -887,12 +920,36 @@ namespace ConstructionControl
                 var groups = FilterGroupsList.SelectedItems.Cast<string>().ToList();
                 data = data.Where(j => groups.Contains(j.MaterialGroup));
             }
+            // === ПРИХОД: ГРУППЫ ===
+
+
+            // === ПРИХОД: МАТЕРИАЛЫ ===
+
+
 
             if (DateFromPicker.SelectedDate != null)
                 data = data.Where(j => j.Date >= DateFromPicker.SelectedDate);
 
             if (DateToPicker.SelectedDate != null)
                 data = data.Where(j => j.Date <= DateToPicker.SelectedDate);
+            // === ПРИХОД: ДАТЫ ===
+            if (ArrivalDateFrom?.SelectedDate != null)
+                data = data.Where(j => j.Date >= ArrivalDateFrom.SelectedDate);
+
+            if (ArrivalDateTo?.SelectedDate != null)
+                data = data.Where(j => j.Date <= ArrivalDateTo.SelectedDate);
+            // === ЛОКАЛЬНЫЙ ПОИСК ПО ТТН И НАИМЕНОВАНИЮ ===
+            if (!string.IsNullOrWhiteSpace(ArrivalSearchBox?.Text))
+            {
+                var q = ArrivalSearchBox.Text.Trim();
+
+                data = data.Where(j =>
+                    (j.MaterialName != null && j.MaterialName.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
+                    (j.Ttn != null && j.Ttn.Contains(q, StringComparison.OrdinalIgnoreCase))
+                );
+            }
+
+
             // ===== ГЛОБАЛЬНЫЙ ПОИСК =====
             if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
             {
@@ -914,10 +971,12 @@ namespace ConstructionControl
             }
 
 
+            // === ПРИХОД: СОРТ ПО УМОЛЧАНИЮ ===
+            data = data.OrderByDescending(j => j.Date);
 
-            filteredJournal = data
-                .OrderByDescending(j => j.Date)
-                .ToList();
+
+            filteredJournal = data.ToList();
+
 
             RenderJvk();
             RefreshSummaryTable();
@@ -930,6 +989,28 @@ namespace ConstructionControl
 
 
         }
+        private void ArrivalClearFilters_Click(object sender, RoutedEventArgs e)
+        {
+            selectedArrivalTypes.Clear();
+            selectedArrivalNames.Clear();
+
+            ArrivalMainCheck.IsChecked = true;
+            ArrivalExtraCheck.IsChecked = true;
+            ArrivalLowCostCheck.IsChecked = true;
+            ArrivalInternalCheck.IsChecked = true;
+
+            ArrivalDateFrom.SelectedDate = null;
+            ArrivalDateTo.SelectedDate = null;
+
+            ArrivalSearchBox.Text = "";
+
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            ApplyAllFilters();
+
+            ArrivalFiltersOverlay.Visibility = Visibility.Collapsed;
+        }
+
 
         // ================= СОХРАНЕНИЕ =================
 
@@ -1106,7 +1187,7 @@ namespace ConstructionControl
         {
             LockButton_Unchecked(sender, e);
         }
-       
+
 
 
         private void Exit_Click(object sender, RoutedEventArgs e)
@@ -1783,6 +1864,106 @@ namespace ConstructionControl
         public List<JournalRecord> GetJournal()
         {
             return journal;
+        }
+        private void ArrivalGroups_Toggle(object sender, MouseButtonEventArgs e)
+        {
+            var item = ((FrameworkElement)e.OriginalSource).DataContext as string;
+            if (item == null) return;
+
+
+
+            RefreshFilters();
+            ApplyAllFilters();
+        }
+
+        private void ArrivalNames_Toggle(object sender, MouseButtonEventArgs e)
+        {
+            var item = ((FrameworkElement)e.OriginalSource).DataContext as string;
+            if (item == null) return;
+
+
+
+            ApplyAllFilters();
+        }
+        private HashSet<string> selectedArrivalTypes = new();
+        private HashSet<string> selectedArrivalNames = new();
+
+        private void RefreshArrivalTypes()
+        {
+            ArrivalTypesPanel.Children.Clear();
+
+            var groups = journal
+                .Select(j => j.MaterialGroup)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .OrderBy(x => x);
+
+            foreach (var g in groups)
+            {
+                var chip = new ToggleButton
+                {
+                    Content = g,
+                    Tag = g,
+                    Style = (Style)FindResource("ChipToggle")
+                };
+
+                chip.IsChecked = selectedArrivalTypes.Contains(g);
+
+                chip.Checked += (_, _) =>
+                {
+                    selectedArrivalTypes.Add(g);
+                    RefreshArrivalNames();
+                    ApplyAllFilters();
+                };
+                chip.Unchecked += (_, _) =>
+                {
+                    selectedArrivalTypes.Remove(g);
+                    RefreshArrivalNames();
+                    ApplyAllFilters();
+                };
+
+                ArrivalTypesPanel.Children.Add(chip);
+            }
+        }
+        private void RefreshArrivalNames()
+        {
+            ArrivalNamesPanel.Children.Clear();
+
+            var names = journal
+                .Where(j => selectedArrivalTypes.Count == 0 || selectedArrivalTypes.Contains(j.MaterialGroup))
+                .Select(j => j.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .OrderBy(x => x);
+
+            foreach (var n in names)
+            {
+                var chip = new ToggleButton
+                {
+                    Content = n,
+                    Tag = n,
+                    Style = (Style)FindResource("ChipToggle")
+                };
+
+                chip.IsChecked = selectedArrivalNames.Contains(n);
+
+                chip.Checked += (_, _) =>
+                {
+                    selectedArrivalNames.Add(n);
+                    ApplyAllFilters();
+                };
+                chip.Unchecked += (_, _) =>
+                {
+                    selectedArrivalNames.Remove(n);
+                    ApplyAllFilters();
+                };
+
+                ArrivalNamesPanel.Children.Add(chip);
+            }
+        }
+        private void ArrivalSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ApplyAllFilters();
         }
 
 
