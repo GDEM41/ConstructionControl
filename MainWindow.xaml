@@ -195,14 +195,12 @@
 
                     <!-- ===== СВОДНАЯ ===== -->
                     <TabItem Header="Сводная таблица">
-                        <DataGrid x:Name="SummaryGrid"
-                                  Margin="8"
-                                  IsReadOnly="True"
-                                  AutoGenerateColumns="True"
-                                  CanUserAddRows="False"
-                                  GridLinesVisibility="All"
-                                  HorizontalGridLinesBrush="#E5E7EB"
-                                  VerticalGridLinesBrush="#E5E7EB"/>
+                        <ScrollViewer x:Name="SummaryScroll"
+              VerticalScrollBarVisibility="Auto"
+              HorizontalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="SummaryPanel"/>
+                        </ScrollViewer>
+
                     </TabItem>
 
                     <TabItem Header="ЖВК">

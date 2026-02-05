@@ -27,7 +27,7 @@ namespace ConstructionControl
                     {
                         Group = g.Key,
                         Material = mat,
-                        Unit = entries.Select(x => x.Unit).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().FirstOrDefault(),
+                        Unit = entries.Select(x => x.Unit).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
                         Suppliers = string.Join(", ", entries.Select(x => x.Supplier).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
                         Passports = string.Join(", ", entries.Select(x => x.Passport).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
                         Stb = string.Join(", ", entries.Select(x => x.Stb).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
@@ -41,39 +41,53 @@ namespace ConstructionControl
         }
 
 
+
+
         private void Delete_Click(object sender, RoutedEventArgs e)
         {
-            var row = ArchiveGrid.SelectedItem;
-            if (row == null) return;
+            if (ArchiveGrid.SelectedItem is not ArchiveRecord r)
+                return;
 
-            dynamic r = row;
             string group = r.Group;
             string material = r.Material;
 
-            // 1. Удаляем из архива
-            obj.Archive.Materials[group].Remove(material);
-            if (obj.Archive.Materials[group].Count == 0)
-                obj.Archive.Materials.Remove(group);
-
-            if (!obj.Archive.Materials.Any())
-                obj.Archive.Groups.Remove(group);
-
-            // 2. Удаляем из MaterialGroups / MaterialNamesByGroup
-            obj.MaterialNamesByGroup[group].Remove(material);
-            if (obj.MaterialNamesByGroup[group].Count == 0)
+            // === 1. УДАЛЯЕМ ИЗ АРХИВА ===
+            if (obj.Archive.Materials.ContainsKey(group))
             {
-                obj.MaterialNamesByGroup.Remove(group);
-                obj.MaterialGroups.RemoveAll(g => g.Name == group);
+                obj.Archive.Materials[group].Remove(material);
+
+                if (obj.Archive.Materials[group].Count == 0)
+                    obj.Archive.Materials.Remove(group);
             }
 
-            // 3. Удаляем из журнала
-            var journal = Owner is MainWindow mw ? mw.GetJournal() : null;
-            if (journal != null)
-                journal.RemoveAll(j => j.MaterialName == material && j.MaterialGroup == group);
+            // === 2. ИЗ СПИСКА МАТЕРИАЛОВ ===
+            if (obj.MaterialNamesByGroup.ContainsKey(group))
+            {
+                obj.MaterialNamesByGroup[group].Remove(material);
 
-            DialogResult = true;
-            Close();
+                if (obj.MaterialNamesByGroup[group].Count == 0)
+                {
+                    obj.MaterialNamesByGroup.Remove(group);
+                    obj.MaterialGroups.RemoveAll(x => x.Name == group);
+                }
+            }
+
+            // === 3. ИЗ ЖУРНАЛА ===
+            journal.RemoveAll(x => x.MaterialGroup == group && x.MaterialName == material);
+
+            // === 4. ОБНОВЛЯЕМ ТАБЛИЦУ В АРХИВЕ ===
+            LoadArchive();
+
+            // === 5. ОБНОВЛЯЕМ MAINWINDOW ===
+            if (Owner is MainWindow mw)
+            {
+                mw.RefreshTree();
+                mw.RefreshJournal();
+                mw.RefreshSummaryTable();
+            }
         }
+
+
 
 
         private void Clear_Click(object sender, RoutedEventArgs e)
@@ -82,20 +96,14 @@ namespace ConstructionControl
                 "Подтверждение", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
                 return;
 
-            // 1. Чистим архив
             obj.Archive = new ObjectArchive();
-
-            // 2. Чистим группы/материалы
             obj.MaterialGroups.Clear();
             obj.MaterialNamesByGroup.Clear();
+            journal.Clear();
 
-            // 3. Чистим журнал
-            var journal = Owner is MainWindow mw ? mw.GetJournal() : null;
-            journal?.Clear();
-
-            DialogResult = true;
-            Close();
+            LoadArchive();
         }
+
         public class ArchiveRecord
         {
             public string Group { get; set; }
@@ -110,32 +118,15 @@ namespace ConstructionControl
         public ArchiveWindow(ProjectObject obj, List<JournalRecord> journal)
         {
             InitializeComponent();
-            var list = new List<ArchiveRecord>();
 
-            foreach (var g in obj.Archive.Materials)
-            {
-                foreach (var mat in g.Value)
-                {
-                    var entries = journal
-                        .Where(j => j.MaterialGroup == g.Key && j.MaterialName == mat)
-                        .ToList();
+            // сохраняем входящие параметры в поля
+            this.obj = obj ?? throw new ArgumentNullException(nameof(obj));
+            this.journal = journal ?? new List<JournalRecord>();
 
-                    list.Add(new ArchiveRecord
-                    {
-                        Group = g.Key,
-                        Material = mat,
-                        Unit = entries.Select(x => x.Unit).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().FirstOrDefault(),
-                        Suppliers = string.Join(", ", entries.Select(x => x.Supplier).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
-                        Passports = string.Join(", ", entries.Select(x => x.Passport).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
-                        Stb = string.Join(", ", entries.Select(x => x.Stb).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
-                        LastArrival = entries.OrderByDescending(x => x.Date).Select(x => x.Date).FirstOrDefault(),
-                        ArrivalsCount = entries.Count
-                    });
-                }
-            }
-
-            ArchiveGrid.ItemsSource = list;
+            // загружаем таблицу
+            LoadArchive();
         }
+
 
 
 

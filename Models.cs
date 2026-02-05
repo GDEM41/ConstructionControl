@@ -7,6 +7,8 @@ namespace ConstructionControl
 {
     public class ProjectObject
     {
+        public Dictionary<string, MaterialDemand> Demand = new();
+
         public ObjectArchive Archive { get; set; } = new();
 
         public string Name { get; set; }
@@ -37,6 +39,12 @@ namespace ConstructionControl
 
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
+    }
+
+    public class MaterialDemand
+    {
+        public string Unit;
+        public Dictionary<int, Dictionary<int, double>> Floors; // block → floor → qty
     }
 
 

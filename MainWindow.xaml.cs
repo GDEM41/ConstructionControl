@@ -1230,6 +1230,17 @@ namespace ConstructionControl
 
         }
 
+        public void RefreshTree()
+        {
+            RefreshTreePreserveState();
+        }
+
+        public void RefreshJournal()
+        {
+            ApplyAllFilters();
+        }
+
+
         private void OpenArchive_Click(object sender, RoutedEventArgs e)
         {
             if (currentObject == null)
@@ -1249,7 +1260,8 @@ namespace ConstructionControl
                 // после изменений — обновляем всё
                 SaveState();
                 RefreshTreePreserveState();
-
+                ApplyAllFilters();
+                RefreshSummaryTable();
                 ArrivalPanel.SetObject(currentObject, journal);
             }
         }
@@ -1258,41 +1270,42 @@ namespace ConstructionControl
 
 
 
-        private void RefreshSummaryTable()
+        public void RefreshSummaryTable()
         {
+            SummaryPanel.Children.Clear();
+
             if (currentObject == null)
                 return;
 
-            var result = new List<SummaryRow>();
+            var groups = journal
+                .Where(j => j.Category == "Основные")
+                .GroupBy(j => j.MaterialGroup)
+                .OrderBy(g => g.Key);
 
-            var materials = journal
-                .GroupBy(j => new { j.MaterialName, j.Unit });
+            RenderSummaryHeader();
 
-            foreach (var mat in materials)
+            foreach (var g in groups)
             {
-                var row = new SummaryRow
+                RenderMaterialGroup(g.Key);
+
+                foreach (var m in g.GroupBy(x => x.MaterialName))
                 {
-                    MaterialName = mat.Key.MaterialName,
-                    Unit = mat.Key.Unit
-                };
+                    string mat = m.Key;
+                    string unit = m.First().Unit;
 
-                // ❗ ГАРАНТИРУЕМ ХОТЯ БЫ 1 БЛОК
-                int blocks = Math.Max(1, currentObject.BlocksCount);
+                    double totalArrival = m.Sum(x => x.Quantity);
 
-                for (int block = 1; block <= blocks; block++)
-                    row.ByBlocks[block] = 0.0;
-
-                foreach (var rec in mat)
-                {
-                    row.ByBlocks[1] += rec.Quantity;
-                    row.Total += rec.Quantity;
+                    RenderMaterialRow(mat, unit, totalArrival);
                 }
-
-                result.Add(row);
             }
 
-            SummaryGrid.ItemsSource = result;
+            RenderSummaryFooter();
         }
+        void RenderSummaryHeader() { /* будет позже */ }
+        void RenderMaterialGroup(string group) { /* будет позже */ }
+        void RenderMaterialRow(string mat, string unit, double totalArrival) { /* будет позже */ }
+        void RenderSummaryFooter() { /* будет позже */ }
+
         private void Undo_Click(object sender, RoutedEventArgs e)
         {
             if (undoStack.Count == 0)
