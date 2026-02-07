@@ -1389,7 +1389,14 @@ namespace ConstructionControl
             JvkPanel.Children.Clear();
 
             if (!filteredJournal.Any())
+            {
+                if (JvkHeaderBorder != null)
+                    JvkHeaderBorder.Visibility = Visibility.Collapsed;
                 return;
+            }
+
+            if (JvkHeaderBorder != null)
+                JvkHeaderBorder.Visibility = Visibility.Visible;
 
             // ===== авто размер колонок =====
             int maxName = filteredJournal.Max(j => j.MaterialName?.Length ?? 0);
@@ -1427,6 +1434,8 @@ namespace ConstructionControl
                 shrink(ref colSupplier, 0.20);
                 shrink(ref colTtn, 0.10);
             }
+
+            UpdateJvkHeaderColumns(colTtn, colName, colStb, colUnit, colQty, colSupplier, colPassport);
 
             var structured = filteredJournal
                 .Where(j => j.Category == "Основные")
@@ -1605,6 +1614,8 @@ namespace ConstructionControl
             IEnumerable<dynamic> merged,
             int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
         {
+            UpdateJvkHeaderColumns(colTtn, colName, colStb, colUnit, colQty, colSupplier, colPassport);
+
             foreach (var day in merged)
             {
                 // ====== ДАТА ======
@@ -1760,6 +1771,24 @@ namespace ConstructionControl
 
                 JvkPanel.Children.Add(dayGrid);
             }
+        }
+
+        private void UpdateJvkHeaderColumns(
+            int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
+        {
+            if (JvkHeaderGrid == null)
+                return;
+
+            if (JvkHeaderGrid.ColumnDefinitions.Count < 7)
+                return;
+
+            JvkHeaderGrid.ColumnDefinitions[0].Width = new GridLength(colTtn);
+            JvkHeaderGrid.ColumnDefinitions[1].Width = new GridLength(colName);
+            JvkHeaderGrid.ColumnDefinitions[2].Width = new GridLength(colStb);
+            JvkHeaderGrid.ColumnDefinitions[3].Width = new GridLength(colUnit);
+            JvkHeaderGrid.ColumnDefinitions[4].Width = new GridLength(colQty);
+            JvkHeaderGrid.ColumnDefinitions[5].Width = new GridLength(colSupplier);
+            JvkHeaderGrid.ColumnDefinitions[6].Width = new GridLength(colPassport);
         }
         public List<JournalRecord> GetJournal()
         {
