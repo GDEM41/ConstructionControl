@@ -1405,12 +1405,12 @@ namespace ConstructionControl
             int maxTtn = filteredJournal.Max(j => j.Ttn?.Length ?? 0);
 
             int colDate = 95;
-            int colTtn = Math.Max(120, maxTtn * 7);
-            int colName = Math.Max(250, maxName * 7);
-            int colStb = 70;
-            int colUnit = 45;
-            int colQty = 70;
-            int colSupplier = Math.Max(180, maxSupplier * 7);
+            int colTtn = Math.Max(140, maxTtn * 7);
+            int colName = Math.Max(260, maxName * 7);
+            int colStb = 90;
+            int colUnit = 70;
+            int colQty = 90;
+            int colSupplier = Math.Max(220, maxSupplier * 7);
             int colPassport = Math.Max(260, maxPassport * 7);
            
 
