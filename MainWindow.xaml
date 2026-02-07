@@ -206,7 +206,7 @@
                     <TabItem Header="ЖВК">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
+                               
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
@@ -228,16 +228,8 @@
                                 </Button>
                             </StackPanel>
 
-                            <Border Grid.Row="1"
-                Background="#F2F4F7"
-                BorderBrush="#D1D5DB"
-                BorderThickness="0,0,0,1"
-                Padding="6,4"
-                CornerRadius="4">
-                                <StackPanel x:Name="HeaderAutoPanel"/>
-                            </Border>
-
-                            <ScrollViewer Grid.Row="2"
+                          
+                            <ScrollViewer Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Auto"
                       Margin="0,4,0,0">

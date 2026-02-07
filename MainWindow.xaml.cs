@@ -1405,7 +1405,7 @@ namespace ConstructionControl
             int colQty = 70;
             int colSupplier = Math.Max(180, maxSupplier * 7);
             int colPassport = Math.Max(260, maxPassport * 7);
-            RenderHeader(colTtn, colName, colStb, colUnit, colQty, colSupplier, colPassport);
+           
 
 
             int maxTotalWidth = 1400;
@@ -1427,9 +1427,6 @@ namespace ConstructionControl
                 shrink(ref colSupplier, 0.20);
                 shrink(ref colTtn, 0.10);
             }
-
-            // ===== шапка =====
-            RenderHeader(colTtn, colName, colStb, colUnit, colQty, colSupplier, colPassport);
 
             var structured = filteredJournal
                 .Where(j => j.Category == "Основные")
@@ -1603,48 +1600,7 @@ namespace ConstructionControl
                 }
             }
         }
-        void RenderHeader(int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
-        {
-            HeaderAutoPanel.Children.Clear();
-
-            var grid = new Grid
-            {
-                Margin = new Thickness(0, 0, 0, 4)
-            };
-
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colTtn) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colName) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colStb) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colUnit) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colQty) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colSupplier) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(colPassport) });
-
-            void Add(string text, int col, TextAlignment align = TextAlignment.Left)
-            {
-                var tb = new TextBlock
-                {
-                    Text = text,
-                    FontWeight = FontWeights.SemiBold,
-                    Margin = new Thickness(6, 2, 6, 2),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextAlignment = align
-                };
-
-                Grid.SetColumn(tb, col);
-                grid.Children.Add(tb);
-            }
-
-            Add("ТТН", 0, TextAlignment.Center);
-            Add("Наименование", 1);
-            Add("СТБ", 2, TextAlignment.Center);
-            Add("Ед.", 3, TextAlignment.Center);
-            Add("Кол-во", 4, TextAlignment.Right);
-            Add("Поставщик", 5);
-            Add("Паспорт", 6);
-
-            HeaderAutoPanel.Children.Add(grid);
-        }
+        
         void RenderMerged(
             IEnumerable<dynamic> merged,
             int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
