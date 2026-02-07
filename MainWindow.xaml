@@ -251,31 +251,57 @@
                                             <ColumnDefinition Width="260"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Grid.Column="0"
-                                                   Text="ттн"
-                                                   FontWeight="SemiBold"
-                                                   TextAlignment="Center"/>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="название"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBlock Grid.Column="2"
-                                                   Text="стб"
-                                                   FontWeight="SemiBold"
-                                                   TextAlignment="Center"/>
-                                        <TextBlock Grid.Column="3"
-                                                   Text="ед.изм"
-                                                   FontWeight="SemiBold"
-                                                   TextAlignment="Center"/>
-                                        <TextBlock Grid.Column="4"
-                                                   Text="кол-во"
-                                                   FontWeight="SemiBold"
-                                                   TextAlignment="Right"/>
-                                        <TextBlock Grid.Column="5"
-                                                   Text="поставщик"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBlock Grid.Column="6"
-                                                   Text="паспорт"
-                                                   FontWeight="SemiBold"/>
+                                        <Border Grid.Column="0"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="ттн"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="1"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="название"
+                                                       FontWeight="SemiBold"/>
+                                        </Border>
+                                        <Border Grid.Column="2"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="стб"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="3"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="ед.изм"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="4"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="кол-во"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Right"/>
+                                        </Border>
+                                        <Border Grid.Column="5"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="4,2">
+                                            <TextBlock Text="поставщик"
+                                                       FontWeight="SemiBold"/>
+                                        </Border>
+                                        <Border Grid.Column="6"
+                                                Padding="4,2">
+                                            <TextBlock Text="паспорт"
+                                                       FontWeight="SemiBold"/>
+                                        </Border>
                                     </Grid>
                                 </Border>
 

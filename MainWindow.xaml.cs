@@ -1773,8 +1773,9 @@ namespace ConstructionControl
             }
         }
 
+
         private void UpdateJvkHeaderColumns(
-    int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
+            int colTtn, int colName, int colStb, int colUnit, int colQty, int colSupplier, int colPassport)
         {
             if (JvkHeaderGrid == null)
                 return;
@@ -1977,3 +1978,4 @@ namespace ConstructionControl
     }
 
 }
+
