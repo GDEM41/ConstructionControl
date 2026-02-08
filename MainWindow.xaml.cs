@@ -1288,6 +1288,9 @@ namespace ConstructionControl
 
         public void RefreshSummaryTable()
         {
+            if (SummaryPanel == null)
+                return;
+
             SummaryPanel.Children.Clear();
 
             if (currentObject == null)
