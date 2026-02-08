@@ -30,7 +30,7 @@ namespace ConstructionControl
         // Если этажи разные (ключ = номер блока, значение = этажи)
         public Dictionary<int, int> FloorsByBlock { get; set; } = new();
 
-        // ===== СТАРОЕ (НЕ ТРОГАЕМ) =====
+        // ===== СТАРОЕ (НЕ ТРОГАЕМ) 3443=====
 
         public Dictionary<string, List<string>> MaterialNamesByGroup { get; set; } = new();
 
