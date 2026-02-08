@@ -218,12 +218,30 @@
                                      HorizontalContentAlignment="Stretch"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                     ScrollViewer.CanContentScroll="True"
-                                     VirtualizingPanel.IsVirtualizing="True"
-                                     VirtualizingPanel.VirtualizationMode="Recycling">
+                                                                          ScrollViewer.CanContentScroll="False">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border Background="{TemplateBinding Background}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
                                 <ListBox.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <VirtualizingStackPanel/>
+                                        <StackPanel/>
                                     </ItemsPanelTemplate>
                                 </ListBox.ItemsPanel>
                             </ListBox>
