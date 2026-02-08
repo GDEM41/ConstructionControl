@@ -1297,8 +1297,8 @@ namespace ConstructionControl
                 return;
 
             var mainRecords = journal
-                .Where(j => j.Category == "Основные")
-                 ToList();
+                .Where(j => j.Category == "Основные");
+
 
             var journalGroups = mainRecords
                 .Select(j => j.MaterialGroup)
