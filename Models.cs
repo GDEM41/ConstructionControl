@@ -39,6 +39,7 @@ namespace ConstructionControl
 
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
+        public List<string> SummaryVisibleGroups { get; set; } = new();
     }
 
     public class MaterialDemand

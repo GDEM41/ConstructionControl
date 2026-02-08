@@ -2,14 +2,17 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Controls.Primitives;
+using System.Windows.Shapes;
 public enum ExportMode
 {
     Merged,
@@ -57,6 +60,15 @@ namespace ConstructionControl
 
         private bool isLocked;
         private bool mergeEnabled = false;
+
+        private Grid summaryGrid;
+        private int summaryRowIndex;
+        private List<SummaryColumnInfo> summaryColumns;
+        private List<SummaryBlockInfo> summaryBlocks;
+        private int summaryTotalColumn;
+        private int summaryNotArrivedColumn;
+        private int summaryArrivedColumn;
+        private bool summaryFilterInitialized;
 
 
         public MainWindow()
@@ -139,7 +151,7 @@ namespace ConstructionControl
                 };
 
                 journal.Clear();
-
+                summaryFilterInitialized = false;
                 ArrivalPanel.SetObject(currentObject, journal);
 
 
@@ -995,6 +1007,7 @@ namespace ConstructionControl
         private void RestoreState(AppState state)
         {
             currentObject = state.CurrentObject;
+            summaryFilterInitialized = false;
             journal = state.Journal ?? new();
 
             ArrivalPanel.SetObject(currentObject, journal);
@@ -1021,6 +1034,7 @@ namespace ConstructionControl
                 File.ReadAllText(SaveFileName));
 
             currentObject = state?.CurrentObject;
+            summaryFilterInitialized = false;
             journal = state?.Journal ?? new();
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
@@ -1277,34 +1291,428 @@ namespace ConstructionControl
             if (currentObject == null)
                 return;
 
-            var groups = journal
+            var journalGroups = journal
                 .Where(j => j.Category == "Основные")
-                .GroupBy(j => j.MaterialGroup)
-                .OrderBy(g => g.Key);
+                .Select(j => j.MaterialGroup)
+                .Distinct()
+                .ToHashSet();
+
+            var groupOrder = currentObject.MaterialGroups
+                .Select(g => g.Name)
+                .Where(name => journalGroups.Contains(name))
+                .ToList();
+
+            if (groupOrder.Count == 0)
+                groupOrder = journalGroups.OrderBy(g => g).ToList();
+
+            RenderSummaryFilters(groupOrder);
+
+            var visibleGroups = currentObject.SummaryVisibleGroups.Count == 0
+                ? new List<string>()
+                : groupOrder.Where(g => currentObject.SummaryVisibleGroups.Contains(g)).ToList();
 
             RenderSummaryHeader();
 
-            foreach (var g in groups)
+            foreach (var g in visibleGroups)
             {
-                RenderMaterialGroup(g.Key);
+                RenderMaterialGroup(g);
 
-                foreach (var m in g.GroupBy(x => x.MaterialName))
+                var materialNames = GetMaterialsForGroup(g);
+
+                foreach (var mat in materialNames)
                 {
-                    string mat = m.Key;
-                    string unit = m.First().Unit;
+                    var records = journal
+                        .Where(j => j.Category == "Основные"
+                            && j.MaterialGroup == g
+                            && j.MaterialName == mat)
+                        .ToList();
 
-                    double totalArrival = m.Sum(x => x.Quantity);
+                    string unit = records.FirstOrDefault()?.Unit ?? string.Empty;
+                    string position = records
+                        .Select(r => r.Position)
+                        .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)) ?? string.Empty;
 
-                    RenderMaterialRow(mat, unit, totalArrival);
+                    double totalArrival = records.Sum(x => x.Quantity);
+
+                    RenderMaterialRow(g, mat, unit, totalArrival, position);
                 }
             }
 
             RenderSummaryFooter();
         }
-        void RenderSummaryHeader() { /* будет позже */ }
-        void RenderMaterialGroup(string group) { /* будет позже */ }
-        void RenderMaterialRow(string mat, string unit, double totalArrival) { /* будет позже */ }
-        void RenderSummaryFooter() { /* будет позже */ }
+        void RenderSummaryHeader()
+        {
+            var note = new TextBlock
+            {
+                Text = "Формат ячейки: план / пришло",
+                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            SummaryPanel.Children.Add(note);
+        }
+
+        void RenderMaterialGroup(string group)
+        {
+            summaryBlocks = BuildSummaryBlocks();
+            summaryColumns = new List<SummaryColumnInfo>();
+
+            var headerBorder = new Border
+            {
+                Background = GetColor(group),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 10, 0, 6)
+            };
+
+            headerBorder.Child = new TextBlock
+            {
+                Text = group,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(31, 41, 55))
+            };
+
+            SummaryPanel.Children.Add(headerBorder);
+
+            summaryGrid = new Grid
+            {
+                Margin = new Thickness(0, 0, 0, 14)
+            };
+
+            SummaryPanel.Children.Add(summaryGrid);
+
+            summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
+
+            int colIndex = 2;
+
+            foreach (var block in summaryBlocks)
+            {
+                foreach (var floor in block.Floors)
+                {
+                    summaryColumns.Add(new SummaryColumnInfo
+                    {
+                        ColumnIndex = colIndex,
+                        Block = block.Block,
+                        Floor = floor
+                    });
+                    summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+                    colIndex++;
+                }
+
+                summaryColumns.Add(new SummaryColumnInfo
+                {
+                    ColumnIndex = colIndex,
+                    Block = block.Block,
+                    IsBlockTotal = true
+                });
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+                colIndex++;
+            }
+
+            summaryTotalColumn = colIndex++;
+            summaryNotArrivedColumn = colIndex++;
+            summaryArrivedColumn = colIndex++;
+
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+
+            var headerBg = new SolidColorBrush(Color.FromRgb(243, 244, 246));
+
+            AddCell(summaryGrid, 0, 0, "Позиция", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+            AddCell(summaryGrid, 0, 1, "Наименование", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+
+            int blockStart = 2;
+            foreach (var block in summaryBlocks)
+            {
+                int blockColumns = block.Floors.Count + 1;
+
+                AddCell(summaryGrid, 0, blockStart, $"Блок {block.Block}", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, colspan: blockColumns);
+
+                int floorCol = blockStart;
+                foreach (var floor in block.Floors)
+                {
+                    AddCell(summaryGrid, 1, floorCol, GetFloorLabel(floor), bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+                    floorCol++;
+                }
+
+                AddCell(summaryGrid, 1, floorCol, "Итого", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+                blockStart += blockColumns;
+            }
+
+            AddCell(summaryGrid, 0, summaryTotalColumn, "Всего на здание", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+            AddCell(summaryGrid, 0, summaryNotArrivedColumn, "Не доехало", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+            AddCell(summaryGrid, 0, summaryArrivedColumn, "Пришло", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+
+            summaryRowIndex = 2;
+        }
+
+        void RenderMaterialRow(string group, string mat, string unit, double totalArrival, string position)
+        {
+            if (summaryGrid == null)
+                return;
+
+            summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            string demandKey = BuildDemandKey(group, mat);
+            var demand = GetOrCreateDemand(demandKey, unit);
+            var allocations = AllocateArrival(demand, totalArrival);
+
+            double totalPlanned = 0;
+            var blockTotals = new Dictionary<int, double>();
+
+            foreach (var block in summaryBlocks)
+            {
+                double blockTotal = 0;
+                foreach (var floor in block.Floors)
+                {
+                    blockTotal += GetDemandValue(demand, block.Block, floor);
+                }
+                blockTotals[block.Block] = blockTotal;
+                totalPlanned += blockTotal;
+            }
+
+            AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center);
+            AddCell(summaryGrid, summaryRowIndex, 1, mat, wrap: true);
+
+            foreach (var col in summaryColumns)
+            {
+                if (col.IsBlockTotal)
+                {
+                    double blockTotal = blockTotals.TryGetValue(col.Block, out var val) ? val : 0;
+                    AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right);
+                }
+                else if (col.Floor.HasValue)
+                {
+                    double plan = GetDemandValue(demand, col.Block, col.Floor.Value);
+                    double arrived = allocations.TryGetValue(col.Block, out var blockDict)
+                        && blockDict.TryGetValue(col.Floor.Value, out var arr)
+                        ? arr
+                        : 0;
+
+                    AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit);
+                }
+            }
+
+            double notArrived = Math.Max(0, totalPlanned - totalArrival);
+
+            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right);
+            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right);
+            AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right);
+
+            summaryRowIndex++;
+        }
+
+        void RenderSummaryFooter()
+        {
+            summaryGrid = null;
+            summaryColumns = null;
+            summaryBlocks = null;
+        }
+
+        private void RenderSummaryFilters(List<string> groups)
+        {
+            SummaryTypesPanel.Children.Clear();
+
+            if (currentObject == null)
+                return;
+
+            if (!summaryFilterInitialized && groups.Count > 0 && currentObject.SummaryVisibleGroups.Count == 0)
+            {
+                currentObject.SummaryVisibleGroups = groups.ToList();
+                summaryFilterInitialized = true;
+            }
+            else if (!summaryFilterInitialized)
+            {
+                summaryFilterInitialized = true;
+            }
+
+            foreach (var group in groups)
+            {
+                var check = new CheckBox
+                {
+                    Content = group,
+                    Margin = new Thickness(0, 0, 12, 6),
+                    IsChecked = currentObject.SummaryVisibleGroups.Contains(group)
+                };
+
+                check.Checked += SummaryGroupFilterChanged;
+                check.Unchecked += SummaryGroupFilterChanged;
+                check.Tag = group;
+
+                SummaryTypesPanel.Children.Add(check);
+            }
+        }
+
+        private void SummaryGroupFilterChanged(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null || sender is not CheckBox cb || cb.Tag is not string group)
+                return;
+
+            if (cb.IsChecked == true)
+            {
+                if (!currentObject.SummaryVisibleGroups.Contains(group))
+                    currentObject.SummaryVisibleGroups.Add(group);
+            }
+            else
+            {
+                currentObject.SummaryVisibleGroups.Remove(group);
+            }
+
+            RefreshSummaryTable();
+        }
+
+        private List<string> GetMaterialsForGroup(string group)
+        {
+            if (currentObject.MaterialNamesByGroup.TryGetValue(group, out var list) && list.Count > 0)
+                return list;
+
+            return journal
+                .Where(j => j.Category == "Основные" && j.MaterialGroup == group)
+                .Select(j => j.MaterialName)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+        }
+
+        private List<SummaryBlockInfo> BuildSummaryBlocks()
+        {
+            var blocks = new List<SummaryBlockInfo>();
+
+            if (currentObject == null || currentObject.BlocksCount <= 0)
+                return blocks;
+
+            for (int i = 1; i <= currentObject.BlocksCount; i++)
+            {
+                int floors = currentObject.SameFloorsInBlocks
+                    ? currentObject.FloorsPerBlock
+                    : (currentObject.FloorsByBlock.TryGetValue(i, out var f) ? f : 0);
+
+                var floorList = new List<int>();
+
+                if (currentObject.HasBasement)
+                    floorList.Add(0);
+
+                for (int floor = 1; floor <= floors; floor++)
+                    floorList.Add(floor);
+
+                blocks.Add(new SummaryBlockInfo
+                {
+                    Block = i,
+                    Floors = floorList
+                });
+            }
+
+            return blocks;
+        }
+
+        private Dictionary<int, Dictionary<int, double>> AllocateArrival(MaterialDemand demand, double totalArrival)
+        {
+            var allocations = new Dictionary<int, Dictionary<int, double>>();
+
+            if (summaryBlocks == null || summaryBlocks.Count == 0)
+                return allocations;
+
+            var levels = new List<int>();
+
+            if (currentObject?.HasBasement == true)
+                levels.Add(0);
+
+            int maxFloor = summaryBlocks
+                .SelectMany(b => b.Floors)
+                .Where(f => f > 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            for (int i = 1; i <= maxFloor; i++)
+                levels.Add(i);
+
+            double remaining = totalArrival;
+
+            foreach (var level in levels)
+            {
+                foreach (var block in summaryBlocks)
+                {
+                    if (!block.Floors.Contains(level))
+                        continue;
+
+                    double plan = GetDemandValue(demand, block.Block, level);
+                    double filled = Math.Min(plan, remaining);
+
+                    if (!allocations.ContainsKey(block.Block))
+                        allocations[block.Block] = new Dictionary<int, double>();
+
+                    allocations[block.Block][level] = filled;
+                    remaining -= filled;
+
+                    if (remaining <= 0)
+                        return allocations;
+                }
+            }
+
+            return allocations;
+        }
+
+        private string BuildDemandKey(string group, string material) => $"{group}::{material}";
+
+        private MaterialDemand GetOrCreateDemand(string demandKey, string unit)
+        {
+            if (!currentObject.Demand.TryGetValue(demandKey, out var demand))
+            {
+                demand = new MaterialDemand
+                {
+                    Unit = unit,
+                    Floors = new Dictionary<int, Dictionary<int, double>>()
+                };
+
+                currentObject.Demand[demandKey] = demand;
+            }
+
+            if (string.IsNullOrWhiteSpace(demand.Unit))
+                demand.Unit = unit;
+
+            return demand;
+        }
+
+        private double GetDemandValue(MaterialDemand demand, int block, int floor)
+        {
+            if (demand.Floors.TryGetValue(block, out var floors)
+                && floors.TryGetValue(floor, out var value))
+                return value;
+
+            return 0;
+        }
+
+        private string GetFloorLabel(int floor)
+        {
+            return floor == 0 ? "Подвал" : floor.ToString();
+        }
+
+        private class SummaryBlockInfo
+        {
+            public int Block { get; set; }
+            public List<int> Floors { get; set; } = new();
+        }
+
+        private class SummaryColumnInfo
+        {
+            public int ColumnIndex { get; set; }
+            public int Block { get; set; }
+            public int? Floor { get; set; }
+            public bool IsBlockTotal { get; set; }
+        }
+
+        private class DemandCellTag
+        {
+            public string DemandKey { get; set; }
+            public int Block { get; set; }
+            public int Floor { get; set; }
+            public string Unit { get; set; }
+        }
 
         private void Undo_Click(object sender, RoutedEventArgs e)
         {
@@ -1327,7 +1735,7 @@ namespace ConstructionControl
             RestoreState(next);
             UpdateUndoRedoButtons();
         }
-        void AddCell(Grid g, int r, int c, string text, int rowspan = 1, bool wrap = false, Brush bg = null, TextAlignment align = TextAlignment.Left)
+        void AddCell(Grid g, int r, int c, string text, int rowspan = 1, bool wrap = false, Brush bg = null, TextAlignment align = TextAlignment.Left, FontWeight? fontWeight = null, int colspan = 1)
         {
             var tb = new TextBlock
             {
@@ -1337,7 +1745,8 @@ namespace ConstructionControl
                 TextWrapping = TextWrapping.Wrap,
                 TextTrimming = TextTrimming.None
             };
-
+            if (fontWeight.HasValue)
+                tb.FontWeight = fontWeight.Value;
 
             var border = new Border
             {
@@ -1355,9 +1764,121 @@ namespace ConstructionControl
             if (rowspan > 1)
                 Grid.SetRowSpan(border, rowspan);
 
+            if (colspan > 1)
+                Grid.SetColumnSpan(border, colspan);
+
+
+            g.Children.Add(border);
+        }
+        void AddDiagonalDemandCell(Grid g, int r, int c, double plan, double arrived, string demandKey, int block, int floor, string unit)
+        {
+            var container = new Grid();
+
+            var line = new Line
+            {
+                X1 = 0,
+                Y2 = 0,
+                Stroke = new SolidColorBrush(Color.FromRgb(209, 213, 219)),
+                StrokeThickness = 1
+            };
+
+            line.SetBinding(Line.X2Property, new Binding("ActualWidth")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Grid), 1)
+            });
+
+            line.SetBinding(Line.Y1Property, new Binding("ActualHeight")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Grid), 1)
+            });
+
+            container.Children.Add(line);
+
+            var planBox = new TextBox
+            {
+                Text = FormatNumber(plan),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Margin = new Thickness(4, 2, 2, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                MinWidth = 30,
+                FontSize = 11,
+                Tag = new DemandCellTag
+                {
+                    DemandKey = demandKey,
+                    Block = block,
+                    Floor = floor,
+                    Unit = unit
+                }
+            };
+
+            planBox.LostFocus += DemandCell_LostFocus;
+
+            var arrivedText = new TextBlock
+            {
+                Text = FormatNumber(arrived),
+                Margin = new Thickness(2, 2, 4, 2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)),
+                FontSize = 11
+            };
+
+            container.Children.Add(planBox);
+            container.Children.Add(arrivedText);
+
+            var border = new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                Background = Brushes.White,
+                MinHeight = 34,
+                Child = container
+            };
+
+            Grid.SetRow(border, r);
+            Grid.SetColumn(border, c);
+
             g.Children.Add(border);
         }
 
+        private void DemandCell_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TextBox tb || tb.Tag is not DemandCellTag tag)
+                return;
+
+            var text = tb.Text?.Trim() ?? string.Empty;
+            double value = ParseNumber(text);
+
+            var demand = GetOrCreateDemand(tag.DemandKey, tag.Unit);
+
+            if (!demand.Floors.ContainsKey(tag.Block))
+                demand.Floors[tag.Block] = new Dictionary<int, double>();
+
+            demand.Floors[tag.Block][tag.Floor] = value;
+
+            RefreshSummaryTable();
+        }
+
+        private double ParseNumber(string text)
+        {
+            if (double.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out var value))
+                return value;
+
+            if (double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out value))
+                return value;
+
+            return 0;
+        }
+
+        private string FormatNumber(double value)
+        {
+            if (Math.Abs(value % 1) < 0.0001)
+                return value.ToString("0", CultureInfo.CurrentCulture);
+
+            return value.ToString("0.##", CultureInfo.CurrentCulture);
+        }
 
 
         Color GetSoftColor(string ttn)
