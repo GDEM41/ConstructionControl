@@ -134,9 +134,27 @@ namespace ConstructionControl
                 return;
 
             var floors = GetFloorsForBlock(block);
-            FloorSelector.ItemsSource = floors;
+            04FloorSelector.ItemsSource = floors;
             if (floors.Count > 0)
                 FloorSelector.SelectedIndex = 0;
+            PopulateFloorsRangeSelector(floors);
+        }
+
+        private void PopulateFloorsRangeSelector(List<int> floors)
+        {
+            var options = floors
+                .Select(floor => new FloorOption(floor, GetFloorLabel(floor)))
+                .ToList();
+
+            FloorsRangeSelector.ItemsSource = options;
+            FloorsRangeSelector.SelectedItems.Clear();
+            foreach (var option in options)
+                FloorsRangeSelector.SelectedItems.Add(option);
+        }
+
+        private static string GetFloorLabel(int floor)
+        {
+            return floor == 0 ? "Подвал" : floor.ToString();
         }
 
         private string ToExcelColumn(int columnNumber)
@@ -596,6 +614,13 @@ namespace ConstructionControl
                 return;
             }
 
+            var selectedFloors = GetSelectedFloorsForRange();
+            if (selectedFloors.Count == 0)
+            {
+                MessageBox.Show("Выберите этажи в таблице.");
+                return;
+            }
+
             var selectedCells = PreviewGrid.SelectedCells
                 .Where(c => c.Column != null)
                 .OrderBy(c => c.Column.DisplayIndex)
@@ -614,65 +639,73 @@ namespace ConstructionControl
                 return;
             }
 
-            var rowView = selectedCells[0].Item as DataRowView;
-            if (rowView == null)
+            if (selectedCells.Count != selectedFloors.Count)
             {
-                MessageBox.Show("Не удалось прочитать строку.");
+                MessageBox.Show($"Выберите {selectedFloors.Count} ячеек по этажам. Сейчас выбрано: {selectedCells.Count}.");
                 return;
             }
 
-            string material = rowView.Row[_materialColumn.Value - 1]?.ToString()?.Trim();
-            if (string.IsNullOrWhiteSpace(material))
-            {
-                MessageBox.Show("В выбранной строке нет наименования материала.");
-                return;
-            }
-
-            string unit = _unitColumn != null
-                ? rowView.Row[_unitColumn.Value - 1]?.ToString()
-                : "шт";
-
-            var floors = GetFloorsForBlock(block);
-            if (floors.Count == 0)
-            {
-                MessageBox.Show("В выбранном блоке нет этажей.");
-                return;
-            }
-
-            if (selectedCells.Count != floors.Count)
-            {
-                MessageBox.Show($"Выберите {floors.Count} ячеек по этажам. Сейчас выбрано: {selectedCells.Count}.");
-                return;
-            }
+            var selectedColumns = selectedCells
+                  .Select(cell => cell.Column.DisplayIndex + 1)
+                  .ToList();
 
             string group = SheetsList.SelectedItem.ToString();
-            string demandKey = $"{group}::{material}";
 
-            if (!_currentObject.Demand.TryGetValue(demandKey, out var demand))
+               int startRow = firstRow + 1;
+               using var wb = new XLWorkbook(_filePath);
+               var ws = wb.Worksheet(group);
+               var range = ws.RangeUsed();
+               if (range == null)
+                return;
+
+
+            int lastRow = range.RowCount();
+            int importedRows = 0;
+
+            for (int r = startRow; r <= lastRow; r++)
             {
-                demand = new MaterialDemand
+                string material = ws.Cell(r, _materialColumn.Value).GetValue<string>().Trim();
+                if (string.IsNullOrWhiteSpace(material))
+                    break;
+
+                string unit = _unitColumn != null
+                ? ws.Cell(r, _unitColumn.Value).GetValue<string>()
+                : "шт";
+
+                string demandKey = $"{group}::{material}";
+
+                if (!_currentObject.Demand.TryGetValue(demandKey, out var demand))
                 {
-                    Unit = unit,
-                    Floors = new Dictionary<int, Dictionary<int, double>>()
-                };
-                _currentObject.Demand[demandKey] = demand;
+                    demand = new MaterialDemand
+                    {
+                        Unit = unit,
+                        Floors = new Dictionary<int, Dictionary<int, double>>()
+                    };
+                    _currentObject.Demand[demandKey] = demand;
+                }
+
+                if (string.IsNullOrWhiteSpace(demand.Unit))
+                    demand.Unit = unit;
+
+                if (!demand.Floors.ContainsKey(block))
+                    demand.Floors[block] = new Dictionary<int, double>();
+
+                for (int i = 0; i < selectedColumns.Count; i++)
+                {
+                    string cellText = ws.Cell(r, selectedColumns[i]).GetValue<string>();
+                    if (!double.TryParse(cellText, out var value))
+                        value = 0;
+
+                    demand.Floors[block][selectedFloors[i]] = value;
+                }
+
+                EnsureMaterialGroup(group, material);
+                importedRows++;
             }
-
-            if (string.IsNullOrWhiteSpace(demand.Unit))
-                demand.Unit = unit;
-
-            if (!demand.Floors.ContainsKey(block))
-                demand.Floors[block] = new Dictionary<int, double>();
-
-            for (int i = 0; i < floors.Count; i++)
-            {
-                double value = ParseCellValue(selectedCells[i]);
-                demand.Floors[block][floors[i]] = value;
-            }
-            EnsureMaterialGroup(group, material);
+            
             DemandUpdated = true;
 
-            MessageBox.Show($"Значения по этажам для блока {block} обновлены.");
+            MessageBox.Show($"Значения по этажам для блока {block} обновлены. Строк обработано: {importedRows}.");
         }
 
         private List<int> GetFloorsForBlock(int block)
@@ -691,19 +724,7 @@ namespace ConstructionControl
             return list;
         }
 
-        private double ParseCellValue(DataGridCellInfo cell)
-        {
-            if (cell.Item is not DataRowView rowView)
-                return 0;
-
-            int columnIndex = cell.Column.DisplayIndex;
-            string text = rowView.Row[columnIndex]?.ToString() ?? string.Empty;
-
-            if (double.TryParse(text, out var value))
-                return value;
-
-            return 0;
-        }
+        
 
         private void EnsureMaterialGroup(string group, string material)
         {
@@ -721,6 +742,40 @@ namespace ConstructionControl
             if (!_currentObject.MaterialNamesByGroup[group].Contains(material))
                 _currentObject.MaterialNamesByGroup[group].Add(material);
         }
+
+
+        private List<int> GetSelectedFloorsForRange()
+        {
+            if (FloorsRangeSelector.Items.Count == 0)
+                return new List<int>();
+
+            var selected = FloorsRangeSelector.SelectedItems
+                .Cast<FloorOption>()
+                .Select(option => option.Value)
+                .ToHashSet();
+
+            if (selected.Count == 0)
+                return new List<int>();
+
+            return FloorsRangeSelector.Items
+                .Cast<FloorOption>()
+                .Where(option => selected.Contains(option.Value))
+                .Select(option => option.Value)
+                .ToList();
+        }
+
+        private sealed class FloorOption
+        {
+            public FloorOption(int value, string label)
+            {
+                Value = value;
+                Label = label;
+            }
+
+            public int Value { get; }
+            public string Label { get; }
+        } 
+
         private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
         {
             if (SheetsList.SelectedItem == null)

@@ -469,12 +469,25 @@
                                        Width="80"
                                           Margin="0,0,10,0"
                                           SelectionChanged="BlockSelector_SelectionChanged"/>
-                                <TextBlock Text="Этаж"
+
+                                                                <TextBlock Text="Этажи в таблице"
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
-                                <ComboBox x:Name="FloorSelector"
-                                          Width="80"
-                                          Margin="0,0,10,0"/>
+                                <ListBox x:Name="FloorsRangeSelector"
+                                         Width="150"
+                                         Height="25"
+                                         SelectionMode="Extended"
+                                         DisplayMemberPath="Label"
+                                         BorderBrush="#D1D5DB"
+                                         BorderThickness="1"
+                                         Background="White"
+                                         Margin="0,0,10,0">
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                </ListBox>
                                 <Button Content="📊 По этажам"
                                         Tag="DemandRange"
                                         Style="{StaticResource PillButton}"
