@@ -419,7 +419,7 @@
                                   Grid.Row="1"
                                   AutoGenerateColumns="True"
                                   SelectionUnit="Cell"
-                                  SelectionMode="Single"
+                                  SelectionMode="Extended"
                                   HeadersVisibility="Column"
                                   GridLinesVisibility="All"
                                   HorizontalGridLinesBrush="#E5E7EB"
@@ -458,6 +458,10 @@
                                            FontWeight="SemiBold"
                                            VerticalAlignment="Center"
                                            Margin="0,0,8,0"/>
+                                <TextBlock Text="(Ctrl — добавить ячейки, Shift — диапазон в одной строке)"
+                                           Foreground="#6B7280"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,12,0"/>
                                 <TextBlock Text="Блок"
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
