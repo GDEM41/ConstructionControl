@@ -134,9 +134,7 @@ namespace ConstructionControl
                 return;
 
             var floors = GetFloorsForBlock(block);
-            04FloorSelector.ItemsSource = floors;
-            if (floors.Count > 0)
-                FloorSelector.SelectedIndex = 0;
+
             PopulateFloorsRangeSelector(floors);
         }
 
@@ -512,11 +510,14 @@ namespace ConstructionControl
                 return;
             }
 
-            if (FloorSelector.SelectedItem is not int floor)
+            var selectedFloors = GetSelectedFloorsForRange();
+            if (selectedFloors.Count != 1)
             {
-                MessageBox.Show("Выберите этаж для заполнения.");
+                MessageBox.Show("Выберите один этаж для заполнения.");
                 return;
             }
+            int floor = selectedFloors[0];
+
 
             if (SheetsList.SelectedItem == null)
             {
