@@ -462,11 +462,19 @@
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
                                 <ComboBox x:Name="BlockSelector"
+                                       Width="80"
+                                          Margin="0,0,10,0"
+                                          SelectionChanged="BlockSelector_SelectionChanged"/>
+                                <TextBlock Text="Этаж"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                                <ComboBox x:Name="FloorSelector"
                                           Width="80"
                                           Margin="0,0,10,0"/>
                                 <Button Content="📊 По этажам"
                                         Tag="DemandRange"
                                         Style="{StaticResource PillButton}"
+                                        
                                         Click="SelectCell_Click"/>
                             </StackPanel>
                         </StackPanel>

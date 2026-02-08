@@ -122,6 +122,21 @@ namespace ConstructionControl
             BlockSelector.ItemsSource = blocks;
             if (blocks.Count > 0)
                 BlockSelector.SelectedIndex = 0;
+            PopulateFloors();
+        }
+
+        private void PopulateFloors()
+        {
+            if (_currentObject == null)
+                return;
+
+            if (BlockSelector.SelectedItem is not int block)
+                return;
+
+            var floors = GetFloorsForBlock(block);
+            FloorSelector.ItemsSource = floors;
+            if (floors.Count > 0)
+                FloorSelector.SelectedIndex = 0;
         }
 
         private string ToExcelColumn(int columnNumber)
@@ -370,7 +385,10 @@ namespace ConstructionControl
             CurrentTemplateText.Text = "";
         }
 
-
+        private void BlockSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            PopulateFloors();
+        }
 
 
         private void SelectCell_Click(object sender, RoutedEventArgs e)
@@ -451,7 +469,105 @@ namespace ConstructionControl
                 case "DemandRange":
                     ApplyDemandRange();
                     break;
+                case "DemandColumn":
+                    ApplyDemandColumn();
+                    break;
             }
+        }
+        private void ApplyDemandColumn()
+        {
+            if (_currentObject == null)
+            {
+                MessageBox.Show("Сначала выберите объект.");
+                return;
+            }
+
+            if (_materialColumn == null)
+            {
+                MessageBox.Show("Сначала укажите колонку «Наименование».");
+                return;
+            }
+
+            if (BlockSelector.SelectedItem is not int block)
+            {
+                MessageBox.Show("Выберите блок для заполнения.");
+                return;
+            }
+
+            if (FloorSelector.SelectedItem is not int floor)
+            {
+                MessageBox.Show("Выберите этаж для заполнения.");
+                return;
+            }
+
+            if (SheetsList.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите лист Excel.");
+                return;
+            }
+
+            if (PreviewGrid.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("Сначала выберите верхнюю ячейку столбца.");
+                return;
+            }
+
+            var selectedCell = PreviewGrid.SelectedCells[0];
+            if (selectedCell.Column == null)
+            {
+                MessageBox.Show("Выберите ЯЧЕЙКУ, а не строку.");
+                return;
+            }
+
+            int startRow = PreviewGrid.Items.IndexOf(selectedCell.Item) + 1;
+            int quantityColumn = selectedCell.Column.DisplayIndex + 1;
+
+            string sheetName = SheetsList.SelectedItem.ToString();
+            using var wb = new XLWorkbook(_filePath);
+            var ws = wb.Worksheet(sheetName);
+            var range = ws.RangeUsed();
+            if (range == null)
+                return;
+
+            int lastRow = range.RowCount();
+            string group = sheetName;
+
+            for (int r = startRow; r <= lastRow; r++)
+            {
+                string material = ws.Cell(r, _materialColumn.Value).GetValue<string>().Trim();
+                if (string.IsNullOrWhiteSpace(material))
+                    continue;
+
+                if (!double.TryParse(ws.Cell(r, quantityColumn).GetValue<string>(), out double value))
+                    continue;
+
+                string unit = _unitColumn != null
+                    ? ws.Cell(r, _unitColumn.Value).GetValue<string>()
+                    : "шт";
+
+                string demandKey = $"{group}::{material}";
+                if (!_currentObject.Demand.TryGetValue(demandKey, out var demand))
+                {
+                    demand = new MaterialDemand
+                    {
+                        Unit = unit,
+                        Floors = new Dictionary<int, Dictionary<int, double>>()
+                    };
+                    _currentObject.Demand[demandKey] = demand;
+                }
+
+                if (string.IsNullOrWhiteSpace(demand.Unit))
+                    demand.Unit = unit;
+
+                if (!demand.Floors.ContainsKey(block))
+                    demand.Floors[block] = new Dictionary<int, double>();
+
+                demand.Floors[block][floor] = value;
+                EnsureMaterialGroup(group, material);
+            }
+
+            DemandUpdated = true;
+            MessageBox.Show($"Кол-во по этажу {floor} для блока {block} импортировано.");
         }
 
         private void ApplyDemandRange()
