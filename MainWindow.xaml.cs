@@ -69,6 +69,7 @@ namespace ConstructionControl
         private int summaryNotArrivedColumn;
         private int summaryArrivedColumn;
         private bool summaryFilterInitialized;
+        private bool summaryFilterUpdating;
 
 
         public MainWindow()
@@ -512,6 +513,7 @@ namespace ConstructionControl
                 ArrivalLiveTable.CanUserAddRows = false;
                 ArrivalLiveTable.CanUserDeleteRows = false;
             }
+            RefreshSummaryTable();
         }
 
 
@@ -525,6 +527,7 @@ namespace ConstructionControl
                 ArrivalLiveTable.CanUserAddRows = true;
                 ArrivalLiveTable.CanUserDeleteRows = true;
             }
+            RefreshSummaryTable();
         }
 
 
@@ -1166,7 +1169,7 @@ namespace ConstructionControl
             var sheetNames = wb.Worksheets
                 .Select(s => s.Name)
                 .ToList();
-            var importWindow = new ExcelImportWindow(dlg.FileName, sheetNames)
+            var importWindow = new ExcelImportWindow(dlg.FileName, sheetNames, currentObject)
             {
                 Owner = this
             };
@@ -1237,9 +1240,8 @@ namespace ConstructionControl
             RefreshSummaryTable();
             ArrivalPanel.SetObject(currentObject, journal);
 
-
-
-
+            if (importWindow.DemandUpdated)
+                RefreshSummaryTable();
 
 
         }
@@ -1399,7 +1401,7 @@ namespace ConstructionControl
                         Block = block.Block,
                         Floor = floor
                     });
-                    summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+                    summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
                     colIndex++;
                 }
 
@@ -1409,7 +1411,7 @@ namespace ConstructionControl
                     Block = block.Block,
                     IsBlockTotal = true
                 });
-                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
                 colIndex++;
             }
 
@@ -1516,52 +1518,53 @@ namespace ConstructionControl
 
         private void RenderSummaryFilters(List<string> groups)
         {
-            SummaryTypesPanel.Children.Clear();
-
+            
             if (currentObject == null)
                 return;
 
-            if (!summaryFilterInitialized && groups.Count > 0 && currentObject.SummaryVisibleGroups.Count == 0)
+            summaryFilterUpdating = true;
+            SummaryTypeSelector.ItemsSource = null;
+            SummaryTypeSelector.ItemsSource = groups;
+
+            if (groups.Count == 0)
             {
-                currentObject.SummaryVisibleGroups = groups.ToList();
-                summaryFilterInitialized = true;
-            }
-            else if (!summaryFilterInitialized)
-            {
-                summaryFilterInitialized = true;
+                SummaryTypeSelector.SelectedItem = null;
+                summaryFilterUpdating = false;
+                return;
             }
 
-            foreach (var group in groups)
+            string selectedGroup = currentObject.SummaryVisibleGroups.FirstOrDefault();
+
+            if (!summaryFilterInitialized)
             {
-                var check = new CheckBox
+                if (string.IsNullOrWhiteSpace(selectedGroup))
                 {
-                    Content = group,
-                    Margin = new Thickness(0, 0, 12, 6),
-                    IsChecked = currentObject.SummaryVisibleGroups.Contains(group)
-                };
+                    selectedGroup = groups[0];
+                    currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
+                }
 
-                check.Checked += SummaryGroupFilterChanged;
-                check.Unchecked += SummaryGroupFilterChanged;
-                check.Tag = group;
-
-                SummaryTypesPanel.Children.Add(check);
+                summaryFilterInitialized = true;
             }
+            if (!groups.Contains(selectedGroup))
+            {
+                selectedGroup = groups[0];
+                currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
+
+            }
+
+            currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
+            SummaryTypeSelector.SelectedItem = selectedGroup;
+            summaryFilterUpdating = false;
         }
 
-        private void SummaryGroupFilterChanged(object sender, RoutedEventArgs e)
+        private void SummaryTypeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (currentObject == null || sender is not CheckBox cb || cb.Tag is not string group)
+            if (summaryFilterUpdating || currentObject == null)
                 return;
 
-            if (cb.IsChecked == true)
-            {
-                if (!currentObject.SummaryVisibleGroups.Contains(group))
-                    currentObject.SummaryVisibleGroups.Add(group);
-            }
-            else
-            {
-                currentObject.SummaryVisibleGroups.Remove(group);
-            }
+            if (SummaryTypeSelector.SelectedItem is not string group)
+                return;
+            currentObject.SummaryVisibleGroups = new List<string> { group };
 
             RefreshSummaryTable();
         }
@@ -1772,14 +1775,20 @@ namespace ConstructionControl
         }
         void AddDiagonalDemandCell(Grid g, int r, int c, double plan, double arrived, string demandKey, int block, int floor, string unit)
         {
-            var container = new Grid();
+            var container = new Grid
+            {
+                SnapsToDevicePixels = true,
+                UseLayoutRounding = true
+            };
 
             var line = new Line
             {
                 X1 = 0,
                 Y2 = 0,
                 Stroke = new SolidColorBrush(Color.FromRgb(209, 213, 219)),
-                StrokeThickness = 1
+                StrokeThickness = 1,
+                SnapsToDevicePixels = true,
+                IsHitTestVisible = false
             };
 
             line.SetBinding(Line.X2Property, new Binding("ActualWidth")
@@ -1799,11 +1808,13 @@ namespace ConstructionControl
                 Text = FormatNumber(plan),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                Margin = new Thickness(4, 2, 2, 2),
+                Margin = new Thickness(2, 1, 2, 1),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
-                MinWidth = 30,
+                MinWidth = 22,
                 FontSize = 11,
+                IsReadOnly = isLocked,
+                IsEnabled = !isLocked,
                 Tag = new DemandCellTag
                 {
                     DemandKey = demandKey,
@@ -1818,7 +1829,7 @@ namespace ConstructionControl
             var arrivedText = new TextBlock
             {
                 Text = FormatNumber(arrived),
-                Margin = new Thickness(2, 2, 4, 2),
+                Margin = new Thickness(2, 1, 2, 1),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)),
@@ -1833,7 +1844,7 @@ namespace ConstructionControl
                 BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = Brushes.White,
-                MinHeight = 34,
+                MinHeight = 24,
                 Child = container
             };
 
@@ -1847,6 +1858,10 @@ namespace ConstructionControl
         {
             if (sender is not TextBox tb || tb.Tag is not DemandCellTag tag)
                 return;
+
+            if (isLocked)
+                return;
+
 
             var text = tb.Text?.Trim() ?? string.Empty;
             double value = ParseNumber(text);

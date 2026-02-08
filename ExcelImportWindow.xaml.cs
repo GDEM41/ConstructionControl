@@ -27,8 +27,11 @@ namespace ConstructionControl
 
 
         private readonly string _filePath;
+        private readonly ProjectObject _currentObject;
 
-        public ExcelImportWindow(string filePath, List<string> sheets)
+        public bool DemandUpdated { get; private set; }
+
+        public ExcelImportWindow(string filePath, List<string> sheets, ProjectObject currentObject)
         {
             InitializeComponent();
             LoadTemplatesList();
@@ -38,8 +41,10 @@ namespace ConstructionControl
 
 
             _filePath = filePath;
+            _currentObject = currentObject;
             FilePathText.Text = filePath;
             SheetsList.ItemsSource = sheets;
+            PopulateBlocks();
         }
 
         private void ImportTypeChanged(object sender, RoutedEventArgs e)
@@ -107,6 +112,18 @@ namespace ConstructionControl
 
             SelectedCellText.Text = $"Выбрана ячейка: {excelColumn}{rowIndex}";
         }
+
+        private void PopulateBlocks()
+        {
+            if (_currentObject == null)
+                return;
+
+            var blocks = Enumerable.Range(1, Math.Max(0, _currentObject.BlocksCount)).ToList();
+            BlockSelector.ItemsSource = blocks;
+            if (blocks.Count > 0)
+                BlockSelector.SelectedIndex = 0;
+        }
+
         private string ToExcelColumn(int columnNumber)
         {
             string columnName = string.Empty;
@@ -431,7 +448,162 @@ namespace ConstructionControl
                     _passportRow = row;
                     MessageBox.Show($"📄 Паспорт: строка {row} → вправо");
                     break;
+                case "DemandRange":
+                    ApplyDemandRange();
+                    break;
             }
+        }
+
+        private void ApplyDemandRange()
+        {
+            if (_currentObject == null)
+            {
+                MessageBox.Show("Сначала выберите объект.");
+                return;
+            }
+
+            if (_materialColumn == null)
+            {
+                MessageBox.Show("Сначала укажите колонку «Наименование».");
+                return;
+            }
+
+            if (BlockSelector.SelectedItem is not int block)
+            {
+                MessageBox.Show("Выберите блок для заполнения.");
+                return;
+            }
+
+            if (SheetsList.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите лист Excel.");
+                return;
+            }
+
+            var selectedCells = PreviewGrid.SelectedCells
+                .Where(c => c.Column != null)
+                .OrderBy(c => c.Column.DisplayIndex)
+                .ToList();
+
+            if (selectedCells.Count == 0)
+            {
+                MessageBox.Show("Выберите диапазон значений для этажей.");
+                return;
+            }
+
+            int firstRow = PreviewGrid.Items.IndexOf(selectedCells[0].Item);
+            if (selectedCells.Any(c => PreviewGrid.Items.IndexOf(c.Item) != firstRow))
+            {
+                MessageBox.Show("Выберите значения в одной строке (один материал).");
+                return;
+            }
+
+            var rowView = selectedCells[0].Item as DataRowView;
+            if (rowView == null)
+            {
+                MessageBox.Show("Не удалось прочитать строку.");
+                return;
+            }
+
+            string material = rowView.Row[_materialColumn.Value - 1]?.ToString()?.Trim();
+            if (string.IsNullOrWhiteSpace(material))
+            {
+                MessageBox.Show("В выбранной строке нет наименования материала.");
+                return;
+            }
+
+            string unit = _unitColumn != null
+                ? rowView.Row[_unitColumn.Value - 1]?.ToString()
+                : "шт";
+
+            var floors = GetFloorsForBlock(block);
+            if (floors.Count == 0)
+            {
+                MessageBox.Show("В выбранном блоке нет этажей.");
+                return;
+            }
+
+            if (selectedCells.Count != floors.Count)
+            {
+                MessageBox.Show($"Выберите {floors.Count} ячеек по этажам. Сейчас выбрано: {selectedCells.Count}.");
+                return;
+            }
+
+            string group = SheetsList.SelectedItem.ToString();
+            string demandKey = $"{group}::{material}";
+
+            if (!_currentObject.Demand.TryGetValue(demandKey, out var demand))
+            {
+                demand = new MaterialDemand
+                {
+                    Unit = unit,
+                    Floors = new Dictionary<int, Dictionary<int, double>>()
+                };
+                _currentObject.Demand[demandKey] = demand;
+            }
+
+            if (string.IsNullOrWhiteSpace(demand.Unit))
+                demand.Unit = unit;
+
+            if (!demand.Floors.ContainsKey(block))
+                demand.Floors[block] = new Dictionary<int, double>();
+
+            for (int i = 0; i < floors.Count; i++)
+            {
+                double value = ParseCellValue(selectedCells[i]);
+                demand.Floors[block][floors[i]] = value;
+            }
+            EnsureMaterialGroup(group, material);
+            DemandUpdated = true;
+
+            MessageBox.Show($"Значения по этажам для блока {block} обновлены.");
+        }
+
+        private List<int> GetFloorsForBlock(int block)
+        {
+            var list = new List<int>();
+            if (_currentObject.HasBasement)
+                list.Add(0);
+
+            int floors = _currentObject.SameFloorsInBlocks
+                ? _currentObject.FloorsPerBlock
+                : (_currentObject.FloorsByBlock.TryGetValue(block, out var f) ? f : 0);
+
+            for (int floor = 1; floor <= floors; floor++)
+                list.Add(floor);
+
+            return list;
+        }
+
+        private double ParseCellValue(DataGridCellInfo cell)
+        {
+            if (cell.Item is not DataRowView rowView)
+                return 0;
+
+            int columnIndex = cell.Column.DisplayIndex;
+            string text = rowView.Row[columnIndex]?.ToString() ?? string.Empty;
+
+            if (double.TryParse(text, out var value))
+                return value;
+
+            return 0;
+        }
+
+        private void EnsureMaterialGroup(string group, string material)
+        {
+            if (!_currentObject.MaterialGroups.Any(g => g.Name == group))
+            {
+                _currentObject.MaterialGroups.Add(new MaterialGroup
+                {
+                    Name = group
+                });
+            }
+
+            if (!_currentObject.MaterialNamesByGroup.ContainsKey(group))
+                _currentObject.MaterialNamesByGroup[group] = new List<string>();
+
+            if (!_currentObject.MaterialNamesByGroup[group].Contains(material))
+                _currentObject.MaterialNamesByGroup[group].Add(material);
         }
         private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
         {

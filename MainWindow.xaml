@@ -166,18 +166,24 @@
                     BorderBrush="#E5E7EB"
                     BorderThickness="1">
 
-                <TreeView x:Name="ObjectsTree"
-                          SelectedItemChanged="ObjectsTree_SelectedItemChanged">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              CanContentScroll="True">
+                    <TreeView x:Name="ObjectsTree"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              SelectedItemChanged="ObjectsTree_SelectedItemChanged">
 
-                    <TreeView.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="Переименовать"
-                                      Click="RenameTreeItem_Click"/>
-                            <MenuItem Header="Удалить"
-                                      Click="DeleteTreeItem_Click"/>
-                        </ContextMenu>
-                    </TreeView.ContextMenu>
-                </TreeView>
+                        <TreeView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Переименовать"
+                                          Click="RenameTreeItem_Click"/>
+                                <MenuItem Header="Удалить"
+                                          Click="DeleteTreeItem_Click"/>
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                    </TreeView>
+                </ScrollViewer>
             </Border>
 
             <!-- ===== КОНТЕНТ ===== -->
@@ -198,16 +204,20 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="0,0,0,8">
-                                <TextBlock Text="Типы для отображения"
+                                <TextBlock Text="Тип для отображения"
                                            FontWeight="SemiBold"
                                            Foreground="#374151"
                                            Margin="0,0,0,6"/>
-                                <WrapPanel x:Name="SummaryTypesPanel"/>
+                                <ComboBox x:Name="SummaryTypeSelector"
+                                          Width="260"
+                                          SelectionChanged="SummaryTypeSelector_SelectionChanged"/>
                             </StackPanel>
 
                             <ScrollViewer x:Name="SummaryScroll"
                                           VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Auto">
+                                          HorizontalScrollBarVisibility="Auto"
+                                          CanContentScroll="True"
+                                          PanningMode="Both">
                                 <StackPanel x:Name="SummaryPanel"/>
                             </ScrollViewer>
                         </DockPanel>

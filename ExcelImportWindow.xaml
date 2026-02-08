@@ -429,28 +429,47 @@
                                   SelectedCellsChanged="PreviewGrid_SelectedCellsChanged"/>
 
                         <!-- Кнопки выбора -->
-                        <WrapPanel Grid.Row="2"
-           Margin="0,8,0,0"
-           HorizontalAlignment="Left">
+                        <StackPanel Grid.Row="2"
+                                    Margin="0,8,0,0"
+                                    HorizontalAlignment="Left">
+                            <WrapPanel>
 
-                            <!-- Группа 1 -->
-                            <Button Content="🧾 Позиция" Tag="Position" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="🧱 Наименование" Tag="Material" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="🏷 СТБ" Tag="Stb" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="📐 Ед. изм" Tag="Unit" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="📦 Объем" Tag="Volume" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <!-- Группа 1 -->
+                                <Button Content="🧾 Позиция" Tag="Position" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="🧱 Наименование" Tag="Material" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="🏷 СТБ" Tag="Stb" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="📐 Ед. изм" Tag="Unit" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="📦 Объем" Tag="Volume" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
 
-                            <!-- разделитель -->
-                            <Rectangle Width="20"/>
+                                <!-- разделитель -->
+                                <Rectangle Width="20"/>
 
-                            <!-- Группа 2 -->
-                            <Button Content="📅 Дата" Tag="Date" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="🚚 ТТН" Tag="Ttn" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="🏭 Поставщик" Tag="Supplier" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="📄 Паспорт" Tag="Passport" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
-                            <Button Content="🔢 Кол-во" Tag="Quantity" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <!-- Группа 2 -->
+                                <Button Content="📅 Дата" Tag="Date" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="🚚 ТТН" Tag="Ttn" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="🏭 Поставщик" Tag="Supplier" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="📄 Паспорт" Tag="Passport" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
+                                <Button Content="🔢 Кол-во" Tag="Quantity" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
 
-                        </WrapPanel>
+                            </WrapPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Сводная таблица:"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"/>
+                                <TextBlock Text="Блок"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                                <ComboBox x:Name="BlockSelector"
+                                          Width="80"
+                                          Margin="0,0,10,0"/>
+                                <Button Content="📊 По этажам"
+                                        Tag="DemandRange"
+                                        Style="{StaticResource PillButton}"
+                                        Click="SelectCell_Click"/>
+                            </StackPanel>
+                        </StackPanel>
 
                     </Grid>
                 </Border>
