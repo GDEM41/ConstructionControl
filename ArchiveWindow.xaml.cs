@@ -59,26 +59,11 @@ namespace ConstructionControl
                 if (obj.Archive.Materials[group].Count == 0)
                     obj.Archive.Materials.Remove(group);
             }
+            // === 2. ОБНОВЛЯЕМ ТАБЛИЦУ В АРХИВЕ ===
 
-            // === 2. ИЗ СПИСКА МАТЕРИАЛОВ ===
-            if (obj.MaterialNamesByGroup.ContainsKey(group))
-            {
-                obj.MaterialNamesByGroup[group].Remove(material);
-
-                if (obj.MaterialNamesByGroup[group].Count == 0)
-                {
-                    obj.MaterialNamesByGroup.Remove(group);
-                    obj.MaterialGroups.RemoveAll(x => x.Name == group);
-                }
-            }
-
-            // === 3. ИЗ ЖУРНАЛА ===
-            journal.RemoveAll(x => x.MaterialGroup == group && x.MaterialName == material);
-
-            // === 4. ОБНОВЛЯЕМ ТАБЛИЦУ В АРХИВЕ ===
             LoadArchive();
 
-            // === 5. ОБНОВЛЯЕМ MAINWINDOW ===
+            // === 3. ОБНОВЛЯЕМ MAINWINDOW ===
             if (Owner is MainWindow mw)
             {
                 mw.RefreshTree();
@@ -92,14 +77,12 @@ namespace ConstructionControl
 
         private void Clear_Click(object sender, RoutedEventArgs e)
         {
-            if (MessageBox.Show("Очистить архив и удалить данные журнала?",
-                "Подтверждение", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            if (MessageBox.Show("Очистить архив? Данные проекта и журнала останутся.",
+                                 "Подтверждение", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
                 return;
 
             obj.Archive = new ObjectArchive();
-            obj.MaterialGroups.Clear();
-            obj.MaterialNamesByGroup.Clear();
-            journal.Clear();
+
 
             LoadArchive();
         }

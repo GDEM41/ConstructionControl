@@ -1291,16 +1291,23 @@ namespace ConstructionControl
             if (SummaryPanel == null)
                 return;
 
-            SummaryPanel.Children.Clear();
+            SummaryPanel.Items.Clear();
 
             if (currentObject == null)
                 return;
 
-            var journalGroups = journal
+            var mainRecords = journal
                 .Where(j => j.Category == "Основные")
+                 ToList();
+
+            var journalGroups = mainRecords
                 .Select(j => j.MaterialGroup)
                 .Distinct()
                 .ToHashSet();
+            var recordsByGroupAndMaterial = mainRecords
+                 .GroupBy(j => (j.MaterialGroup, j.MaterialName))
+                     .ToDictionary(g => g.Key, g => g.ToList());
+
 
             var groupOrder = currentObject.MaterialGroups
                 .Select(g => g.Name)
@@ -1326,11 +1333,8 @@ namespace ConstructionControl
 
                 foreach (var mat in materialNames)
                 {
-                    var records = journal
-                        .Where(j => j.Category == "Основные"
-                            && j.MaterialGroup == g
-                            && j.MaterialName == mat)
-                        .ToList();
+                    if (!recordsByGroupAndMaterial.TryGetValue((g, mat), out var records))
+                        records = new List<JournalRecord>();
 
                     string unit = records.FirstOrDefault()?.Unit ?? string.Empty;
                     string position = records
@@ -1354,7 +1358,7 @@ namespace ConstructionControl
                 Margin = new Thickness(0, 0, 0, 8)
             };
 
-            SummaryPanel.Children.Add(note);
+            SummaryPanel.Items.Add(note);
         }
 
         void RenderMaterialGroup(string group)
@@ -1377,14 +1381,14 @@ namespace ConstructionControl
                 Foreground = new SolidColorBrush(Color.FromRgb(31, 41, 55))
             };
 
-            SummaryPanel.Children.Add(headerBorder);
+            SummaryPanel.Items.Add(headerBorder);
 
             summaryGrid = new Grid
             {
                 Margin = new Thickness(0, 0, 0, 14)
             };
 
-            SummaryPanel.Children.Add(summaryGrid);
+            SummaryPanel.Items.Add(summaryGrid);
 
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -2517,4 +2521,3 @@ namespace ConstructionControl
     }
 
 }
-

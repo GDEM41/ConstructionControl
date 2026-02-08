@@ -212,14 +212,21 @@
                                           Width="260"
                                           SelectionChanged="SummaryTypeSelector_SelectionChanged"/>
                             </StackPanel>
-
-                            <ScrollViewer x:Name="SummaryScroll"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Auto"
-                                          CanContentScroll="True"
-                                          PanningMode="Both">
-                                <StackPanel x:Name="SummaryPanel"/>
-                            </ScrollViewer>
+                            <ListBox x:Name="SummaryPanel"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="True"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VirtualizingStackPanel/>
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                            </ListBox>
                         </DockPanel>
 
                     </TabItem>
