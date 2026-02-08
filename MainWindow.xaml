@@ -239,14 +239,85 @@
                                 </Button>
                             </StackPanel>
 
-                            <Border Grid.Row="1"
-                Background="#F2F4F7"
-                BorderBrush="#D1D5DB"
-                BorderThickness="0,0,0,1"
-                Padding="6,4"
-                CornerRadius="4">
-                                <StackPanel x:Name="HeaderAutoPanel"/>
-                            </Border>
+                            <Grid Grid.Row="1">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border x:Name="JvkHeaderBorder"
+                                        Grid.Row="0"
+                                        Background="#F3F4F6"
+                                        BorderBrush="#E5E7EB"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="0">
+                                    <Grid x:Name="JvkHeaderGrid">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="260"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="70"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="220"/>
+                                            <ColumnDefinition Width="260"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Grid.Column="0"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="ттн"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="1"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="название"
+                                                           FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="2"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="стб"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="3"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="ед.изм"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="4"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="кол-во"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="5"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="6,4">
+                                            <TextBlock Text="поставщик"
+                                                        FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                        <Border Grid.Column="6"
+                                                Padding="6,4">
+                                            <TextBlock Text="паспорт"
+                                                       FontWeight="SemiBold"
+                                                       TextAlignment="Center"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
 
                                 <ScrollViewer Grid.Row="1"
                                               VerticalScrollBarVisibility="Auto"
