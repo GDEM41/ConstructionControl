@@ -1679,19 +1679,23 @@ namespace ConstructionControl
             RefreshSummaryTable();
         }
 
-      
+
         private void UpdateSummaryFilterSubtitle(List<string> groups, List<string> selectedGroups)
         {
             if (SummaryFilterSubtitle == null)
                 return;
 
-            if (groups.Count == 0)
+            if (groups == null || groups.Count == 0)
             {
                 SummaryFilterSubtitle.Text = "Нет доступных типов";
                 return;
             }
 
-
+            if (selectedGroups == null || selectedGroups.Count == 0)
+            {
+                SummaryFilterSubtitle.Text = "Все типы";
+                return;
+            }
 
             if (selectedGroups.Count == groups.Count)
             {
@@ -1701,6 +1705,9 @@ namespace ConstructionControl
 
             SummaryFilterSubtitle.Text = selectedGroups[0];
         }
+
+
+
         private List<string> GetMaterialsForGroup(string group)
         {
             if (currentObject.MaterialNamesByGroup.TryGetValue(group, out var list) && list.Count > 0)
