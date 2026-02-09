@@ -165,25 +165,20 @@
                     Padding="6"
                     BorderBrush="#E5E7EB"
                     BorderThickness="1">
+                <TreeView x:Name="ObjectsTree"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          SelectedItemChanged="ObjectsTree_SelectedItemChanged">
 
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto"
-                              CanContentScroll="True">
-                    <TreeView x:Name="ObjectsTree"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                              SelectedItemChanged="ObjectsTree_SelectedItemChanged">
-
-                        <TreeView.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Переименовать"
-                                          Click="RenameTreeItem_Click"/>
-                                <MenuItem Header="Удалить"
-                                          Click="DeleteTreeItem_Click"/>
-                            </ContextMenu>
-                        </TreeView.ContextMenu>
-                    </TreeView>
-                </ScrollViewer>
+                    <TreeView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Переименовать"
+                                      Click="RenameTreeItem_Click"/>
+                            <MenuItem Header="Удалить"
+                                      Click="DeleteTreeItem_Click"/>
+                        </ContextMenu>
+                    </TreeView.ContextMenu>
+                </TreeView>
             </Border>
 
             <!-- ===== КОНТЕНТ ===== -->
@@ -204,13 +199,67 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="0,0,0,8">
-                                <TextBlock Text="Тип для отображения"
+                                <TextBlock Text="Типы для отображения"
                                            FontWeight="SemiBold"
                                            Foreground="#374151"
                                            Margin="0,0,0,6"/>
-                                <ComboBox x:Name="SummaryTypeSelector"
-                                          Width="260"
-                                          SelectionChanged="SummaryTypeSelector_SelectionChanged"/>
+                                <Grid Width="260">
+                                    <ToggleButton x:Name="SummaryFilterButton"
+                                                  Padding="10,8"
+                                                  Background="#F9FAFB"
+                                                  BorderBrush="#D1D5DB"
+                                                  BorderThickness="1"
+                                                  HorizontalContentAlignment="Left">
+                                        <StackPanel>
+                                            <TextBlock Text="Фильтр типов"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#111827"/>
+                                            <TextBlock x:Name="SummaryFilterSubtitle"
+                                                       Text="Все типы"
+                                                       Foreground="#6B7280"
+                                                       FontSize="12"/>
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <Popup PlacementTarget="{Binding ElementName=SummaryFilterButton}"
+                                           IsOpen="{Binding IsChecked, ElementName=SummaryFilterButton}"
+                                           PopupAnimation="Fade"
+                                           AllowsTransparency="True"
+                                           StaysOpen="False">
+                                        <Border Background="White"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="1"
+                                                CornerRadius="10"
+                                                Padding="12"
+                                                MinWidth="260">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="12"
+                                                                  ShadowDepth="2"
+                                                                  Opacity="0.18"/>
+                                            </Border.Effect>
+                                            <StackPanel>
+                                                <TextBlock Text="Показывать в сводной"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#111827"
+                                                           Margin="0,0,0,6"/>
+                                                <ScrollViewer MaxHeight="200"
+                                                              VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel x:Name="SummaryTypeFilterPanel"/>
+                                                </ScrollViewer>
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Right"
+                                                            Margin="0,10,0,0">
+                                                    <Button Content="Выбрать все"
+                                                            Padding="10,4"
+                                                            Margin="0,0,8,0"
+                                                            Click="SummaryFilterSelectAll_Click"/>
+                                                    <Button Content="Сбросить"
+                                                            Padding="10,4"
+                                                            Click="SummaryFilterClear_Click"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
                             </StackPanel>
                             <ListBox x:Name="SummaryPanel"
                                      BorderThickness="0"
