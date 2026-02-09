@@ -1518,7 +1518,7 @@ namespace ConstructionControl
                     : 0;
 
                 blockArrivedTotals[block.Block] = arrivedTotal;
-                blockFilled[block.Block] = blockTotal > 0 && arrivedTotal >= blockTotal;
+                blockFilled[block.Block] = blockTotal > 0 && Math.Abs(arrivedTotal - blockTotal) < 0.0001;
                 blockOverage[block.Block] = blockTotal > 0 && arrivedTotal > blockTotal;
             }
 
@@ -1549,12 +1549,10 @@ namespace ConstructionControl
                 if (col.IsBlockTotal)
                 {
                     double blockTotal = blockTotals.TryGetValue(col.Block, out var val) ? val : 0;
-                    double blockArrived = blockArrivedTotals.TryGetValue(col.Block, out var arrivedVal) ? arrivedVal : 0;
+                   
                     bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
                     bool blockIsOverage = blockOverage.TryGetValue(col.Block, out var over) && over;
-                    Brush cellBg = blockIsOverage
-                        ? warningHighlight
-                        : rowHighlight ?? (blockComplete ? blockHighlight : null);
+                    Brush cellBg = rowHighlight ?? (blockIsOverage ? warningHighlight : (blockComplete ? blockHighlight : null));
                     AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
                 else if (col.Floor.HasValue)
@@ -1566,8 +1564,7 @@ namespace ConstructionControl
                         : 0;
 
                     bool floorOverage = plan > 0 ? arrived > plan : arrived > 0;
-                    bool floorFilled = plan > 0 && arrived >= plan;
-                    bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
+                    bool floorFilled = plan > 0 && Math.Abs(arrived - plan) < 0.0001;
                     if (floorOverage)
                     {
                         summaryHasOverage = true;
@@ -1575,18 +1572,13 @@ namespace ConstructionControl
                             summaryOverageNote.Visibility = Visibility.Visible;
                     }
 
-                    Brush cellBg = floorOverage
-                        ? warningHighlight
-                        : rowHighlight ?? (blockComplete ? blockHighlight : (floorFilled ? filledHighlight : null));
+                    Brush cellBg = rowHighlight ?? (floorOverage ? warningHighlight : (floorFilled ? filledHighlight : null));
                     AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44);
                 }
             }
 
             double notArrived = Math.Max(0, totalPlanned - totalArrival);
-            bool arrivedComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
-            Brush arrivedBg = rowOverage
-                ? warningHighlight
-                : rowHighlight ?? (arrivedComplete ? filledHighlight : null);
+            Brush arrivedBg = rowHighlight ?? (rowOverage ? warningHighlight : null);
             AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
             AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
             AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
@@ -1621,13 +1613,13 @@ namespace ConstructionControl
             }
 
             var selectedGroups = currentObject.SummaryVisibleGroups
-                        .Where(groups.Contains)
-                        .ToList();
+                .Where(groups.Contains)
+                .ToList();
 
             if (!summaryFilterInitialized)
             {
-                if (selectedGroups.Count == 0)
-                    selectedGroups = groups.ToList();
+                if (selectedGroups.Count > 1)
+                    selectedGroups = selectedGroups.Take(1).ToList();
 
                 summaryFilterInitialized = true;
             }
@@ -1635,21 +1627,35 @@ namespace ConstructionControl
 
             if (SummaryTypeFilterPanel != null)
             {
+                var radioStyle = FindResource("SummaryFilterRadio") as Style;
+                var allOption = new RadioButton
+                {
+                    Content = "Все типы",
+                    Margin = new Thickness(0, 2, 0, 2),
+                    GroupName = "SummaryTypeFilter",
+                    IsChecked = selectedGroups.Count == 0,
+                    Style = radioStyle
+                };
+                allOption.Checked += SummaryFilterOptionChanged;
+                SummaryTypeFilterPanel.Children.Add(allOption);
+
                 foreach (var group in groups)
                 {
-                    var checkbox = new CheckBox
+                    var radio = new RadioButton
                     {
                         Content = group,
                         Margin = new Thickness(0, 2, 0, 2),
-                        IsChecked = selectedGroups.Contains(group)
+                        GroupName = "SummaryTypeFilter",
+                        IsChecked = selectedGroups.Count == 1 && selectedGroups[0] == group,
+                        Tag = group,
+                        Style = radioStyle
                     };
-                    checkbox.Checked += SummaryFilterOptionChanged;
-                    checkbox.Unchecked += SummaryFilterOptionChanged;
-                    SummaryTypeFilterPanel.Children.Add(checkbox);
+                    radio.Checked += SummaryFilterOptionChanged;
+                    SummaryTypeFilterPanel.Children.Add(radio);
                 }
             }
-               UpdateSummaryFilterSubtitle(groups, selectedGroups);
-                summaryFilterUpdating = false;
+                       UpdateSummaryFilterSubtitle(groups, selectedGroups);
+                       summaryFilterUpdating = false;
         }
 
 
@@ -1658,56 +1664,22 @@ namespace ConstructionControl
             if (summaryFilterUpdating || currentObject == null)
                 return;
 
-            var selected = SummaryTypeFilterPanel?.Children
-                .OfType<CheckBox>()
-                .Where(cb => cb.IsChecked == true)
-                .Select(cb => cb.Content?.ToString())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToList() ?? new List<string>();
+            if (sender is not RadioButton radio)
+                return;
+
+            var selectedGroup = radio.Tag?.ToString();
+            var selected = string.IsNullOrWhiteSpace(selectedGroup)
+                ? new List<string>()
+                : new List<string> { selectedGroup };
 
             currentObject.SummaryVisibleGroups = selected;
             UpdateSummaryFilterSubtitle(summaryFilterGroups, selected);
 
+            
             RefreshSummaryTable();
         }
 
-        private void SummaryFilterSelectAll_Click(object sender, RoutedEventArgs e)
-        {
-            if (summaryFilterUpdating || currentObject == null)
-                return;
-
-            summaryFilterUpdating = true;
-
-            if (SummaryTypeFilterPanel != null)
-            {
-                foreach (var checkbox in SummaryTypeFilterPanel.Children.OfType<CheckBox>())
-                    checkbox.IsChecked = true;
-            }
-
-            currentObject.SummaryVisibleGroups = summaryFilterGroups.ToList();
-            UpdateSummaryFilterSubtitle(summaryFilterGroups, currentObject.SummaryVisibleGroups);
-            summaryFilterUpdating = false;
-            RefreshSummaryTable();
-        }
-
-        private void SummaryFilterClear_Click(object sender, RoutedEventArgs e)
-        {
-            if (summaryFilterUpdating || currentObject == null)
-                return;
-            summaryFilterUpdating = true;
-
-            if (SummaryTypeFilterPanel != null)
-            {
-                foreach (var checkbox in SummaryTypeFilterPanel.Children.OfType<CheckBox>())
-                    checkbox.IsChecked = false;
-            }
-
-            currentObject.SummaryVisibleGroups = new List<string>();
-            UpdateSummaryFilterSubtitle(summaryFilterGroups, currentObject.SummaryVisibleGroups);
-            summaryFilterUpdating = false;
-
-            RefreshSummaryTable();
-        }
+      
         private void UpdateSummaryFilterSubtitle(List<string> groups, List<string> selectedGroups)
         {
             if (SummaryFilterSubtitle == null)
@@ -1719,11 +1691,7 @@ namespace ConstructionControl
                 return;
             }
 
-            if (selectedGroups.Count == 0)
-            {
-                SummaryFilterSubtitle.Text = "Ничего не выбрано";
-                return;
-            }
+
 
             if (selectedGroups.Count == groups.Count)
             {
@@ -1731,13 +1699,7 @@ namespace ConstructionControl
                 return;
             }
 
-            var ordered = groups.Where(selectedGroups.Contains).ToList();
-            var preview = ordered.Take(2).ToList();
-            var suffix = ordered.Count > preview.Count
-                ? $" +{ordered.Count - preview.Count}"
-                : string.Empty;
-
-            SummaryFilterSubtitle.Text = $"{string.Join(", ", preview)}{suffix}";
+            SummaryFilterSubtitle.Text = selectedGroups[0];
         }
         private List<string> GetMaterialsForGroup(string group)
         {

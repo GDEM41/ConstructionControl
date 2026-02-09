@@ -45,6 +45,88 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="SummaryFilterToggle" TargetType="ToggleButton">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter VerticalAlignment="Center"/>
+                                <Border x:Name="ArrowBg"
+                                        Grid.Column="1"
+                                        Width="28"
+                                        Height="28"
+                                        CornerRadius="6"
+                                        Background="#F3F4F6"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="▾"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="#6B7280"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F9FAFB"/>
+                                <Setter TargetName="ArrowBg" Property="Background" Value="#E5E7EB"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#93C5FD"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#EFF6FF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SummaryFilterRadio" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd"
+                                Background="#F3F4F6"
+                                BorderBrush="#D1D5DB"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="10,6">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1D4ED8"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E5E7EB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
 
         <!-- Кнопка основная -->
         <Style x:Key="PrimaryButton" TargetType="Button">
@@ -205,10 +287,7 @@
                                            Margin="0,0,0,6"/>
                                 <Grid Width="260">
                                     <ToggleButton x:Name="SummaryFilterButton"
-                                                  Padding="10,8"
-                                                  Background="#F9FAFB"
-                                                  BorderBrush="#D1D5DB"
-                                                  BorderThickness="1"
+                                                  Style="{StaticResource SummaryFilterToggle}"
                                                   HorizontalContentAlignment="Left">
                                         <StackPanel>
                                             <TextBlock Text="Фильтр типов"
@@ -245,17 +324,7 @@
                                                               VerticalScrollBarVisibility="Auto">
                                                     <StackPanel x:Name="SummaryTypeFilterPanel"/>
                                                 </ScrollViewer>
-                                                <StackPanel Orientation="Horizontal"
-                                                            HorizontalAlignment="Right"
-                                                            Margin="0,10,0,0">
-                                                    <Button Content="Выбрать все"
-                                                            Padding="10,4"
-                                                            Margin="0,0,8,0"
-                                                            Click="SummaryFilterSelectAll_Click"/>
-                                                    <Button Content="Сбросить"
-                                                            Padding="10,4"
-                                                            Click="SummaryFilterClear_Click"/>
-                                                </StackPanel>
+                                               
                                             </StackPanel>
                                         </Border>
                                     </Popup>
