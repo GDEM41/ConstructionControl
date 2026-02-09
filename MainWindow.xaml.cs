@@ -1255,7 +1255,15 @@ namespace ConstructionControl
         {
             ApplyAllFilters();
         }
-
+        public void RefreshAfterArchiveChange()
+        {
+            RefreshTreePreserveState();
+            ApplyAllFilters();
+            RefreshSummaryTable();
+            ArrivalPanel.SetObject(currentObject, journal);
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+        }
 
         private void OpenArchive_Click(object sender, RoutedEventArgs e)
         {
@@ -1393,8 +1401,8 @@ namespace ConstructionControl
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 70 });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 260 });
 
             int colIndex = 2;
 
@@ -1408,7 +1416,7 @@ namespace ConstructionControl
                         Block = block.Block,
                         Floor = floor
                     });
-                    summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+                    summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 42 });
                     colIndex++;
                 }
 
@@ -1418,7 +1426,7 @@ namespace ConstructionControl
                     Block = block.Block,
                     IsBlockTotal = true
                 });
-                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 54 });
                 colIndex++;
             }
 
@@ -1426,36 +1434,36 @@ namespace ConstructionControl
             summaryNotArrivedColumn = colIndex++;
             summaryArrivedColumn = colIndex++;
 
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 90 });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 90 });
+            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 70 });
 
             var headerBg = new SolidColorBrush(Color.FromRgb(243, 244, 246));
 
-            AddCell(summaryGrid, 0, 0, "Позиция", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
-            AddCell(summaryGrid, 0, 1, "Наименование", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+            AddCell(summaryGrid, 0, 0, "Позиция", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+            AddCell(summaryGrid, 0, 1, "Наименование", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
 
             int blockStart = 2;
             foreach (var block in summaryBlocks)
             {
                 int blockColumns = block.Floors.Count + 1;
 
-                AddCell(summaryGrid, 0, blockStart, $"Блок {block.Block}", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, colspan: blockColumns);
+                AddCell(summaryGrid, 0, blockStart, $"Блок {block.Block}", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, colspan: blockColumns, noWrap: true);
 
                 int floorCol = blockStart;
                 foreach (var floor in block.Floors)
                 {
-                    AddCell(summaryGrid, 1, floorCol, GetFloorLabel(floor), bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+                    AddCell(summaryGrid, 1, floorCol, GetFloorLabel(floor), bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
                     floorCol++;
                 }
 
-                AddCell(summaryGrid, 1, floorCol, "Итого", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+                AddCell(summaryGrid, 1, floorCol, "Итого", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
                 blockStart += blockColumns;
             }
 
-            AddCell(summaryGrid, 0, summaryTotalColumn, "Всего на здание", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
-            AddCell(summaryGrid, 0, summaryNotArrivedColumn, "Не доехало", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
-            AddCell(summaryGrid, 0, summaryArrivedColumn, "Пришло", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold);
+            AddCell(summaryGrid, 0, summaryTotalColumn, "Всего на здание", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+            AddCell(summaryGrid, 0, summaryNotArrivedColumn, "Не доехало", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+            AddCell(summaryGrid, 0, summaryArrivedColumn, "Пришло", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
 
             summaryRowIndex = 2;
         }
@@ -1465,6 +1473,8 @@ namespace ConstructionControl
             if (summaryGrid == null)
                 return;
 
+            var blockTotals = new Dictionary<int, double>(); // ✅ ДОБАВИТЬ
+
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             string demandKey = BuildDemandKey(group, mat);
@@ -1472,7 +1482,7 @@ namespace ConstructionControl
             var allocations = AllocateArrival(demand, totalArrival);
 
             double totalPlanned = 0;
-            var blockTotals = new Dictionary<int, double>();
+            var blockArrivedTotals = new Dictionary<int, double>();
 
             foreach (var block in summaryBlocks)
             {
@@ -1481,19 +1491,35 @@ namespace ConstructionControl
                 {
                     blockTotal += GetDemandValue(demand, block.Block, floor);
                 }
-                blockTotals[block.Block] = blockTotal;
+
+                blockTotals[block.Block] = blockTotal;  // теперь ок
                 totalPlanned += blockTotal;
+
+                double arrivedTotal = allocations.TryGetValue(block.Block, out var arrivedFloors)
+                    ? arrivedFloors.Values.Sum()
+                    : 0;
+
+                blockArrivedTotals[block.Block] = arrivedTotal;
             }
 
-            AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center);
-            AddCell(summaryGrid, summaryRowIndex, 1, mat, wrap: true);
+            bool rowComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
+            var rowHighlight = rowComplete
+                ? new SolidColorBrush(Color.FromRgb(209, 250, 229))
+                : null;
+            var filledHighlight = new SolidColorBrush(Color.FromRgb(220, 252, 231));
+
+            AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, bg: rowHighlight, noWrap: true, minWidth: 60);
+            AddCell(summaryGrid, summaryRowIndex, 1, mat, bg: rowHighlight, noWrap: true, minWidth: 220);
 
             foreach (var col in summaryColumns)
             {
                 if (col.IsBlockTotal)
                 {
                     double blockTotal = blockTotals.TryGetValue(col.Block, out var val) ? val : 0;
-                    AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right);
+                    double blockArrived = blockArrivedTotals.TryGetValue(col.Block, out var arrivedVal) ? arrivedVal : 0;
+                    bool blockFilled = blockTotal > 0 && blockArrived >= blockTotal;
+                    Brush cellBg = rowHighlight ?? (blockFilled ? filledHighlight : null);
+                    AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
                 else if (col.Floor.HasValue)
                 {
@@ -1503,15 +1529,18 @@ namespace ConstructionControl
                         ? arr
                         : 0;
 
-                    AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit);
+                    bool floorFilled = plan > 0 && arrived >= plan;
+                    Brush cellBg = rowHighlight ?? (floorFilled ? filledHighlight : null);
+                    AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44);
                 }
             }
 
             double notArrived = Math.Max(0, totalPlanned - totalArrival);
-
-            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right);
-            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right);
-            AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right);
+            bool arrivedComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
+            Brush arrivedBg = rowHighlight ?? (arrivedComplete ? filledHighlight : null);
+            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
 
             summaryRowIndex++;
         }
@@ -1745,14 +1774,14 @@ namespace ConstructionControl
             RestoreState(next);
             UpdateUndoRedoButtons();
         }
-        void AddCell(Grid g, int r, int c, string text, int rowspan = 1, bool wrap = false, Brush bg = null, TextAlignment align = TextAlignment.Left, FontWeight? fontWeight = null, int colspan = 1)
+        void AddCell(Grid g, int r, int c, string text, int rowspan = 1, bool wrap = false, Brush bg = null, TextAlignment align = TextAlignment.Left, FontWeight? fontWeight = null, int colspan = 1, bool noWrap = false, double? minWidth = null)
         {
             var tb = new TextBlock
             {
                 Text = text,
                 Margin = new Thickness(6, 4, 6, 4),
                 VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap,
+                TextWrapping = noWrap ? TextWrapping.NoWrap : TextWrapping.Wrap,
                 TextTrimming = TextTrimming.None
             };
             if (fontWeight.HasValue)
@@ -1765,6 +1794,8 @@ namespace ConstructionControl
                 Background = bg,
                 MinHeight = 30
             };
+            if (minWidth.HasValue)
+                border.MinWidth = minWidth.Value;
 
             border.Child = tb;
 
@@ -1780,7 +1811,7 @@ namespace ConstructionControl
 
             g.Children.Add(border);
         }
-        void AddDiagonalDemandCell(Grid g, int r, int c, double plan, double arrived, string demandKey, int block, int floor, string unit)
+        void AddDiagonalDemandCell(Grid g, int r, int c, double plan, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth)
         {
             var container = new Grid
             {
@@ -1850,11 +1881,12 @@ namespace ConstructionControl
             {
                 BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
                 BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = Brushes.White,
-                MinHeight = 24,
+                Background = bg ?? Brushes.White,
+                MinHeight = 30,
                 Child = container
             };
-
+            if (minWidth > 0)
+                border.MinWidth = minWidth;
             Grid.SetRow(border, r);
             Grid.SetColumn(border, c);
 
