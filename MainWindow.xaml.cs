@@ -72,6 +72,7 @@ namespace ConstructionControl
         private int summaryArrivedColumn;
         private bool summaryFilterInitialized;
         private bool summaryFilterUpdating;
+        private List<string> summaryFilterGroups = new();
         private bool summaryHasOverage;
         private TextBlock summaryOverageNote;
 
@@ -1285,7 +1286,7 @@ namespace ConstructionControl
 
             if (w.ShowDialog() == true)
             {
-                // после изменений — обновляем всё
+                // после изменений — обновляем всё1
                 SaveState();
                 RefreshTreePreserveState();
                 ApplyAllFilters();
@@ -1521,7 +1522,10 @@ namespace ConstructionControl
                 blockOverage[block.Block] = blockTotal > 0 && arrivedTotal > blockTotal;
             }
 
-            bool rowComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
+            bool rowComplete = summaryBlocks.Count > 0
+                && summaryBlocks.All(block => blockTotals.TryGetValue(block.Block, out var blockTotal)
+                    && blockTotal > 0
+                    && blockFilled.TryGetValue(block.Block, out var filled) && filled);
             bool rowOverage = totalArrival > totalPlanned;
             var rowHighlight = rowComplete
                 ? new SolidColorBrush(Color.FromRgb(209, 250, 229))
@@ -1604,52 +1608,137 @@ namespace ConstructionControl
                 return;
 
             summaryFilterUpdating = true;
-            SummaryTypeSelector.ItemsSource = null;
-            SummaryTypeSelector.ItemsSource = groups;
+            summaryFilterGroups = groups.ToList();
+
+            if (SummaryTypeFilterPanel != null)
+                SummaryTypeFilterPanel.Children.Clear();
 
             if (groups.Count == 0)
             {
-                SummaryTypeSelector.SelectedItem = null;
+                UpdateSummaryFilterSubtitle(groups, new List<string>());
                 summaryFilterUpdating = false;
                 return;
             }
 
-            string selectedGroup = currentObject.SummaryVisibleGroups.FirstOrDefault();
+            var selectedGroups = currentObject.SummaryVisibleGroups
+                        .Where(groups.Contains)
+                        .ToList();
 
             if (!summaryFilterInitialized)
             {
-                if (string.IsNullOrWhiteSpace(selectedGroup))
-                {
-                    selectedGroup = groups[0];
-                    currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
-                }
+                if (selectedGroups.Count == 0)
+                    selectedGroups = groups.ToList();
 
                 summaryFilterInitialized = true;
             }
-            if (!groups.Contains(selectedGroup))
+            currentObject.SummaryVisibleGroups = selectedGroups;
+
+            if (SummaryTypeFilterPanel != null)
             {
-                selectedGroup = groups[0];
-                currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
-
+                foreach (var group in groups)
+                {
+                    var checkbox = new CheckBox
+                    {
+                        Content = group,
+                        Margin = new Thickness(0, 2, 0, 2),
+                        IsChecked = selectedGroups.Contains(group)
+                    };
+                    checkbox.Checked += SummaryFilterOptionChanged;
+                    checkbox.Unchecked += SummaryFilterOptionChanged;
+                    SummaryTypeFilterPanel.Children.Add(checkbox);
+                }
             }
-
-            currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
-            SummaryTypeSelector.SelectedItem = selectedGroup;
-            summaryFilterUpdating = false;
+               UpdateSummaryFilterSubtitle(groups, selectedGroups);
+                summaryFilterUpdating = false;
         }
 
-        private void SummaryTypeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+
+        private void SummaryFilterOptionChanged(object sender, RoutedEventArgs e)
         {
             if (summaryFilterUpdating || currentObject == null)
                 return;
 
-            if (SummaryTypeSelector.SelectedItem is not string group)
-                return;
-            currentObject.SummaryVisibleGroups = new List<string> { group };
+            var selected = SummaryTypeFilterPanel?.Children
+                .OfType<CheckBox>()
+                .Where(cb => cb.IsChecked == true)
+                .Select(cb => cb.Content?.ToString())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList() ?? new List<string>();
+
+            currentObject.SummaryVisibleGroups = selected;
+            UpdateSummaryFilterSubtitle(summaryFilterGroups, selected);
 
             RefreshSummaryTable();
         }
 
+        private void SummaryFilterSelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (summaryFilterUpdating || currentObject == null)
+                return;
+
+            summaryFilterUpdating = true;
+
+            if (SummaryTypeFilterPanel != null)
+            {
+                foreach (var checkbox in SummaryTypeFilterPanel.Children.OfType<CheckBox>())
+                    checkbox.IsChecked = true;
+            }
+
+            currentObject.SummaryVisibleGroups = summaryFilterGroups.ToList();
+            UpdateSummaryFilterSubtitle(summaryFilterGroups, currentObject.SummaryVisibleGroups);
+            summaryFilterUpdating = false;
+            RefreshSummaryTable();
+        }
+
+        private void SummaryFilterClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (summaryFilterUpdating || currentObject == null)
+                return;
+            summaryFilterUpdating = true;
+
+            if (SummaryTypeFilterPanel != null)
+            {
+                foreach (var checkbox in SummaryTypeFilterPanel.Children.OfType<CheckBox>())
+                    checkbox.IsChecked = false;
+            }
+
+            currentObject.SummaryVisibleGroups = new List<string>();
+            UpdateSummaryFilterSubtitle(summaryFilterGroups, currentObject.SummaryVisibleGroups);
+            summaryFilterUpdating = false;
+
+            RefreshSummaryTable();
+        }
+        private void UpdateSummaryFilterSubtitle(List<string> groups, List<string> selectedGroups)
+        {
+            if (SummaryFilterSubtitle == null)
+                return;
+
+            if (groups.Count == 0)
+            {
+                SummaryFilterSubtitle.Text = "Нет доступных типов";
+                return;
+            }
+
+            if (selectedGroups.Count == 0)
+            {
+                SummaryFilterSubtitle.Text = "Ничего не выбрано";
+                return;
+            }
+
+            if (selectedGroups.Count == groups.Count)
+            {
+                SummaryFilterSubtitle.Text = "Все типы";
+                return;
+            }
+
+            var ordered = groups.Where(selectedGroups.Contains).ToList();
+            var preview = ordered.Take(2).ToList();
+            var suffix = ordered.Count > preview.Count
+                ? $" +{ordered.Count - preview.Count}"
+                : string.Empty;
+
+            SummaryFilterSubtitle.Text = $"{string.Join(", ", preview)}{suffix}";
+        }
         private List<string> GetMaterialsForGroup(string group)
         {
             if (currentObject.MaterialNamesByGroup.TryGetValue(group, out var list) && list.Count > 0)
