@@ -13,6 +13,8 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using WpfPath = System.Windows.Shapes.Path;
+
 public enum ExportMode
 {
     Merged,
@@ -70,6 +72,8 @@ namespace ConstructionControl
         private int summaryArrivedColumn;
         private bool summaryFilterInitialized;
         private bool summaryFilterUpdating;
+        private bool summaryHasOverage;
+        private TextBlock summaryOverageNote;
 
 
         public MainWindow()
@@ -1331,6 +1335,7 @@ namespace ConstructionControl
                 ? new List<string>()
                 : groupOrder.Where(g => currentObject.SummaryVisibleGroups.Contains(g)).ToList();
 
+            summaryHasOverage = false;
             RenderSummaryHeader();
 
             foreach (var g in visibleGroups)
@@ -1367,6 +1372,16 @@ namespace ConstructionControl
             };
 
             SummaryPanel.Items.Add(note);
+
+            summaryOverageNote = new TextBlock
+            {
+                Text = "⚠️ Есть превышение прихода относительно плана.",
+                Foreground = new SolidColorBrush(Color.FromRgb(180, 83, 9)),
+                Margin = new Thickness(0, 0, 0, 8),
+                Visibility = Visibility.Collapsed
+            };
+
+            SummaryPanel.Items.Add(summaryOverageNote);
         }
 
         void RenderMaterialGroup(string group)
@@ -1483,6 +1498,8 @@ namespace ConstructionControl
 
             double totalPlanned = 0;
             var blockArrivedTotals = new Dictionary<int, double>();
+            var blockFilled = new Dictionary<int, bool>();
+            var blockOverage = new Dictionary<int, bool>();
 
             foreach (var block in summaryBlocks)
             {
@@ -1500,13 +1517,25 @@ namespace ConstructionControl
                     : 0;
 
                 blockArrivedTotals[block.Block] = arrivedTotal;
+                blockFilled[block.Block] = blockTotal > 0 && arrivedTotal >= blockTotal;
+                blockOverage[block.Block] = blockTotal > 0 && arrivedTotal > blockTotal;
             }
 
             bool rowComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
+            bool rowOverage = totalArrival > totalPlanned;
             var rowHighlight = rowComplete
                 ? new SolidColorBrush(Color.FromRgb(209, 250, 229))
                 : null;
             var filledHighlight = new SolidColorBrush(Color.FromRgb(220, 252, 231));
+            var blockHighlight = new SolidColorBrush(Color.FromRgb(219, 234, 254));
+            var warningHighlight = new SolidColorBrush(Color.FromRgb(254, 243, 199));
+
+            if (rowOverage || blockOverage.Values.Any())
+            {
+                summaryHasOverage = true;
+                if (summaryOverageNote != null)
+                    summaryOverageNote.Visibility = Visibility.Visible;
+            }
 
             AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, bg: rowHighlight, noWrap: true, minWidth: 60);
             AddCell(summaryGrid, summaryRowIndex, 1, mat, bg: rowHighlight, noWrap: true, minWidth: 220);
@@ -1517,8 +1546,11 @@ namespace ConstructionControl
                 {
                     double blockTotal = blockTotals.TryGetValue(col.Block, out var val) ? val : 0;
                     double blockArrived = blockArrivedTotals.TryGetValue(col.Block, out var arrivedVal) ? arrivedVal : 0;
-                    bool blockFilled = blockTotal > 0 && blockArrived >= blockTotal;
-                    Brush cellBg = rowHighlight ?? (blockFilled ? filledHighlight : null);
+                    bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
+                    bool blockIsOverage = blockOverage.TryGetValue(col.Block, out var over) && over;
+                    Brush cellBg = blockIsOverage
+                        ? warningHighlight
+                        : rowHighlight ?? (blockComplete ? blockHighlight : null);
                     AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
                 else if (col.Floor.HasValue)
@@ -1529,15 +1561,28 @@ namespace ConstructionControl
                         ? arr
                         : 0;
 
+                    bool floorOverage = plan > 0 ? arrived > plan : arrived > 0;
                     bool floorFilled = plan > 0 && arrived >= plan;
-                    Brush cellBg = rowHighlight ?? (floorFilled ? filledHighlight : null);
+                    bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
+                    if (floorOverage)
+                    {
+                        summaryHasOverage = true;
+                        if (summaryOverageNote != null)
+                            summaryOverageNote.Visibility = Visibility.Visible;
+                    }
+
+                    Brush cellBg = floorOverage
+                        ? warningHighlight
+                        : rowHighlight ?? (blockComplete ? blockHighlight : (floorFilled ? filledHighlight : null));
                     AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44);
                 }
             }
 
             double notArrived = Math.Max(0, totalPlanned - totalArrival);
             bool arrivedComplete = totalPlanned > 0 && totalArrival >= totalPlanned;
-            Brush arrivedBg = rowHighlight ?? (arrivedComplete ? filledHighlight : null);
+            Brush arrivedBg = rowOverage
+                ? warningHighlight
+                : rowHighlight ?? (arrivedComplete ? filledHighlight : null);
             AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
             AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
             AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
@@ -1819,25 +1864,17 @@ namespace ConstructionControl
                 UseLayoutRounding = true
             };
 
-            var line = new Line
+            var line = new WpfPath
             {
-                X1 = 0,
-                Y2 = 0,
+                Data = Geometry.Parse("M0,1 L1,0"),
                 Stroke = new SolidColorBrush(Color.FromRgb(209, 213, 219)),
                 StrokeThickness = 1,
+                Stretch = Stretch.Fill,
                 SnapsToDevicePixels = true,
                 IsHitTestVisible = false
             };
 
-            line.SetBinding(Line.X2Property, new Binding("ActualWidth")
-            {
-                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Grid), 1)
-            });
 
-            line.SetBinding(Line.Y1Property, new Binding("ActualHeight")
-            {
-                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Grid), 1)
-            });
 
             container.Children.Add(line);
 
