@@ -92,6 +92,7 @@ namespace ConstructionControl
             public string GroupName { get; set; }
             public string SubCategory { get; set; }
             public string Category { get; set; }
+            public List<string> PrefixSegments { get; set; }
         }
 
         public ObservableCollection<string> BrigadierNames => brigadierNames;
@@ -766,8 +767,12 @@ namespace ConstructionControl
 
             var materialNames = journal
                 .Where(j => !string.IsNullOrWhiteSpace(j.MaterialName))
-                .Select(j => j.MaterialName)
-                .Distinct()
+                .Select(j => new TreeSettingsWindow.MaterialSplitRuleSource
+                {
+                    MaterialName = j.MaterialName,
+                    Category = j.Category,
+                    TypeName = GetSegmentsForMaterial(j.MaterialName).FirstOrDefault() ?? j.MaterialName
+                })
                 .ToList();
 
             var w = new TreeSettingsWindow(materialNames, currentObject.MaterialTreeSplitRules ?? new())
@@ -1340,7 +1345,7 @@ namespace ConstructionControl
 
         private void AddMaterialTreeNodes(TreeViewItem parent, string materialName, string groupName, string category, string subCategory)
         {
-            var segments = GetMaterialSegments(materialName);
+            var segments = GetSegmentsForMaterial(materialName);
             if (segments.Count == 0)
                 segments.Add(materialName);
 
@@ -1349,19 +1354,30 @@ namespace ConstructionControl
             for (int i = 0; i < segments.Count; i++)
             {
                 var isFinal = i == segments.Count - 1;
+                prefix.Add(segments[i]);
+
+                if (!isFinal)
+                {
+                    var existingNode = FindChildNode(current, segments[i]);
+                    if (existingNode != null)
+                    {
+                        current = existingNode;
+                        continue;
+                    }
+                }
+
                 var node = new TreeViewItem
                 {
                     Header = segments[i],
-                    Tag = isFinal
-                        ? new TreeNodeMeta
-                        {
-                            Kind = "Material",
-                            MaterialName = materialName,
-                            GroupName = groupName,
-                            Category = category,
-                            SubCategory = subCategory
-                        }
-                        : "MaterialPart",
+                    Tag = new TreeNodeMeta
+                    {
+                        Kind = isFinal ? "Material" : "MaterialPart",
+                        MaterialName = isFinal ? materialName : null,
+                        GroupName = groupName,
+                        Category = category,
+                        SubCategory = subCategory,
+                        PrefixSegments = prefix.ToList()
+                    },
                     IsExpanded = false
                 };
 
@@ -1370,7 +1386,29 @@ namespace ConstructionControl
             }
         }
 
-        private List<string> GetMaterialSegments(string materialName)
+        private TreeViewItem FindChildNode(ItemsControl parent, string header)
+        {
+            foreach (var child in parent.Items)
+            {
+                if (child is TreeViewItem node
+                    && string.Equals(node.Header?.ToString(), header, StringComparison.CurrentCultureIgnoreCase))
+                    return node;
+            }
+
+            return null;
+        }
+
+        public static List<string> GetSegmentsFromText(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+                return new List<string>();
+
+            return Regex.Matches(materialName, "[A-Za-zА-Яа-яЁё]+|\d+")
+                .Select(m => m.Value)
+                .ToList();
+        }
+
+        private List<string> GetSegmentsForMaterial(string materialName)
         {
             if (string.IsNullOrWhiteSpace(materialName))
                 return new List<string>();
@@ -1385,10 +1423,7 @@ namespace ConstructionControl
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .ToList();
             }
-
-            return Regex.Matches(materialName, "[A-Za-zА-Яа-яЁё]+|\\d+")
-                .Select(m => m.Value)
-                .ToList();
+            return GetSegmentsFromText(materialName);
         }
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
@@ -1416,6 +1451,15 @@ namespace ConstructionControl
             }
 
             return null;
+        }
+        private IEnumerable<TreeViewItem> EnumerateNodeWithParents(TreeViewItem node)
+        {
+            var current = node;
+            while (current != null)
+            {
+                yield return current;
+                current = FindParentNode(current);
+            }
         }
 
         private void ObjectsTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1669,15 +1713,45 @@ namespace ConstructionControl
 
             if (ObjectsTree.SelectedItem is TreeViewItem node)
             {
-                var kind = GetNodeKind(node);
-                var value = node.Header.ToString();
-
-                if (kind == "Group")
-                    data = data.Where(j => j.MaterialGroup == value);
-                else if (kind == "Material")
+                foreach (var currentNode in EnumerateNodeWithParents(node))
                 {
                     var material = node.Tag is TreeNodeMeta meta ? meta.MaterialName : value;
                     data = data.Where(j => j.MaterialName == material);
+                    var kind = GetNodeKind(currentNode);
+                    var value = currentNode.Header?.ToString();
+
+                    if (kind == "Group")
+                        data = data.Where(j => j.MaterialGroup == value);
+                    else if (kind == "SubCategory")
+                        data = data.Where(j => j.SubCategory == value);
+                    else if (kind == "Category")
+                        data = data.Where(j => j.Category == value);
+                    else if (currentNode.Tag is TreeNodeMeta meta && meta.PrefixSegments?.Count > 0)
+                    {
+                        if (kind == "Material")
+                        {
+                            var material = meta.MaterialName ?? value;
+                            data = data.Where(j => j.MaterialName == material);
+                        }
+                        else if (kind == "MaterialPart")
+                        {
+                            var prefixSegments = meta.PrefixSegments;
+                            data = data.Where(j =>
+                            {
+                                var segments = GetSegmentsForMaterial(j.MaterialName);
+                                if (segments.Count < prefixSegments.Count)
+                                    return false;
+
+                                for (int i = 0; i < prefixSegments.Count; i++)
+                                {
+                                    if (!string.Equals(segments[i], prefixSegments[i], StringComparison.CurrentCultureIgnoreCase))
+                                        return false;
+                                }
+
+                                return true;
+                            });
+                        }
+                    }
                 }
             }
 

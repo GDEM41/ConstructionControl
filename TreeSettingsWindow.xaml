@@ -23,15 +23,24 @@
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
                   HeadersVisibility="Column"
-                  IsReadOnly="False">
+                  IsReadOnly="False"
+                  CellEditEnding="RulesGrid_CellEditEnding">
             <DataGrid.Columns>
+                <DataGridTextColumn Header="Раздел"
+                                    Binding="{Binding Category}"
+                                    IsReadOnly="True"
+                                    Width="1.4*"/>
+                <DataGridTextColumn Header="Тип"
+                                    Binding="{Binding TypeName}"
+                                    IsReadOnly="True"
+                                    Width="1.2*"/>
                 <DataGridTextColumn Header="Материал"
                                     Binding="{Binding MaterialName}"
                                     IsReadOnly="True"
-                                    Width="2*"/>
+                                    Width="2.2*"/>
                 <DataGridTextColumn Header="Разбиение"
                                     Binding="{Binding SplitPath, UpdateSourceTrigger=PropertyChanged}"
-                                    Width="3*"/>
+                                    Width="2.4*"/>
             </DataGrid.Columns>
         </DataGrid>
 
