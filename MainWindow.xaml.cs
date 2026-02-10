@@ -1350,6 +1350,7 @@ namespace ConstructionControl
                 segments.Add(materialName);
 
             ItemsControl current = parent;
+            var prefix = new List<string>();
 
             for (int i = 0; i < segments.Count; i++)
             {
@@ -1403,8 +1404,8 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(materialName))
                 return new List<string>();
 
-            return Regex.Matches(materialName, "[A-Za-zА-Яа-яЁё]+|\d+")
-                .Select(m => m.Value)
+            return Regex.Matches(materialName, @"[A-Za-zА-Яа-яЁё]+|\d+")
+                 .Select(m => m.Value)
                 .ToList();
         }
 
@@ -1715,8 +1716,7 @@ namespace ConstructionControl
             {
                 foreach (var currentNode in EnumerateNodeWithParents(node))
                 {
-                    var material = node.Tag is TreeNodeMeta meta ? meta.MaterialName : value;
-                    data = data.Where(j => j.MaterialName == material);
+
                     var kind = GetNodeKind(currentNode);
                     var value = currentNode.Header?.ToString();
 
@@ -1726,16 +1726,16 @@ namespace ConstructionControl
                         data = data.Where(j => j.SubCategory == value);
                     else if (kind == "Category")
                         data = data.Where(j => j.Category == value);
-                    else if (currentNode.Tag is TreeNodeMeta meta && meta.PrefixSegments?.Count > 0)
+                    else if (currentNode.Tag is TreeNodeMeta nodeMeta && nodeMeta.PrefixSegments?.Count > 0)
                     {
                         if (kind == "Material")
                         {
-                            var material = meta.MaterialName ?? value;
-                            data = data.Where(j => j.MaterialName == material);
+                            var materialName = nodeMeta.MaterialName ?? value;
+                            data = data.Where(j => j.MaterialName == materialName);
                         }
                         else if (kind == "MaterialPart")
                         {
-                            var prefixSegments = meta.PrefixSegments;
+                            var prefixSegments = nodeMeta.PrefixSegments;
                             data = data.Where(j =>
                             {
                                 var segments = GetSegmentsForMaterial(j.MaterialName);
