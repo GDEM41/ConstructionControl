@@ -763,6 +763,7 @@
                                       Grid.Row="2"
                                       AutoGenerateColumns="False"
                                       ColumnWidth="SizeToCells"
+                                       CanUserResizeColumns="False"
                                       CanUserAddRows="False"
                                       CanUserDeleteRows="True"
                                       RowStyle="{StaticResource OtDueRowStyle}"
@@ -786,17 +787,15 @@
                                     <DataGridTemplateColumn Header="ФИО" Width="SizeToCells">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <TextBlock Text="{Binding FullName}" TextWrapping="Wrap"/>
-                                            </DataTemplate>
+                                                    <TextBlock Text="{Binding FullNameDisplay}" TextWrapping="Wrap"/>
+                                                </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                         <DataGridTemplateColumn.CellEditingTemplate>
                                             <DataTemplate>
                                                 <TextBox Text="{Binding FullName, UpdateSourceTrigger=PropertyChanged}"
                                                         
-                                                         TextWrapping="Wrap"
-                                                         MinLines="2"
-                                                         MaxLines="2"
-                                                         VerticalScrollBarVisibility="Auto"/>
+                                                         TextWrapping="NoWrap"
+                                                         VerticalContentAlignment="Center"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
@@ -817,7 +816,25 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Вид инструктажа" Binding="{Binding InstructionType}" Width="SizeToCells"/>
+                                        <DataGridTextColumn Header="Разряд" Binding="{Binding Rank, UpdateSourceTrigger=PropertyChanged}" Width="SizeToCells"/>
+
+                                        <DataGridTemplateColumn Header="Профессия" Width="SizeToCells">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Profession}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=Professions}"
+                                                          Text="{Binding Profession, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="Вид инструктажа" Binding="{Binding InstructionType}" Width="SizeToCells"/>
                                     <DataGridTextColumn Header="Номера инструкций по ОТ" Binding="{Binding InstructionNumbers}" Width="SizeToCells"/>
                                     <DataGridTextColumn Header="Период повторного (мес.)"
                                                         Binding="{Binding RepeatPeriodMonths, UpdateSourceTrigger=PropertyChanged}"

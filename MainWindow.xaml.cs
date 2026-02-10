@@ -79,11 +79,12 @@ namespace ConstructionControl
         private TextBlock summaryOverageNote;
         private readonly ObservableCollection<string> brigadierNames = new();
         private readonly ObservableCollection<string> specialties = new();
+        private readonly ObservableCollection<string> professions = new();
         private string otSearchText = string.Empty;
 
         public ObservableCollection<string> BrigadierNames => brigadierNames;
         public ObservableCollection<string> Specialties => specialties;
-
+        public ObservableCollection<string> Professions => professions;
         public MainWindow()
         {
             InitializeComponent();
@@ -184,6 +185,7 @@ namespace ConstructionControl
             SubscribeOtJournalEntryEvents();
             RefreshBrigadierNames();
             RefreshSpecialties();
+            RefreshProfessions();
             NormalizeOtRows();
             SortOtJournal();
             UpdateOtReminders();
@@ -222,12 +224,20 @@ namespace ConstructionControl
                 RefreshBrigadierNames();
             if (e.PropertyName == nameof(OtJournalEntry.Specialty))
                 RefreshSpecialties();
+            if (e.PropertyName == nameof(OtJournalEntry.Profession))
+                RefreshProfessions();
+            if (e.PropertyName == nameof(OtJournalEntry.Specialty)
+                || e.PropertyName == nameof(OtJournalEntry.Profession))
+            {
+                SyncProfessionAndSpecialty(row, e.PropertyName);
+                FillInstructionNumbersFromTemplate(row);
+            }
 
             if (e.PropertyName == nameof(OtJournalEntry.InstructionDate)
                 || e.PropertyName == nameof(OtJournalEntry.RepeatPeriodMonths)
                 || e.PropertyName == nameof(OtJournalEntry.IsBrigadier)
                 || e.PropertyName == nameof(OtJournalEntry.BrigadierName)
-                || e.PropertyName == nameof(OtJournalEntry.FullName)
+                
                 || e.PropertyName == nameof(OtJournalEntry.IsDismissed))
             {
                 NormalizeOtRows();
@@ -251,7 +261,69 @@ namespace ConstructionControl
                 specialties.Add(item);
             }
         }
+        private void RefreshProfessions()
+        {
+            professions.Clear();
 
+            if (currentObject?.OtJournal == null)
+                return;
+
+            foreach (var item in currentObject.OtJournal
+                         .Where(x => !string.IsNullOrWhiteSpace(x.Profession))
+                         .Select(x => x.Profession.Trim())
+                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                professions.Add(item);
+            }
+        }
+
+        private void SyncProfessionAndSpecialty(OtJournalEntry row, string changedPropertyName)
+        {
+            if (row == null)
+                return;
+
+            if (changedPropertyName == nameof(OtJournalEntry.Specialty)
+                && string.IsNullOrWhiteSpace(row.Profession)
+                && !string.IsNullOrWhiteSpace(row.Specialty))
+            {
+                row.Profession = row.Specialty.Trim();
+                return;
+            }
+
+            if (changedPropertyName == nameof(OtJournalEntry.Profession)
+                && string.IsNullOrWhiteSpace(row.Specialty)
+                && !string.IsNullOrWhiteSpace(row.Profession))
+            {
+                row.Specialty = row.Profession.Trim();
+            }
+        }
+
+        private void FillInstructionNumbersFromTemplate(OtJournalEntry row)
+        {
+            if (currentObject?.OtJournal == null || row == null)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(row.InstructionNumbers))
+                return;
+
+            var key = string.IsNullOrWhiteSpace(row.Profession)
+                ? row.Specialty?.Trim()
+                : row.Profession.Trim();
+
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            var template = currentObject.OtJournal
+                .Where(x => !ReferenceEquals(x, row))
+                .FirstOrDefault(x =>
+                    !string.IsNullOrWhiteSpace(x.InstructionNumbers)
+                    && (string.Equals(x.Profession?.Trim(), key, StringComparison.CurrentCultureIgnoreCase)
+                        || string.Equals(x.Specialty?.Trim(), key, StringComparison.CurrentCultureIgnoreCase)));
+
+            if (template != null)
+                row.InstructionNumbers = template.InstructionNumbers;
+        }
         private void RefreshBrigadierNames()
         {
             brigadierNames.Clear();
@@ -305,7 +377,9 @@ namespace ConstructionControl
                     InstructionDate = repeatDate,
                     FullName = lastCompleted.FullName,
                     Specialty = lastCompleted.Specialty,
-                    InstructionType = "Повторный",
+                    Rank = lastCompleted.Rank,
+                    Profession = lastCompleted.Profession,
+                    InstructionType = BuildRepeatInstructionType(group.Count(IsRepeatInstruction) + 1),
                     InstructionNumbers = lastCompleted.InstructionNumbers,
                     RepeatPeriodMonths = Math.Max(1, lastCompleted.RepeatPeriodMonths),
                     IsBrigadier = lastCompleted.IsBrigadier,
@@ -374,10 +448,44 @@ namespace ConstructionControl
 
             if (wasDismissed)
             {
-                source.InstructionType = "Повторный";
+                source.InstructionType = BuildRepeatInstructionType(GetNextRepeatIndexForPerson(source.FullName));
                 source.IsPendingRepeat = true;
                 source.IsRepeatCompleted = false;
             }
+        }
+        private static bool IsRepeatInstruction(OtJournalEntry entry)
+    => !string.IsNullOrWhiteSpace(entry?.InstructionType)
+        && entry.InstructionType.Contains("повторн", StringComparison.CurrentCultureIgnoreCase);
+
+        private static string BuildRepeatInstructionType(int index)
+            => index <= 1 ? "Повторный" : $"Повторный ({index})";
+
+        private int GetNextRepeatIndexForPerson(string fullName)
+        {
+            if (currentObject?.OtJournal == null || string.IsNullOrWhiteSpace(fullName))
+                return 1;
+
+            return currentObject.OtJournal
+                .Where(x => !string.IsNullOrWhiteSpace(x.FullName)
+                            && string.Equals(x.FullName.Trim(), fullName.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                            && IsRepeatInstruction(x))
+                .Count() + 1;
+        }
+
+        private int GetRepeatIndexForRow(OtJournalEntry row)
+        {
+            if (currentObject?.OtJournal == null || row == null || string.IsNullOrWhiteSpace(row.FullName))
+                return 1;
+
+            var samePersonRepeats = currentObject.OtJournal
+                .Where(x => !string.IsNullOrWhiteSpace(x.FullName)
+                            && string.Equals(x.FullName.Trim(), row.FullName.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                            && IsRepeatInstruction(x))
+                .OrderBy(x => x.InstructionDate)
+                .ToList();
+
+            var idx = samePersonRepeats.IndexOf(row);
+            return idx >= 0 ? idx + 1 : samePersonRepeats.Count + 1;
         }
         private void UpdateOtReminders()
         {
@@ -391,7 +499,7 @@ namespace ConstructionControl
             if (dueRows.Count > 0)
             {
                 OtReminderText.Text = $"Требуется повторный инструктаж: {dueRows.Count} чел.{Environment.NewLine}" +
-                      string.Join(Environment.NewLine, dueRows.Take(5).Select(x => $"• {x.FullName}"));
+                        string.Join(Environment.NewLine, dueRows.Take(5).Select(x => $"• {x.LastName}"));
                 OtReminderPopup.Visibility = Visibility.Visible;
             }
             else
@@ -418,6 +526,7 @@ namespace ConstructionControl
             OtJournalGrid.Items.Refresh();
             OtJournalGrid.SelectedItem = row;
             RefreshSpecialties();
+            RefreshProfessions();
             UpdateOtReminders();
             SaveState();
         }
@@ -433,7 +542,7 @@ namespace ConstructionControl
             }
 
             row.InstructionDate = DateTime.Today;
-            row.InstructionType = "Повторный";
+            row.InstructionType = BuildRepeatInstructionType(GetRepeatIndexForRow(row));
             row.IsPendingRepeat = false;
             row.IsRepeatCompleted = true;
 
@@ -503,6 +612,7 @@ namespace ConstructionControl
             SortOtJournal();
             RefreshBrigadierNames();
             RefreshSpecialties();
+            RefreshProfessions();
             UpdateOtReminders();
             
             SaveState();
@@ -519,7 +629,9 @@ namespace ConstructionControl
             {
                 RefreshBrigadierNames();
                 RefreshSpecialties();
+                RefreshProfessions();
                 NormalizeOtRows();
+
                 SortOtJournal();
                 UpdateOtReminders();
                 SaveState();
@@ -532,6 +644,7 @@ namespace ConstructionControl
             {
                 RefreshBrigadierNames();
                 RefreshSpecialties();
+                RefreshProfessions();
                 NormalizeOtRows();
                 SortOtJournal();
                 UpdateOtReminders();
@@ -546,6 +659,7 @@ namespace ConstructionControl
                 currentObject?.OtJournal?.Remove(row);
                 RefreshBrigadierNames();
                 RefreshSpecialties();
+                RefreshProfessions();
                 UpdateOtReminders();
                 SaveState();
                 e.Handled = true;
@@ -1364,9 +1478,16 @@ namespace ConstructionControl
                 data = data.Where(j => j.Date <= ArrivalDateTo.SelectedDate);
 
 
+            var arrivalSearch = ArrivalSearchBox?.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(arrivalSearch))
+            {
+                data = data.Where(j =>
+                    (j.MaterialName ?? string.Empty).Contains(arrivalSearch, StringComparison.CurrentCultureIgnoreCase)
+                    || (j.Ttn ?? string.Empty).Contains(arrivalSearch, StringComparison.CurrentCultureIgnoreCase)
+                    || (j.Supplier ?? string.Empty).Contains(arrivalSearch, StringComparison.CurrentCultureIgnoreCase));
+            }
 
 
-       
 
 
 

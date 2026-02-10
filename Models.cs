@@ -1,6 +1,8 @@
-﻿using System;
+﻿using DocumentFormat.OpenXml.Wordprocessing;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace ConstructionControl
@@ -49,6 +51,8 @@ namespace ConstructionControl
         private DateTime instructionDate = DateTime.Today;
         private string fullName;
         private string specialty;
+        private string rank;
+        private string profession;
         private string instructionType = "Первичный на рабочем месте";
         private string instructionNumbers;
         private int repeatPeriodMonths = 3;
@@ -79,15 +83,40 @@ namespace ConstructionControl
         public string FullName
         {
             get => fullName;
-            set => SetField(ref fullName, value);
+            set
+            {
+                if (SetField(ref fullName, value))
+                {
+                    OnPropertyChanged(nameof(FullNameDisplay));
+                    OnPropertyChanged(nameof(LastName));
+                }
+            }
         }
+        public string FullNameDisplay => string.IsNullOrWhiteSpace(FullName)
+    ? string.Empty
+    : string.Join(Environment.NewLine,
+        FullName.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+
+        public string LastName => string.IsNullOrWhiteSpace(FullName)
+            ? string.Empty
+            : FullName.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
 
         public string Specialty
         {
             get => specialty;
             set => SetField(ref specialty, value);
         }
+        public string Rank
+        {
+            get => rank;
+            set => SetField(ref rank, value);
+        }
 
+        public string Profession
+        {
+            get => profession;
+            set => SetField(ref profession, value);
+        }
         public string InstructionType
         {
             get => instructionType;
