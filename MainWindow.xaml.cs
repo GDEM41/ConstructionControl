@@ -81,6 +81,7 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> specialties = new();
         private readonly ObservableCollection<string> professions = new();
         private string otSearchText = string.Empty;
+        private bool isTreePinned;
 
         public ObservableCollection<string> BrigadierNames => brigadierNames;
         public ObservableCollection<string> Specialties => specialties;
@@ -111,6 +112,7 @@ namespace ConstructionControl
             RefreshArrivalNames();
 
             RefreshTreePreserveState();
+            UpdateTreePanelState(forceVisible: false);
 
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -1246,7 +1248,8 @@ namespace ConstructionControl
             // ===== ОСНОВНЫЕ =====
             var mainGroups = journal
                 .Where(j => j.Category == "Основные")
-                .GroupBy(j => j.MaterialGroup);
+                .GroupBy(j => j.MaterialGroup)
+                .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
 
             foreach (var g in mainGroups)
             {
@@ -1254,10 +1257,12 @@ namespace ConstructionControl
                 {
                     Header = g.Key,
                     Tag = "Group",
-                    IsExpanded = true
+                    IsExpanded = false
                 };
 
-                foreach (var m in g.Select(x => x.MaterialName).Distinct())
+                foreach (var m in g.Select(x => x.MaterialName)
+                                  .Distinct()
+                                  .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
                 {
                     groupNode.Items.Add(new TreeViewItem
                     {
@@ -1272,7 +1277,8 @@ namespace ConstructionControl
             // ===== ДОПЫ =====
             var extraGroups = journal
                 .Where(j => j.Category == "Допы")
-                .GroupBy(j => j.SubCategory);
+                 .GroupBy(j => j.SubCategory)
+                .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
 
             foreach (var g in extraGroups)
             {
@@ -1280,10 +1286,12 @@ namespace ConstructionControl
                 {
                     Header = g.Key,
                     Tag = "SubCategory",
-                    IsExpanded = true
+                    IsExpanded = false
                 };
 
-                foreach (var m in g.Select(x => x.MaterialName).Distinct())
+                foreach (var m in g.Select(x => x.MaterialName)
+                              .Distinct()
+                              .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
                 {
                     subNode.Items.Add(new TreeViewItem
                     {
@@ -2181,28 +2189,20 @@ namespace ConstructionControl
                 .Where(groups.Contains)
                 .ToList();
 
-            if (!summaryFilterInitialized)
-            {
-                if (selectedGroups.Count > 1)
-                    selectedGroups = selectedGroups.Take(1).ToList();
+            if (selectedGroups.Count == 0)
+                selectedGroups = new List<string> { groups[0] };
+            else if (selectedGroups.Count > 1)
+                selectedGroups = selectedGroups.Take(1).ToList();
 
-                summaryFilterInitialized = true;
-            }
+            summaryFilterInitialized = true;
+
+
             currentObject.SummaryVisibleGroups = selectedGroups;
 
             if (SummaryTypeFilterPanel != null)
             {
                 var radioStyle = FindResource("SummaryFilterRadio") as Style;
-                var allOption = new RadioButton
-                {
-                    Content = "Все типы",
-                    Margin = new Thickness(0, 2, 0, 2),
-                    GroupName = "SummaryTypeFilter",
-                    IsChecked = selectedGroups.Count == 0,
-                    Style = radioStyle
-                };
-                allOption.Checked += SummaryFilterOptionChanged;
-                SummaryTypeFilterPanel.Children.Add(allOption);
+               
 
                 foreach (var group in groups)
                 {
@@ -2258,13 +2258,7 @@ namespace ConstructionControl
 
             if (selectedGroups == null || selectedGroups.Count == 0)
             {
-                SummaryFilterSubtitle.Text = "Все типы";
-                return;
-            }
-
-            if (selectedGroups.Count == groups.Count)
-            {
-                SummaryFilterSubtitle.Text = "Все типы";
+                SummaryFilterSubtitle.Text = groups[0];
                 return;
             }
 
@@ -2285,7 +2279,54 @@ namespace ConstructionControl
                 .OrderBy(n => n)
                 .ToList();
         }
+        private void TreePinToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            isTreePinned = true;
+            UpdateTreePanelState(forceVisible: true);
+        }
 
+        private void TreePinToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            isTreePinned = false;
+            UpdateTreePanelState(forceVisible: false);
+        }
+
+        private void TreeHoverZone_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isTreePinned)
+                UpdateTreePanelState(forceVisible: true);
+        }
+
+        private void TreePanel_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isTreePinned)
+                UpdateTreePanelState(forceVisible: true);
+        }
+
+        private void TreePanel_MouseLeave(object sender, MouseEventArgs e)
+        {
+            if (isTreePinned)
+                return;
+
+            if (!TreePanelBorder.IsMouseOver)
+                UpdateTreePanelState(forceVisible: false);
+        }
+
+        private void ContentPanel_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isTreePinned)
+                UpdateTreePanelState(forceVisible: false);
+        }
+
+        private void UpdateTreePanelState(bool forceVisible)
+        {
+            if (TreeColumn == null || TreePanelBorder == null)
+                return;
+
+            bool show = isTreePinned || forceVisible;
+            TreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TreeColumn.Width = show ? new GridLength(260) : new GridLength(0);
+        }
         private List<SummaryBlockInfo> BuildSummaryBlocks()
         {
             var blocks = new List<SummaryBlockInfo>();

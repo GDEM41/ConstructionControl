@@ -252,40 +252,67 @@
         <Grid Margin="10">
 
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition x:Name="TreeColumn" Width="260"/>
+                    <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                    Background="Transparent"
+                    MouseEnter="TreeHoverZone_MouseEnter"/>
 
-            <!-- ===== ДЕРЕВО ===== -->
-            <Border Background="White"
+                <!-- ===== ДЕРЕВО ===== -->
+                <Border x:Name="TreePanelBorder"
+                    Grid.Column="1"
+                    Background="White"
                     CornerRadius="8"
                     Padding="6"
                     BorderBrush="#E5E7EB"
-                    BorderThickness="1">
-                <TreeView x:Name="ObjectsTree"
-                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          SelectedItemChanged="ObjectsTree_SelectedItemChanged">
+                    BorderThickness="1"
+                    MouseEnter="TreePanel_MouseEnter"
+                    MouseLeave="TreePanel_MouseLeave">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                    <TreeView.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="Переименовать"
-                                      Click="RenameTreeItem_Click"/>
-                            <MenuItem Header="Удалить"
-                                      Click="DeleteTreeItem_Click"/>
-                        </ContextMenu>
-                    </TreeView.ContextMenu>
-                </TreeView>
-            </Border>
+                        <ToggleButton x:Name="TreePinToggle"
+                                  Width="24"
+                                  Height="24"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Top"
+                                  Margin="0,0,0,6"
+                                  ToolTip="Закрепить панель дерева"
+                                  Checked="TreePinToggle_Checked"
+                                  Unchecked="TreePinToggle_Unchecked">📎</ToggleButton>
+
+                        <TreeView x:Name="ObjectsTree"
+                              Grid.Row="1"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              SelectedItemChanged="ObjectsTree_SelectedItemChanged">
+
+                            <TreeView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Переименовать"
+                                          Click="RenameTreeItem_Click"/>
+                                    <MenuItem Header="Удалить"
+                                          Click="DeleteTreeItem_Click"/>
+                                </ContextMenu>
+                            </TreeView.ContextMenu>
+                        </TreeView>
+                    </Grid>
+                </Border>
 
             <!-- ===== КОНТЕНТ ===== -->
-            <Border Grid.Column="1"
+                <Border Grid.Column="2"
                     Background="White"
                     CornerRadius="8"
                     Padding="8"
                     Margin="10,0,0,0"
                     BorderBrush="#E5E7EB"
-                    BorderThickness="1">
+                    BorderThickness="1"
+                    MouseEnter="ContentPanel_MouseEnter">
 
 
                 <TabControl x:Name="MainTabs"
@@ -311,7 +338,7 @@
                                                        FontWeight="SemiBold"
                                                        Foreground="#111827"/>
                                             <TextBlock x:Name="SummaryFilterSubtitle"
-                                                       Text="Все типы"
+                                                       Text="Нет доступных типов"
                                                        Foreground="#6B7280"
                                                        FontSize="12"/>
                                         </StackPanel>
