@@ -40,6 +40,111 @@ namespace ConstructionControl
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
+        public List<OtJournalEntry> OtJournal { get; set; } = new();
+    }
+
+    public class OtJournalEntry : INotifyPropertyChanged
+    {
+        private DateTime instructionDate = DateTime.Today;
+        private string fullName;
+        private string specialty;
+        private string instructionType = "Первичный на рабочем месте";
+        private string instructionNumbers;
+        private int repeatPeriodMonths = 3;
+        private bool isBrigadier;
+        private string brigadierName;
+
+        public DateTime InstructionDate
+        {
+            get => instructionDate;
+            set
+            {
+                instructionDate = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(NextRepeatDate));
+                OnPropertyChanged(nameof(IsRepeatRequired));
+            }
+        }
+
+        public string FullName
+        {
+            get => fullName;
+            set => SetField(ref fullName, value);
+        }
+
+        public string Specialty
+        {
+            get => specialty;
+            set => SetField(ref specialty, value);
+        }
+
+        public string InstructionType
+        {
+            get => instructionType;
+            set => SetField(ref instructionType, value);
+        }
+
+        public string InstructionNumbers
+        {
+            get => instructionNumbers;
+            set => SetField(ref instructionNumbers, value);
+        }
+
+        public int RepeatPeriodMonths
+        {
+            get => repeatPeriodMonths;
+            set
+            {
+                if (SetField(ref repeatPeriodMonths, value))
+                {
+                    OnPropertyChanged(nameof(NextRepeatDate));
+                    OnPropertyChanged(nameof(IsRepeatRequired));
+                }
+            }
+        }
+
+        public bool IsBrigadier
+        {
+            get => isBrigadier;
+            set
+            {
+                if (SetField(ref isBrigadier, value))
+                {
+                    if (isBrigadier)
+                        BrigadierName = null;
+                    OnPropertyChanged(nameof(IsWorker));
+                }
+            }
+        }
+
+        public bool IsWorker => !IsBrigadier;
+
+        public string BrigadierName
+        {
+            get => brigadierName;
+            set => SetField(ref brigadierName, value);
+        }
+
+        public DateTime NextRepeatDate => InstructionDate.AddMonths(Math.Max(1, RepeatPeriodMonths));
+
+        public bool IsRepeatRequired => DateTime.Today >= NextRepeatDate;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 
     public class MaterialDemand

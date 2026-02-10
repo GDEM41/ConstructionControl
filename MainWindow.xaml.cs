@@ -2,6 +2,8 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -75,7 +77,9 @@ namespace ConstructionControl
         private List<string> summaryFilterGroups = new();
         private bool summaryHasOverage;
         private TextBlock summaryOverageNote;
+        private readonly ObservableCollection<string> brigadierNames = new();
 
+        public ObservableCollection<string> BrigadierNames => brigadierNames;
 
         public MainWindow()
         {
@@ -89,6 +93,7 @@ namespace ConstructionControl
             isLocked = true;
 
             LoadState();
+            InitializeOtJournal();
             ApplyAllFilters();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
@@ -111,9 +116,10 @@ namespace ConstructionControl
         }
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (e.Source is TabControl tab &&
-                tab.SelectedItem is TabItem item &&
-                item.Header.ToString() == "Приход")
+            if (e.Source is not TabControl tab || tab.SelectedItem is not TabItem item)
+                return;
+
+            if (item.Header?.ToString() == "Приход")
             {
                 ArrivalPopup.Visibility = arrivalPanelVisible
                     ? Visibility.Visible
@@ -122,7 +128,16 @@ namespace ConstructionControl
                 ShowArrivalButton.Visibility = arrivalPanelVisible
                     ? Visibility.Collapsed
                     : Visibility.Visible;
+
             }
+            else
+            {
+                ArrivalPopup.Visibility = Visibility.Collapsed;
+                ShowArrivalButton.Visibility = Visibility.Visible;
+            }
+
+            UpdateOtReminders();
+            OtJournalGrid.Items.Refresh();
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -139,7 +154,169 @@ namespace ConstructionControl
             ShowArrivalButton.Visibility = Visibility.Visible;
         }
 
+        private void InitializeOtJournal()
+        {
+            EnsureOtJournalStorage();
+            BindOtJournal();
+        }
 
+        private void EnsureOtJournalStorage()
+        {
+            if (currentObject != null && currentObject.OtJournal == null)
+                currentObject.OtJournal = new List<OtJournalEntry>();
+        }
+
+        private void BindOtJournal()
+        {
+            OtJournalGrid.ItemsSource = currentObject?.OtJournal;
+            SubscribeOtJournalEntryEvents();
+            RefreshBrigadierNames();
+            UpdateOtReminders();
+        }
+
+        private void SubscribeOtJournalEntryEvents()
+        {
+            if (currentObject?.OtJournal == null)
+                return;
+
+            foreach (var item in currentObject.OtJournal)
+            {
+                item.PropertyChanged -= OtJournalEntry_PropertyChanged;
+                item.PropertyChanged += OtJournalEntry_PropertyChanged;
+            }
+        }
+
+        private void OtJournalEntry_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(OtJournalEntry.IsBrigadier) || e.PropertyName == nameof(OtJournalEntry.FullName))
+                RefreshBrigadierNames();
+
+            if (e.PropertyName == nameof(OtJournalEntry.InstructionDate)
+                || e.PropertyName == nameof(OtJournalEntry.RepeatPeriodMonths)
+                || e.PropertyName == nameof(OtJournalEntry.IsBrigadier)
+                || e.PropertyName == nameof(OtJournalEntry.BrigadierName)
+                || e.PropertyName == nameof(OtJournalEntry.FullName))
+            {
+                UpdateOtReminders();
+            }
+        }
+
+        private void RefreshBrigadierNames()
+        {
+            brigadierNames.Clear();
+
+            if (currentObject?.OtJournal == null)
+                return;
+
+            foreach (var name in currentObject.OtJournal
+                         .Where(x => x.IsBrigadier && !string.IsNullOrWhiteSpace(x.FullName))
+                         .Select(x => x.FullName.Trim())
+                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                brigadierNames.Add(name);
+            }
+        }
+
+        private void UpdateOtReminders()
+        {
+            if (currentObject?.OtJournal == null)
+            {
+                OtReminderPopup.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var dueCount = currentObject.OtJournal.Count(x => x.IsRepeatRequired);
+            if (dueCount > 0 && MainTabs.SelectedItem is TabItem tab && tab.Header?.ToString() == "ОТ")
+            {
+                OtReminderText.Text = $"Требуется повторный инструктаж: {dueCount} чел.";
+                OtReminderPopup.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                OtReminderPopup.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void AddOtRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureOtJournalStorage();
+
+            var row = new OtJournalEntry();
+            row.PropertyChanged += OtJournalEntry_PropertyChanged;
+            currentObject.OtJournal.Add(row);
+
+            OtJournalGrid.Items.Refresh();
+            OtJournalGrid.SelectedItem = row;
+            RefreshBrigadierNames();
+            UpdateOtReminders();
+            SaveState();
+        }
+
+        private void MarkRepeatDoneRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.DataContext is OtJournalEntry row)
+            {
+                row.InstructionDate = DateTime.Today;
+                row.InstructionType = "Повторный";
+                UpdateOtReminders();
+                OtJournalGrid.Items.Refresh();
+                SaveState();
+            }
+        }
+
+        private void MarkSelectedRepeatDone_Click(object sender, RoutedEventArgs e)
+        {
+            if (OtJournalGrid.SelectedItem is not OtJournalEntry row)
+            {
+                MessageBox.Show("Выберите запись в таблице ОТ");
+                return;
+            }
+
+            row.InstructionDate = DateTime.Today;
+            row.InstructionType = "Повторный";
+            UpdateOtReminders();
+            OtJournalGrid.Items.Refresh();
+            SaveState();
+        }
+
+        private void OtJournalGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                RefreshBrigadierNames();
+                UpdateOtReminders();
+                SaveState();
+            }));
+        }
+
+        private void OtJournalGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                RefreshBrigadierNames();
+                UpdateOtReminders();
+                SaveState();
+            }));
+        }
+
+        private void OtJournalGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete && OtJournalGrid.SelectedItem is OtJournalEntry row)
+            {
+                currentObject?.OtJournal?.Remove(row);
+                RefreshBrigadierNames();
+                UpdateOtReminders();
+                SaveState();
+                e.Handled = true;
+            }
+        }
 
 
 
@@ -158,6 +335,8 @@ namespace ConstructionControl
 
                 journal.Clear();
                 summaryFilterInitialized = false;
+                EnsureOtJournalStorage();
+                BindOtJournal();
                 ArrivalPanel.SetObject(currentObject, journal);
 
 
@@ -1023,7 +1202,8 @@ namespace ConstructionControl
             RefreshTreePreserveState();
 
             RefreshSummaryTable();
-
+            EnsureOtJournalStorage();
+            BindOtJournal();
             SaveState();
         }
 
@@ -1127,6 +1307,7 @@ namespace ConstructionControl
                         currentObject.Archive.Stb.Add(rec.Stb);
                 }
             }
+            EnsureOtJournalStorage();
 
         }
 
