@@ -181,9 +181,10 @@
 
     </Window.Resources>
 
-    <DockPanel>
+    <Grid>
+        <DockPanel>
 
-        <!-- ================= МЕНЮ ================= -->
+            <!-- ================= МЕНЮ ================= -->
         <Menu DockPanel.Dock="Top"
               Background="White"
               BorderThickness="0">
@@ -886,6 +887,8 @@
                 </TabControl>
             </Border>
         </Grid>
+        </DockPanel>
+        
         <Border x:Name="OtReminderPopup"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
@@ -906,5 +909,5 @@
                        MaxWidth="320"/>
             </StackPanel>
         </Border>
-    </DockPanel>
+    </Grid>
 </Window>
