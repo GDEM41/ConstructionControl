@@ -45,6 +45,7 @@ namespace ConstructionControl
 
     public class OtJournalEntry : INotifyPropertyChanged
     {
+        private Guid personId = Guid.NewGuid();
         private DateTime instructionDate = DateTime.Today;
         private string fullName;
         private string specialty;
@@ -53,6 +54,15 @@ namespace ConstructionControl
         private int repeatPeriodMonths = 3;
         private bool isBrigadier;
         private string brigadierName;
+        private bool isDismissed;
+        private bool isPendingRepeat;
+        private bool isRepeatCompleted;
+
+        public Guid PersonId
+        {
+            get => personId;
+            set => SetField(ref personId, value);
+        }
 
         public DateTime InstructionDate
         {
@@ -81,7 +91,15 @@ namespace ConstructionControl
         public string InstructionType
         {
             get => instructionType;
-            set => SetField(ref instructionType, value);
+            set
+            {
+                if (SetField(ref instructionType, value))
+                {
+                    OnPropertyChanged(nameof(IsPrimaryInstruction));
+                    OnPropertyChanged(nameof(IsActionEnabled));
+                    OnPropertyChanged(nameof(StatusLabel));
+                }
+            }
         }
 
         public string InstructionNumbers
@@ -124,6 +142,48 @@ namespace ConstructionControl
             get => brigadierName;
             set => SetField(ref brigadierName, value);
         }
+        public bool IsDismissed
+        {
+            get => isDismissed;
+            set => SetField(ref isDismissed, value);
+        }
+
+        public bool IsPendingRepeat
+        {
+            get => isPendingRepeat;
+            set
+            {
+                if (SetField(ref isPendingRepeat, value))
+                {
+                    OnPropertyChanged(nameof(IsActionEnabled));
+                    OnPropertyChanged(nameof(StatusLabel));
+                }
+            }
+        }
+
+        public bool IsRepeatCompleted
+        {
+            get => isRepeatCompleted;
+            set
+            {
+                if (SetField(ref isRepeatCompleted, value))
+                {
+                    OnPropertyChanged(nameof(StatusLabel));
+                }
+            }
+        }
+
+        public bool IsPrimaryInstruction =>
+            !string.IsNullOrWhiteSpace(InstructionType)
+            && InstructionType.Contains("первич", StringComparison.CurrentCultureIgnoreCase);
+
+        public bool IsActionEnabled => !IsPrimaryInstruction && IsPendingRepeat;
+
+        public string StatusLabel => IsPendingRepeat
+            ? "Требуется повторный"
+            : IsRepeatCompleted
+                ? "Повторный пройден"
+                : string.Empty;
 
         public DateTime NextRepeatDate => InstructionDate.AddMonths(Math.Max(1, RepeatPeriodMonths));
 

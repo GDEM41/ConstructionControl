@@ -78,8 +78,11 @@ namespace ConstructionControl
         private bool summaryHasOverage;
         private TextBlock summaryOverageNote;
         private readonly ObservableCollection<string> brigadierNames = new();
+        private readonly ObservableCollection<string> specialties = new();
+        private string otSearchText = string.Empty;
 
         public ObservableCollection<string> BrigadierNames => brigadierNames;
+        public ObservableCollection<string> Specialties => specialties;
 
         public MainWindow()
         {
@@ -169,11 +172,32 @@ namespace ConstructionControl
         private void BindOtJournal()
         {
             OtJournalGrid.ItemsSource = currentObject?.OtJournal;
+            if (currentObject?.OtJournal == null)
+            {
+                OtJournalGrid.ItemsSource = null;
+                return;
+            }
+
+            var view = CollectionViewSource.GetDefaultView(currentObject.OtJournal);
+            view.Filter = OtJournalFilter;
+            OtJournalGrid.ItemsSource = view;
             SubscribeOtJournalEntryEvents();
             RefreshBrigadierNames();
+            RefreshSpecialties();
+            NormalizeOtRows();
+            SortOtJournal();
             UpdateOtReminders();
         }
+        private bool OtJournalFilter(object item)
+        {
+            if (item is not OtJournalEntry row)
+                return false;
 
+            if (string.IsNullOrWhiteSpace(otSearchText))
+                return true;
+
+            return (row.FullName ?? string.Empty).Contains(otSearchText, StringComparison.CurrentCultureIgnoreCase);
+        }
         private void SubscribeOtJournalEntryEvents()
         {
             if (currentObject?.OtJournal == null)
@@ -188,16 +212,43 @@ namespace ConstructionControl
 
         private void OtJournalEntry_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
+            if (sender is not OtJournalEntry row)
+                return;
+
+            if (e.PropertyName == nameof(OtJournalEntry.FullName))
+                WarnAboutDuplicatePerson(row);
+
             if (e.PropertyName == nameof(OtJournalEntry.IsBrigadier) || e.PropertyName == nameof(OtJournalEntry.FullName))
                 RefreshBrigadierNames();
+            if (e.PropertyName == nameof(OtJournalEntry.Specialty))
+                RefreshSpecialties();
 
             if (e.PropertyName == nameof(OtJournalEntry.InstructionDate)
                 || e.PropertyName == nameof(OtJournalEntry.RepeatPeriodMonths)
                 || e.PropertyName == nameof(OtJournalEntry.IsBrigadier)
                 || e.PropertyName == nameof(OtJournalEntry.BrigadierName)
-                || e.PropertyName == nameof(OtJournalEntry.FullName))
+                || e.PropertyName == nameof(OtJournalEntry.FullName)
+                || e.PropertyName == nameof(OtJournalEntry.IsDismissed))
             {
+                NormalizeOtRows();
+                SortOtJournal();
                 UpdateOtReminders();
+            }
+        }
+        private void RefreshSpecialties()
+        {
+            specialties.Clear();
+
+            if (currentObject?.OtJournal == null)
+                return;
+
+            foreach (var item in currentObject.OtJournal
+                         .Where(x => !string.IsNullOrWhiteSpace(x.Specialty))
+                         .Select(x => x.Specialty.Trim())
+                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                specialties.Add(item);
             }
         }
 
@@ -217,7 +268,117 @@ namespace ConstructionControl
                 brigadierNames.Add(name);
             }
         }
+        private void NormalizeOtRows()
+        {
+            if (currentObject?.OtJournal == null)
+                return;
 
+            var toAdd = new List<OtJournalEntry>();
+
+            foreach (var group in currentObject.OtJournal
+                         .Where(x => !string.IsNullOrWhiteSpace(x.FullName))
+                         .GroupBy(x => x.FullName.Trim(), StringComparer.CurrentCultureIgnoreCase))
+            {
+                var activeRows = group.Where(x => !x.IsDismissed).ToList();
+                if (!activeRows.Any())
+                    continue;
+
+                var pendingExists = activeRows.Any(x => x.IsPendingRepeat);
+                if (pendingExists)
+                    continue;
+
+                var lastCompleted = activeRows
+                    .Where(x => !x.IsPendingRepeat)
+                    .OrderByDescending(x => x.InstructionDate)
+                    .FirstOrDefault();
+
+                if (lastCompleted == null)
+                    continue;
+
+                var repeatDate = lastCompleted.NextRepeatDate;
+                if (DateTime.Today < repeatDate)
+                    continue;
+
+                var clone = new OtJournalEntry
+                {
+                    PersonId = lastCompleted.PersonId,
+                    InstructionDate = repeatDate,
+                    FullName = lastCompleted.FullName,
+                    Specialty = lastCompleted.Specialty,
+                    InstructionType = "Повторный",
+                    InstructionNumbers = lastCompleted.InstructionNumbers,
+                    RepeatPeriodMonths = Math.Max(1, lastCompleted.RepeatPeriodMonths),
+                    IsBrigadier = lastCompleted.IsBrigadier,
+                    BrigadierName = lastCompleted.BrigadierName,
+                    IsPendingRepeat = true,
+                    IsRepeatCompleted = false,
+                    IsDismissed = false,
+                };
+                clone.PropertyChanged += OtJournalEntry_PropertyChanged;
+                toAdd.Add(clone);
+            }
+
+            if (toAdd.Count > 0)
+                currentObject.OtJournal.AddRange(toAdd);
+        }
+
+        private void SortOtJournal()
+        {
+            if (currentObject?.OtJournal == null)
+                return;
+
+            currentObject.OtJournal = currentObject.OtJournal
+                .OrderByDescending(x => x.InstructionDate)
+                .ThenBy(x => GetCrewSortKey(x), StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.IsBrigadier ? 0 : 1)
+                .ThenBy(x => x.FullName ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var view = CollectionViewSource.GetDefaultView(currentObject.OtJournal);
+            view.Filter = OtJournalFilter;
+            OtJournalGrid.ItemsSource = view;
+            view.Refresh();
+        }
+
+        private static string GetCrewSortKey(OtJournalEntry row)
+        {
+            if (row.IsBrigadier)
+                return $"00_{row.FullName}";
+
+            if (string.IsNullOrWhiteSpace(row.BrigadierName))
+                return $"99_{row.FullName}";
+
+            return $"10_{row.BrigadierName}";
+        }
+
+        private void WarnAboutDuplicatePerson(OtJournalEntry source)
+        {
+            if (currentObject?.OtJournal == null || string.IsNullOrWhiteSpace(source.FullName))
+                return;
+
+            var samePeople = currentObject.OtJournal
+                .Where(x => !ReferenceEquals(x, source)
+                            && !string.IsNullOrWhiteSpace(x.FullName)
+                            && string.Equals(x.FullName.Trim(), source.FullName.Trim(), StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+
+            if (!samePeople.Any())
+                return;
+
+            var wasDismissed = samePeople.Any(x => x.IsDismissed);
+            var message = wasDismissed
+                ? "Сотрудник был ранее отмечен как отсутствующий на объекте. При возвращении ему требуется повторный инструктаж."
+                : "Сотрудник с таким ФИО уже есть в журнале ОТ.";
+
+            MessageBox.Show(message, "Уведомление", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+            if (wasDismissed)
+            {
+                source.InstructionType = "Повторный";
+                source.IsPendingRepeat = true;
+                source.IsRepeatCompleted = false;
+            }
+        }
         private void UpdateOtReminders()
         {
             if (currentObject?.OtJournal == null)
@@ -226,10 +387,11 @@ namespace ConstructionControl
                 return;
             }
 
-            var dueCount = currentObject.OtJournal.Count(x => x.IsRepeatRequired);
-            if (dueCount > 0 && MainTabs.SelectedItem is TabItem tab && tab.Header?.ToString() == "ОТ")
+            var dueRows = currentObject.OtJournal.Where(x => x.IsPendingRepeat && !x.IsDismissed).ToList();
+            if (dueRows.Count > 0)
             {
-                OtReminderText.Text = $"Требуется повторный инструктаж: {dueCount} чел.";
+                OtReminderText.Text = $"Требуется повторный инструктаж: {dueRows.Count} чел.{Environment.NewLine}" +
+                      string.Join(Environment.NewLine, dueRows.Take(5).Select(x => $"• {x.FullName}"));
                 OtReminderPopup.Visibility = Visibility.Visible;
             }
             else
@@ -251,24 +413,40 @@ namespace ConstructionControl
             var row = new OtJournalEntry();
             row.PropertyChanged += OtJournalEntry_PropertyChanged;
             currentObject.OtJournal.Add(row);
+            SortOtJournal();
 
             OtJournalGrid.Items.Refresh();
             OtJournalGrid.SelectedItem = row;
-            RefreshBrigadierNames();
+            RefreshSpecialties();
             UpdateOtReminders();
             SaveState();
         }
+        private void MarkRepeatDone(OtJournalEntry row)
+        {
+            if (row == null)
+                return;
 
+            if (!row.IsActionEnabled)
+            {
+                MessageBox.Show("Для первичного инструктажа действие заблокировано. Отмечайте выполнение только в строке повторного инструктажа.");
+                return;
+            }
+
+            row.InstructionDate = DateTime.Today;
+            row.InstructionType = "Повторный";
+            row.IsPendingRepeat = false;
+            row.IsRepeatCompleted = true;
+
+            NormalizeOtRows();
+            SortOtJournal();
+            UpdateOtReminders();
+            OtJournalGrid.Items.Refresh();
+            SaveState();
+        }
         private void MarkRepeatDoneRow_Click(object sender, RoutedEventArgs e)
         {
             if (sender is FrameworkElement fe && fe.DataContext is OtJournalEntry row)
-            {
-                row.InstructionDate = DateTime.Today;
-                row.InstructionType = "Повторный";
-                UpdateOtReminders();
-                OtJournalGrid.Items.Refresh();
-                SaveState();
-            }
+                MarkRepeatDone(row);
         }
 
         private void MarkSelectedRepeatDone_Click(object sender, RoutedEventArgs e)
@@ -278,12 +456,61 @@ namespace ConstructionControl
                 MessageBox.Show("Выберите запись в таблице ОТ");
                 return;
             }
+            MarkRepeatDone(row);
+        }
 
-            row.InstructionDate = DateTime.Today;
-            row.InstructionType = "Повторный";
+        private void MarkPersonDismissed(OtJournalEntry row)
+        {
+            if (row == null || currentObject?.OtJournal == null || string.IsNullOrWhiteSpace(row.FullName))
+                return;
+
+            var rows = currentObject.OtJournal
+                .Where(x => !string.IsNullOrWhiteSpace(x.FullName)
+                            && string.Equals(x.FullName.Trim(), row.FullName.Trim(), StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+
+            foreach (var item in rows)
+                item.IsDismissed = true;
+
             UpdateOtReminders();
-            OtJournalGrid.Items.Refresh();
             SaveState();
+            MessageBox.Show("Сотрудник отмечен как отсутствующий на объекте.");
+        }
+
+        private void MarkPersonDismissedRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.DataContext is OtJournalEntry row)
+                MarkPersonDismissed(row);
+        }
+
+        private void MarkSelectedPersonDismissed_Click(object sender, RoutedEventArgs e)
+        {
+            if (OtJournalGrid.SelectedItem is not OtJournalEntry row)
+            {
+                MessageBox.Show("Выберите запись в таблице ОТ");
+                return;
+            }
+
+            MarkPersonDismissed(row);
+        }
+
+        private void DeleteSelectedOtRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (OtJournalGrid.SelectedItem is not OtJournalEntry row || currentObject?.OtJournal == null)
+                return;
+
+            currentObject.OtJournal.Remove(row);
+            SortOtJournal();
+            RefreshBrigadierNames();
+            RefreshSpecialties();
+            UpdateOtReminders();
+            
+            SaveState();
+        }
+        private void OtSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            otSearchText = OtSearchTextBox.Text?.Trim() ?? string.Empty;
+            CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
         }
 
         private void OtJournalGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
@@ -291,6 +518,9 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshBrigadierNames();
+                RefreshSpecialties();
+                NormalizeOtRows();
+                SortOtJournal();
                 UpdateOtReminders();
                 SaveState();
             }));
@@ -301,6 +531,9 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshBrigadierNames();
+                RefreshSpecialties();
+                NormalizeOtRows();
+                SortOtJournal();
                 UpdateOtReminders();
                 SaveState();
             }));
@@ -312,9 +545,39 @@ namespace ConstructionControl
             {
                 currentObject?.OtJournal?.Remove(row);
                 RefreshBrigadierNames();
+                RefreshSpecialties();
                 UpdateOtReminders();
                 SaveState();
                 e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                OtJournalGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                OtJournalGrid.CommitEdit(DataGridEditingUnit.Row, true);
+
+                if (OtJournalGrid.CurrentCell.Column != null)
+                {
+                    var col = OtJournalGrid.CurrentCell.Column.DisplayIndex;
+                    var rowIndex = OtJournalGrid.Items.IndexOf(OtJournalGrid.CurrentItem);
+
+                    if (col < OtJournalGrid.Columns.Count - 1)
+                        col++;
+                    else
+                    {
+                        col = 0;
+                        rowIndex = Math.Min(rowIndex + 1, OtJournalGrid.Items.Count - 1);
+                    }
+
+                    if (rowIndex >= 0 && rowIndex < OtJournalGrid.Items.Count)
+                    {
+                        OtJournalGrid.SelectedItem = OtJournalGrid.Items[rowIndex];
+                        OtJournalGrid.CurrentCell = new DataGridCellInfo(OtJournalGrid.Items[rowIndex], OtJournalGrid.Columns[col]);
+                        OtJournalGrid.BeginEdit();
+                    }
+                }
             }
         }
 
