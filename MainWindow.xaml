@@ -555,20 +555,23 @@
 
                             <!-- ====== ТАБЛИЦА ПРИХОДОВ ====== -->
                             <DataGrid x:Name="ArrivalLiveTable"
-                  Margin="0,50,0,0"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False" Grid.ColumnSpan="2">
+                                   Margin="0,50,0,0"
+                                   AutoGenerateColumns="False"
+                                    CanUserAddRows="False"
+                                    ColumnWidth="Auto"
+                                   CanUserResizeColumns="False"
+                                   Grid.ColumnSpan="2">
 
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="80"/>
-                                    <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}" Width="120"/>
+                                        <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}" Width="Auto"/>
 
-                                    <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" Width="220"/>
-                                    <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" Width="60"/>
-                                    <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="80"/>
-                                    <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" Width="120"/>
-                                    <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="200"/>
-                                </DataGrid.Columns>
+                                        <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="Auto"/>
+                                        <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="Auto"/>
+                                    </DataGrid.Columns>
                             </DataGrid>
 
                             <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
@@ -762,7 +765,7 @@
                             <DataGrid x:Name="OtJournalGrid"
                                       Grid.Row="2"
                                       AutoGenerateColumns="False"
-                                      ColumnWidth="SizeToCells"
+                                      ColumnWidth="Auto"
                                        CanUserResizeColumns="False"
                                       CanUserAddRows="False"
                                       CanUserDeleteRows="True"
@@ -771,8 +774,8 @@
                                       CellEditEnding="OtJournalGrid_CellEditEnding"
                                       PreviewKeyDown="OtJournalGrid_PreviewKeyDown">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="Дата" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="Дата" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding InstructionDate, StringFormat=dd.MM.yyyy}"/>
                                             </DataTemplate>
@@ -784,8 +787,8 @@
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <DataGridTemplateColumn Header="ФИО" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="ФИО" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                     <TextBlock Text="{Binding FullNameDisplay}" TextWrapping="Wrap"/>
                                                 </DataTemplate>
@@ -800,8 +803,8 @@
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <DataGridTemplateColumn Header="Специальность" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="Специальность" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding Specialty}"/>
                                             </DataTemplate>
@@ -816,34 +819,30 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="Разряд" Binding="{Binding Rank, UpdateSourceTrigger=PropertyChanged}" Width="SizeToCells"/>
 
-                                        <DataGridTemplateColumn Header="Профессия" Width="SizeToCells">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Profession}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                            <DataGridTemplateColumn.CellEditingTemplate>
-                                                <DataTemplate>
-                                                    <ComboBox IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=Professions}"
-                                                          Text="{Binding Profession, UpdateSourceTrigger=PropertyChanged}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellEditingTemplate>
-                                        </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="Вид инструктажа" Binding="{Binding InstructionType}" Width="SizeToCells"/>
-                                    <DataGridTextColumn Header="Номера инструкций по ОТ" Binding="{Binding InstructionNumbers}" Width="SizeToCells"/>
-                                    <DataGridTextColumn Header="Период повторного (мес.)"
+                                        <DataGridTextColumn Header="Разряд" Binding="{Binding Rank, UpdateSourceTrigger=PropertyChanged}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Вид инструктажа" Binding="{Binding InstructionType}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Номера инструкций по ОТ" Binding="{Binding InstructionNumbers}" Width="SizeToHeader">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                            <DataGridTextColumn.EditingElementStyle>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                    <Setter Property="AcceptsReturn" Value="True"/>
+                                                </Style>
+                                            </DataGridTextColumn.EditingElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Период повторного (мес.)"
                                                         Binding="{Binding RepeatPeriodMonths, UpdateSourceTrigger=PropertyChanged}"
-                                                        Width="SizeToCells"/>
+                                                       Width="Auto"/>
 
-                                    <DataGridCheckBoxColumn Header="Бригадир" Binding="{Binding IsBrigadier, UpdateSourceTrigger=PropertyChanged}" Width="SizeToCells"/>
+                                        <DataGridCheckBoxColumn Header="Бригадир" Binding="{Binding IsBrigadier, UpdateSourceTrigger=PropertyChanged}" Width="Auto"/>
 
-                                    <DataGridTemplateColumn Header="Бригадир звена" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="Бригадир звена" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding BrigadierName}"/>
                                             </DataTemplate>
@@ -863,9 +862,9 @@
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <DataGridTextColumn Header="След. повторный" Binding="{Binding NextRepeatDate, StringFormat=dd.MM.yyyy}" Width="SizeToCells" IsReadOnly="True"/>
+                                        <DataGridTextColumn Header="След. повторный" Binding="{Binding NextRepeatDate, StringFormat=dd.MM.yyyy}" Width="Auto" IsReadOnly="True"/>
 
-                                    <DataGridTemplateColumn Header="Статус" Width="140">
+                                        <DataGridTemplateColumn Header="Статус" Width="140">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold"/>
@@ -873,8 +872,8 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <DataGridTemplateColumn Header="Действие" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="Действие" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Button Content="Отметить пройдено"
                                                         Padding="8,3"
@@ -884,8 +883,8 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <DataGridTemplateColumn Header="Сотрудник" Width="SizeToCells">
-                                        <DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn Header="Сотрудник" Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Button Content="Нет на объекте"
                                                         Padding="8,3"
