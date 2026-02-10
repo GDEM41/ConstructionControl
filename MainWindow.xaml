@@ -192,7 +192,8 @@
             <MenuItem Header="Архив" Click="OpenArchive_Click" />
 
             <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
-            <MenuItem Header="Выход" Click="Exit_Click"/>
+                <MenuItem Header="Настройки дерева" Click="TreeSettings_Click"/>
+                <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>
 
         <!-- ================= TOOLBAR ================= -->
@@ -288,9 +289,13 @@
 
                         <TreeView x:Name="ObjectsTree"
                               Grid.Row="1"
+                              AllowDrop="True"
                               ScrollViewer.VerticalScrollBarVisibility="Auto"
                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                              SelectedItemChanged="ObjectsTree_SelectedItemChanged">
+                              SelectedItemChanged="ObjectsTree_SelectedItemChanged"
+                              PreviewMouseLeftButtonDown="ObjectsTree_PreviewMouseLeftButtonDown"
+                              MouseMove="ObjectsTree_MouseMove"
+                              Drop="ObjectsTree_Drop">
 
                             <TreeView.ContextMenu>
                                 <ContextMenu>

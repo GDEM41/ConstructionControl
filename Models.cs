@@ -40,6 +40,7 @@ namespace ConstructionControl
         public Dictionary<string, string> SupplierByGroup { get; set; } = new();
 
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
+        public Dictionary<string, string> MaterialTreeSplitRules { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
         public List<OtJournalEntry> OtJournal { get; set; } = new();

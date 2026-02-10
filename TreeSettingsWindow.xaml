@@ -1,0 +1,52 @@
+﻿<Window x:Class="ConstructionControl.TreeSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки дерева"
+        Height="520"
+        Width="760"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Для каждого материала задайте сегменты через символ | (пример: ПК|56|12|10|10)."
+                   Foreground="#374151"
+                   Margin="0,0,0,8"/>
+
+        <DataGrid x:Name="RulesGrid"
+                  Grid.Row="1"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  HeadersVisibility="Column"
+                  IsReadOnly="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Материал"
+                                    Binding="{Binding MaterialName}"
+                                    IsReadOnly="True"
+                                    Width="2*"/>
+                <DataGridTextColumn Header="Разбиение"
+                                    Binding="{Binding SplitPath, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="3*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button Content="Отмена"
+                    Width="110"
+                    Margin="0,0,8,0"
+                    IsCancel="True"/>
+            <Button Content="Сохранить"
+                    Width="110"
+                    IsDefault="True"
+                    Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

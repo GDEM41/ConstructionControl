@@ -16,6 +16,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using WpfPath = System.Windows.Shapes.Path;
+using System.Text.RegularExpressions;
 
 public enum ExportMode
 {
@@ -82,6 +83,16 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> professions = new();
         private string otSearchText = string.Empty;
         private bool isTreePinned;
+        private Point treeDragStart;
+
+        private sealed class TreeNodeMeta
+        {
+            public string Kind { get; set; }
+            public string MaterialName { get; set; }
+            public string GroupName { get; set; }
+            public string SubCategory { get; set; }
+            public string Category { get; set; }
+        }
 
         public ObservableCollection<string> BrigadierNames => brigadierNames;
         public ObservableCollection<string> Specialties => specialties;
@@ -745,7 +756,32 @@ namespace ConstructionControl
                 RefreshTreePreserveState();
             }
         }
+        private void TreeSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
 
+            var materialNames = journal
+                .Where(j => !string.IsNullOrWhiteSpace(j.MaterialName))
+                .Select(j => j.MaterialName)
+                .Distinct()
+                .ToList();
+
+            var w = new TreeSettingsWindow(materialNames, currentObject.MaterialTreeSplitRules ?? new())
+            {
+                Owner = this
+            };
+
+            if (w.ShowDialog() != true)
+                return;
+
+            currentObject.MaterialTreeSplitRules = w.ResultRules;
+            SaveState();
+            RefreshTreePreserveState();
+        }
 
         // ================= КНОПКИ =================
 
@@ -1223,6 +1259,7 @@ namespace ConstructionControl
             ObjectsTree.Items.Clear();
             if (currentObject == null)
                 return;
+            currentObject.MaterialTreeSplitRules ??= new Dictionary<string, string>();
 
             var newRoot = new TreeViewItem
             {
@@ -1264,11 +1301,7 @@ namespace ConstructionControl
                                   .Distinct()
                                   .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
                 {
-                    groupNode.Items.Add(new TreeViewItem
-                    {
-                        Header = m,
-                        Tag = "Material"
-                    });
+                    AddMaterialTreeNodes(groupNode, m, g.Key, "Основные", null);
                 }
 
                 mainNode.Items.Add(groupNode);
@@ -1293,11 +1326,7 @@ namespace ConstructionControl
                               .Distinct()
                               .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
                 {
-                    subNode.Items.Add(new TreeViewItem
-                    {
-                        Header = m,
-                        Tag = "Material"
-                    });
+                    AddMaterialTreeNodes(subNode, m, null, "Допы", g.Key);
                 }
 
                 extraNode.Items.Add(subNode);
@@ -1309,9 +1338,173 @@ namespace ConstructionControl
             ObjectsTree.Items.Add(newRoot);
         }
 
+        private void AddMaterialTreeNodes(TreeViewItem parent, string materialName, string groupName, string category, string subCategory)
+        {
+            var segments = GetMaterialSegments(materialName);
+            if (segments.Count == 0)
+                segments.Add(materialName);
 
+            ItemsControl current = parent;
+
+            for (int i = 0; i < segments.Count; i++)
+            {
+                var isFinal = i == segments.Count - 1;
+                var node = new TreeViewItem
+                {
+                    Header = segments[i],
+                    Tag = isFinal
+                        ? new TreeNodeMeta
+                        {
+                            Kind = "Material",
+                            MaterialName = materialName,
+                            GroupName = groupName,
+                            Category = category,
+                            SubCategory = subCategory
+                        }
+                        : "MaterialPart",
+                    IsExpanded = false
+                };
+
+                current.Items.Add(node);
+                current = node;
+            }
+        }
+
+        private List<string> GetMaterialSegments(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+                return new List<string>();
+
+            if (currentObject?.MaterialTreeSplitRules != null
+                && currentObject.MaterialTreeSplitRules.TryGetValue(materialName, out var rule)
+                && !string.IsNullOrWhiteSpace(rule))
+            {
+                return rule
+                    .Split('|', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => x.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .ToList();
+            }
+
+            return Regex.Matches(materialName, "[A-Za-zА-Яа-яЁё]+|\\d+")
+                .Select(m => m.Value)
+                .ToList();
+        }
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            ApplyAllFilters();
+        }
+
+        private string GetNodeKind(TreeViewItem node)
+        {
+            if (node.Tag is TreeNodeMeta meta)
+                return meta.Kind;
+
+            return node.Tag as string;
+        }
+
+        private TreeViewItem FindParentNode(DependencyObject child)
+        {
+            var parent = VisualTreeHelper.GetParent(child);
+
+            while (parent != null)
+            {
+                if (parent is TreeViewItem tvi)
+                    return tvi;
+
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            return null;
+        }
+
+        private void ObjectsTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            treeDragStart = e.GetPosition(null);
+        }
+
+        private void ObjectsTree_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || isLocked)
+                return;
+
+            var position = e.GetPosition(null);
+            if (Math.Abs(position.X - treeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(position.Y - treeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            if (ObjectsTree.SelectedItem is not TreeViewItem selected)
+                return;
+
+            var kind = GetNodeKind(selected);
+            if (kind != "Group" && kind != "Material")
+                return;
+
+            DragDrop.DoDragDrop(selected, selected, DragDropEffects.Move);
+        }
+
+        private void ObjectsTree_Drop(object sender, DragEventArgs e)
+        {
+            if (isLocked)
+                return;
+
+            if (!e.Data.GetDataPresent(typeof(TreeViewItem)))
+                return;
+
+            if (e.Data.GetData(typeof(TreeViewItem)) is not TreeViewItem sourceNode)
+                return;
+
+            if (e.OriginalSource is not DependencyObject dep)
+                return;
+
+            var targetNode = FindParentNode(dep);
+            if (targetNode == null || ReferenceEquals(sourceNode, targetNode))
+                return;
+
+            var sourceKind = GetNodeKind(sourceNode);
+            var targetKind = GetNodeKind(targetNode);
+
+            PushUndo();
+
+            if (sourceKind == "Material")
+            {
+                if (sourceNode.Tag is not TreeNodeMeta sourceMeta)
+                    return;
+
+                var targetGroup = targetKind == "Group"
+                    ? targetNode.Header?.ToString()
+                    : targetKind == "Material" && targetNode.Tag is TreeNodeMeta targetMeta
+                        ? targetMeta.GroupName
+                        : null;
+
+                if (string.IsNullOrWhiteSpace(targetGroup) || targetGroup == sourceMeta.GroupName)
+                    return;
+
+                foreach (var rec in journal.Where(j => j.MaterialName == sourceMeta.MaterialName && j.MaterialGroup == sourceMeta.GroupName))
+                    rec.MaterialGroup = targetGroup;
+
+                CleanupMaterialsAfterDelete();
+            }
+            else if (sourceKind == "Group" && targetKind == "Group")
+            {
+                var sourceName = sourceNode.Header?.ToString();
+                var targetName = targetNode.Header?.ToString();
+
+                if (string.IsNullOrWhiteSpace(sourceName) || string.IsNullOrWhiteSpace(targetName) || sourceName == targetName)
+                    return;
+
+                foreach (var rec in journal.Where(j => j.MaterialGroup == sourceName))
+                    rec.MaterialGroup = targetName;
+
+                CleanupMaterialsAfterDelete();
+            }
+            else
+            {
+                return;
+            }
+
+            SaveState();
+            RefreshTreePreserveState();
             ApplyAllFilters();
         }
 
@@ -1328,7 +1521,7 @@ namespace ConstructionControl
             if (ObjectsTree.SelectedItem is not TreeViewItem node)
                 return;
 
-            if (node.Tag as string == "Object")
+            if (GetNodeKind(node) == "Object")
                 return;
 
             var oldName = node.Header.ToString();
@@ -1342,7 +1535,7 @@ namespace ConstructionControl
                 return;
             PushUndo(); // ⬅️ ВАЖНО: сохраняем состояние ДО переименования
 
-            if (node.Tag as string == "Group")
+            if (GetNodeKind(node) == "Group")
             {
                 var g = currentObject.MaterialGroups.First(x => x.Name == oldName);
                 g.Name = input;
@@ -1358,17 +1551,23 @@ namespace ConstructionControl
                     j.MaterialGroup = input;
             }
 
-            if (node.Tag as string == "Material")
+            if (GetNodeKind(node) == "Material")
             {
+                var oldMaterialName = node.Tag is TreeNodeMeta meta ? meta.MaterialName : oldName;
                 foreach (var kv in currentObject.MaterialNamesByGroup)
                 {
-                    var idx = kv.Value.IndexOf(oldName);
+                    var idx = kv.Value.IndexOf(oldMaterialName);
                     if (idx >= 0)
                         kv.Value[idx] = input;
                 }
 
-                foreach (var j in journal.Where(x => x.MaterialName == oldName))
+                foreach (var j in journal.Where(x => x.MaterialName == oldMaterialName))
                     j.MaterialName = input;
+                if (currentObject.MaterialTreeSplitRules.TryGetValue(oldMaterialName, out var rule))
+                {
+                    currentObject.MaterialTreeSplitRules[input] = rule;
+                    currentObject.MaterialTreeSplitRules.Remove(oldMaterialName);
+                }
             }
 
             SaveState();
@@ -1387,7 +1586,7 @@ namespace ConstructionControl
             if (ObjectsTree.SelectedItem is not TreeViewItem node)
                 return;
 
-            if (node.Tag as string == "Object")
+            if (GetNodeKind(node) == "Object")
                 return;
 
             var name = node.Header.ToString();
@@ -1397,19 +1596,21 @@ namespace ConstructionControl
                 MessageBoxButton.YesNo) != MessageBoxResult.Yes)
                 return;
 
-            if (node.Tag as string == "Group")
+            if (GetNodeKind(node) == "Group")
             {
                 currentObject.MaterialGroups.RemoveAll(g => g.Name == name);
                 currentObject.MaterialNamesByGroup.Remove(name);
                 journal.RemoveAll(j => j.MaterialGroup == name);
             }
 
-            if (node.Tag as string == "Material")
+            if (GetNodeKind(node) == "Material")
             {
+                var materialName = node.Tag is TreeNodeMeta meta ? meta.MaterialName : name;
                 foreach (var kv in currentObject.MaterialNamesByGroup)
-                    kv.Value.Remove(name);
+                kv.Value.Remove(materialName);
 
-                journal.RemoveAll(j => j.MaterialName == name);
+                journal.RemoveAll(j => j.MaterialName == materialName);
+                currentObject.MaterialTreeSplitRules.Remove(materialName);
             }
 
             SaveState();
@@ -1466,15 +1667,18 @@ namespace ConstructionControl
 
 
 
-            if (ObjectsTree.SelectedItem is TreeViewItem node &&
-                node.Tag is string tag)
+            if (ObjectsTree.SelectedItem is TreeViewItem node)
             {
+                var kind = GetNodeKind(node);
                 var value = node.Header.ToString();
 
-                if (tag == "Group")
+                if (kind == "Group")
                     data = data.Where(j => j.MaterialGroup == value);
-                else if (tag == "Material")
-                    data = data.Where(j => j.MaterialName == value);
+                else if (kind == "Material")
+                {
+                    var material = node.Tag is TreeNodeMeta meta ? meta.MaterialName : value;
+                    data = data.Where(j => j.MaterialName == material);
+                }
             }
 
 
@@ -1619,6 +1823,7 @@ namespace ConstructionControl
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
             {
+                currentObject.MaterialTreeSplitRules ??= new Dictionary<string, string>();
                 if (currentObject.Archive == null)
                     currentObject.Archive = new ObjectArchive();
 
