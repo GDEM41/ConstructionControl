@@ -13,7 +13,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Для каждого материала задайте сегменты через символ | (пример: ПК|56|12|10|10)."
+        <TextBlock Text="Для каждого типа задайте сегменты через символ |. При изменении строки правило применяется ко всем материалам этого типа."
                    Foreground="#374151"
                    Margin="0,0,0,8"/>
 
@@ -26,10 +26,7 @@
                   IsReadOnly="False"
                   CellEditEnding="RulesGrid_CellEditEnding">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Раздел"
-                                    Binding="{Binding Category}"
-                                    IsReadOnly="True"
-                                    Width="1.4*"/>
+               
                 <DataGridTextColumn Header="Тип"
                                     Binding="{Binding TypeName}"
                                     IsReadOnly="True"

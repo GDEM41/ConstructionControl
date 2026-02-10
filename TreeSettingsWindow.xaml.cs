@@ -12,7 +12,7 @@ namespace ConstructionControl
     {
         public class MaterialSplitRuleSource
         {
-            public string Category { get; set; }
+           
             public string TypeName { get; set; }
             public string MaterialName { get; set; }
         }
@@ -21,7 +21,7 @@ namespace ConstructionControl
         {
             private string splitPath;
 
-            public string Category { get; set; }
+           
             public string TypeName { get; set; }
             public string MaterialName { get; set; }
             public string SplitPath
@@ -56,12 +56,11 @@ namespace ConstructionControl
                     .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
                     .GroupBy(x => x.MaterialName)
                     .Select(g => g.First())
-                    .OrderBy(x => x.Category)
-                    .ThenBy(x => x.TypeName)
+                    .OrderBy(x => x.TypeName)
                     .ThenBy(x => x.MaterialName)
                     .Select(x => new MaterialSplitRuleRow
                     {
-                        Category = x.Category,
+                        
                         TypeName = x.TypeName,
                         MaterialName = x.MaterialName,
                         SplitPath = existingRules != null && existingRules.TryGetValue(x.MaterialName, out var rule)
@@ -79,31 +78,17 @@ namespace ConstructionControl
             if (e.Row?.Item is not MaterialSplitRuleRow edited)
                 return;
 
-            var raw = edited.SplitPath?.Trim();
-            if (string.IsNullOrWhiteSpace(raw))
+            var normalizedRule = NormalizeRule(edited.SplitPath);
+            if (string.IsNullOrWhiteSpace(normalizedRule))
                 return;
 
-            var editedSegments = raw
-                .Split('|', System.StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            if (editedSegments.Count == 0)
-                return;
-
-            var typeSegment = editedSegments[0];
+            
 
             isBulkUpdating = true;
             try
             {
-                foreach (var row in rows.Where(x => x.Category == edited.Category && x.TypeName == edited.TypeName))
-                {
-                    var materialParts = MainWindow.GetSegmentsFromText(row.MaterialName);
-                    row.SplitPath = materialParts.Count <= 1
-                        ? typeSegment
-                        : string.Join("|", new[] { typeSegment }.Concat(materialParts.Skip(1)));
-                }
+                foreach (var row in rows.Where(x => string.Equals(x.TypeName, edited.TypeName, System.StringComparison.CurrentCultureIgnoreCase)))
+                    row.SplitPath = normalizedRule;
             }
             finally
             {
@@ -117,10 +102,23 @@ namespace ConstructionControl
                 .Where(x => !string.IsNullOrWhiteSpace(x.SplitPath))
                 .ToDictionary(
                     x => x.MaterialName,
-                    x => x.SplitPath.Trim());
+                    x => NormalizeRule(x.SplitPath));
+
 
             DialogResult = true;
             Close();
+        }
+        private static string NormalizeRule(string rawRule)
+        {
+            if (string.IsNullOrWhiteSpace(rawRule))
+                return string.Empty;
+
+            var parts = rawRule
+                .Split('|', System.StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x));
+
+            return string.Join("|", parts);
         }
     }
 }

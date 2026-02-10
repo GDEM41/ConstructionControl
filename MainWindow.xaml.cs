@@ -770,7 +770,7 @@ namespace ConstructionControl
                 .Select(j => new TreeSettingsWindow.MaterialSplitRuleSource
                 {
                     MaterialName = j.MaterialName,
-                    Category = j.Category,
+                    
                     TypeName = GetSegmentsForMaterial(j.MaterialName).FirstOrDefault() ?? j.MaterialName
                 })
                 .ToList();
@@ -1509,49 +1509,92 @@ namespace ConstructionControl
             var sourceKind = GetNodeKind(sourceNode);
             var targetKind = GetNodeKind(targetNode);
 
-            PushUndo();
+           
 
             if (sourceKind == "Material")
             {
                 if (sourceNode.Tag is not TreeNodeMeta sourceMeta)
                     return;
 
-                var targetGroup = targetKind == "Group"
-                    ? targetNode.Header?.ToString()
-                    : targetKind == "Material" && targetNode.Tag is TreeNodeMeta targetMeta
-                        ? targetMeta.GroupName
-                        : null;
+               
+                if (targetKind == "Group")
+                {
+                    var targetGroup = targetNode.Header?.ToString();
+                    if (string.IsNullOrWhiteSpace(targetGroup) || targetGroup == sourceMeta.GroupName)
+                        return;
 
-                if (string.IsNullOrWhiteSpace(targetGroup) || targetGroup == sourceMeta.GroupName)
+                    PushUndo();
+
+                    foreach (var rec in journal.Where(j => j.MaterialName == sourceMeta.MaterialName && j.MaterialGroup == sourceMeta.GroupName))
+                        rec.MaterialGroup = targetGroup;
+
+                    
+                        CleanupMaterialsAfterDelete();
+                    SaveState();
+                    RefreshTreePreserveState();
+                    ApplyAllFilters();
                     return;
+                }
 
-                foreach (var rec in journal.Where(j => j.MaterialName == sourceMeta.MaterialName && j.MaterialGroup == sourceMeta.GroupName))
-                    rec.MaterialGroup = targetGroup;
+                
+                if (targetKind == "Material" || targetKind == "MaterialPart")
+                {
+                    if (targetNode.Tag is not TreeNodeMeta targetMeta || targetMeta.PrefixSegments == null || targetMeta.PrefixSegments.Count == 0)
+                        return;
 
-                CleanupMaterialsAfterDelete();
-            }
-            else if (sourceKind == "Group" && targetKind == "Group")
-            {
-                var sourceName = sourceNode.Header?.ToString();
-                var targetName = targetNode.Header?.ToString();
+                    
+                    var sourceSegments = GetSegmentsForMaterial(sourceMeta.MaterialName);
+                    var sourceLeaf = sourceSegments.LastOrDefault() ?? sourceMeta.MaterialName;
 
-                if (string.IsNullOrWhiteSpace(sourceName) || string.IsNullOrWhiteSpace(targetName) || sourceName == targetName)
+                    var targetPrefix = targetKind == "Material"
+                        ? targetMeta.PrefixSegments.Take(targetMeta.PrefixSegments.Count - 1).ToList()
+                        : targetMeta.PrefixSegments.ToList();
+
+                    if (targetPrefix.Count == 0)
+                        return;
+
+                    var newSegments = targetPrefix.Concat(new[] { sourceLeaf }).ToList();
+                    var newRule = string.Join("|", newSegments);
+                    var oldRule = string.Join("|", sourceSegments);
+
+                    if (string.Equals(newRule, oldRule, StringComparison.CurrentCultureIgnoreCase))
+                        return;
+
+                    PushUndo();
+                    currentObject.MaterialTreeSplitRules ??= new Dictionary<string, string>();
+                    currentObject.MaterialTreeSplitRules[sourceMeta.MaterialName] = newRule;
+
+                    SaveState();
+                    RefreshTreePreserveState();
+                    ApplyAllFilters();
                     return;
+                }
 
-                foreach (var rec in journal.Where(j => j.MaterialGroup == sourceName))
-                    rec.MaterialGroup = targetName;
-
-                CleanupMaterialsAfterDelete();
-            }
-            else
-            {
                 return;
             }
+            
 
-            SaveState();
-            RefreshTreePreserveState();
-            ApplyAllFilters();
+                if (sourceKind == "Group" && targetKind == "Group")
+                {
+                    var sourceName = sourceNode.Header?.ToString();
+                    var targetName = targetNode.Header?.ToString();
+
+                    if (string.IsNullOrWhiteSpace(sourceName) || string.IsNullOrWhiteSpace(targetName) || sourceName == targetName)
+                        return;
+
+                    PushUndo();
+
+                    foreach (var rec in journal.Where(j => j.MaterialGroup == sourceName))
+                        rec.MaterialGroup = targetName;
+
+                    CleanupMaterialsAfterDelete();
+                    SaveState();
+                    RefreshTreePreserveState();
+                    ApplyAllFilters();
+                }
+
         }
+
 
         // ================= ПКМ =================
 
