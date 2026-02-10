@@ -770,8 +770,10 @@ namespace ConstructionControl
                 .Select(j => new TreeSettingsWindow.MaterialSplitRuleSource
                 {
                     MaterialName = j.MaterialName,
-                    
-                    TypeName = GetSegmentsForMaterial(j.MaterialName).FirstOrDefault() ?? j.MaterialName
+
+                    TypeName = j.Category == "Основные"
+                        ? (string.IsNullOrWhiteSpace(j.MaterialGroup) ? "(без типа)" : j.MaterialGroup)
+                        : (string.IsNullOrWhiteSpace(j.SubCategory) ? "(без типа)" : j.SubCategory)
                 })
                 .ToList();
 
