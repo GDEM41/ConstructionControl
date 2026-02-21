@@ -25,19 +25,48 @@
                   HeadersVisibility="Column"
                   IsReadOnly="False"
                   CellEditEnding="RulesGrid_CellEditEnding">
+            <DataGrid.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <Border Background="#F3F4F6" Padding="6" Margin="0,4,0,0" CornerRadius="4">
+                                <TextBlock Text="{Binding Name, StringFormat=Категория: {0}}" FontWeight="SemiBold"/>
+                            </Border>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <Border Background="#EEF2FF" Padding="6" Margin="12,2,0,0" CornerRadius="4">
+                                <TextBlock Text="{Binding Name, StringFormat=Тип: {0}}" FontWeight="SemiBold"/>
+                            </Border>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <Border Background="#ECFEFF" Padding="6" Margin="24,2,0,0" CornerRadius="4">
+                                <TextBlock Text="{Binding Name, StringFormat=Подтип: {0}}" FontWeight="SemiBold"/>
+                            </Border>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+            </DataGrid.GroupStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Категория"
-                                    Binding="{Binding CategoryName}"
-                                    IsReadOnly="True"
+                                    Binding="{Binding EditableCategoryName, UpdateSourceTrigger=PropertyChanged}"
+                                    IsReadOnly="False"
                                     Width="1*"/>
 
                 <DataGridTextColumn Header="Тип"
-                                    Binding="{Binding TypeName}"
-                                    IsReadOnly="True"
+                                    Binding="{Binding EditableTypeName, UpdateSourceTrigger=PropertyChanged}"
+                                    IsReadOnly="False"
                                     Width="1.1*"/>
                 <DataGridTextColumn Header="Подтип"
-                                    Binding="{Binding SubTypeName}"
-                                    IsReadOnly="True"
+                                    Binding="{Binding EditableSubTypeName, UpdateSourceTrigger=PropertyChanged}"
+                                    IsReadOnly="False"
                                     Width="1.1*"/>
                 <DataGridTextColumn Header="Материал"
                                     Binding="{Binding MaterialName}"

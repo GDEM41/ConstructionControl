@@ -1,10 +1,12 @@
 ﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 
 namespace ConstructionControl
 {
@@ -21,10 +23,35 @@ namespace ConstructionControl
         public class MaterialSplitRuleRow : INotifyPropertyChanged
         {
             private readonly string[] segments = new string[6];
+            private string categoryName;
+            private string typeName;
+            private string subTypeName;
             public string CategoryName { get; set; }
             public string TypeName { get; set; }
             public string SubTypeName { get; set; }
             public string MaterialName { get; set; }
+            public string OriginalCategoryName { get; set; }
+            public string OriginalTypeName { get; set; }
+            public string OriginalSubTypeName { get; set; }
+
+            public string EditableCategoryName
+            {
+                get => categoryName;
+                set => SetField(ref categoryName, value, nameof(EditableCategoryName));
+            }
+
+            public string EditableTypeName
+            {
+                get => typeName;
+                set => SetField(ref typeName, value, nameof(EditableTypeName));
+            }
+
+            public string EditableSubTypeName
+            {
+                get => subTypeName;
+                set => SetField(ref subTypeName, value, nameof(EditableSubTypeName));
+            }
+
 
             public string Segment1 { get => segments[0]; set => SetSegment(0, value); }
             public string Segment2 { get => segments[1]; set => SetSegment(1, value); }
@@ -64,14 +91,36 @@ namespace ConstructionControl
             }
 
             public event PropertyChangedEventHandler PropertyChanged;
+            private bool SetField(ref string field, string value, string propertyName)
+            {
+                var normalized = NormalizeMetaValue(value);
+                if (string.Equals(field, normalized, System.StringComparison.CurrentCulture))
+                    return false;
+
+                field = normalized;
+                OnPropertyChanged(propertyName);
+                return true;
+            }
+
 
             private void OnPropertyChanged([CallerMemberName] string propertyName = null)
                 => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+        public class MaterialBindingChange
+        {
+            public string MaterialName { get; set; }
+            public string OldCategoryName { get; set; }
+            public string OldTypeName { get; set; }
+            public string OldSubTypeName { get; set; }
+            public string NewCategoryName { get; set; }
+            public string NewTypeName { get; set; }
+            public string NewSubTypeName { get; set; }
         }
 
         private readonly ObservableCollection<MaterialSplitRuleRow> rows;
         private bool isBulkUpdating;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
+        public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
 
         public TreeSettingsWindow(IEnumerable<MaterialSplitRuleSource> materials, Dictionary<string, string> existingRules)
         {
@@ -80,7 +129,13 @@ namespace ConstructionControl
             rows = new ObservableCollection<MaterialSplitRuleRow>(
                       materials
                     .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
-                    .GroupBy(x => x.MaterialName)
+                                        .GroupBy(x => new
+                                        {
+                                            Material = x.MaterialName,
+                                            Category = NormalizeMetaValue(x.CategoryName),
+                                            Type = NormalizeMetaValue(x.TypeName),
+                                            SubType = NormalizeMetaValue(x.SubTypeName)
+                                        })
                     .Select(g => g.First())
                     .OrderBy(x => x.CategoryName)
                     .ThenBy(x => x.TypeName)
@@ -88,19 +143,30 @@ namespace ConstructionControl
                     .ThenBy(x => x.MaterialName)
                     .Select(x => new MaterialSplitRuleRow
                     {
-                        CategoryName = x.CategoryName,
-                        TypeName = x.TypeName,
-                        SubTypeName = x.SubTypeName,
+                        CategoryName = NormalizeMetaValue(x.CategoryName),
+                        TypeName = NormalizeMetaValue(x.TypeName),
+                        SubTypeName = NormalizeMetaValue(x.SubTypeName),
                         MaterialName = x.MaterialName
                     }));
             foreach (var row in rows)
             {
+                row.OriginalCategoryName = row.CategoryName;
+                row.OriginalTypeName = row.TypeName;
+                row.OriginalSubTypeName = row.SubTypeName;
+                row.EditableCategoryName = row.CategoryName;
+                row.EditableTypeName = row.TypeName;
+                row.EditableSubTypeName = row.SubTypeName;
+
                 row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
                     ? rule
                     : string.Empty);
             }
 
-            RulesGrid.ItemsSource = rows;
+            var cvs = new CollectionViewSource { Source = rows };
+            cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableCategoryName)));
+            cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableTypeName)));
+            cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableSubTypeName)));
+            RulesGrid.ItemsSource = cvs.View;
         }
         private void RulesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {
@@ -301,15 +367,51 @@ namespace ConstructionControl
         }
         private void Save_Click(object sender, RoutedEventArgs e)
         {
+            foreach (var row in rows)
+            {
+                row.CategoryName = NormalizeMetaValue(row.EditableCategoryName);
+                row.TypeName = NormalizeMetaValue(row.EditableTypeName);
+                row.SubTypeName = NormalizeMetaValue(row.EditableSubTypeName);
+            }
+
             ResultRules = rows
                 .Select(x => new { x.MaterialName, Rule = x.GetRule() })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Rule))
                 .ToDictionary(x => x.MaterialName, x => x.Rule);
+            ResultBindingChanges = rows
+                .Where(x => !string.Equals(x.OriginalCategoryName, x.CategoryName, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalTypeName, x.TypeName, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalSubTypeName, x.SubTypeName, System.StringComparison.CurrentCulture))
+                .Select(x => new MaterialBindingChange
+                {
+                    MaterialName = x.MaterialName,
+                    OldCategoryName = x.OriginalCategoryName,
+                    OldTypeName = x.OriginalTypeName,
+                    OldSubTypeName = x.OriginalSubTypeName,
+                    NewCategoryName = x.CategoryName,
+                    NewTypeName = x.TypeName,
+                    NewSubTypeName = x.SubTypeName
+                })
+                .ToList();
+
 
 
             DialogResult = true;
             Close();
         }
+
+        private static string NormalizeMetaValue(string rawValue)
+        {
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return string.Empty;
+
+            var value = rawValue.Trim();
+            if (value.StartsWith("(без ", true, CultureInfo.CurrentCulture))
+                return string.Empty;
+
+            return value;
+        }
+
         private static string NormalizeRule(string rawRule)
         {
             if (string.IsNullOrWhiteSpace(rawRule))

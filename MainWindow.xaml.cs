@@ -771,9 +771,9 @@ namespace ConstructionControl
                 {
                     MaterialName = j.MaterialName,
 
-                    CategoryName = string.IsNullOrWhiteSpace(j.Category) ? "(без категории)" : j.Category,
-                    TypeName = string.IsNullOrWhiteSpace(j.MaterialGroup) ? "(без типа)" : j.MaterialGroup,
-                    SubTypeName = string.IsNullOrWhiteSpace(j.SubCategory) ? "(без подтипа)" : j.SubCategory
+                    CategoryName = j.Category ?? string.Empty,
+                    TypeName = j.MaterialGroup ?? string.Empty,
+                    SubTypeName = j.SubCategory ?? string.Empty
                 })
                 .ToList();
 
@@ -786,8 +786,30 @@ namespace ConstructionControl
                 return;
 
             currentObject.MaterialTreeSplitRules = w.ResultRules;
+
+            if (w.ResultBindingChanges?.Count > 0)
+            {
+                PushUndo();
+                foreach (var change in w.ResultBindingChanges)
+                {
+                    foreach (var rec in journal.Where(j =>
+                                 string.Equals(j.MaterialName ?? string.Empty, change.MaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(j.Category ?? string.Empty, change.OldCategoryName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(j.MaterialGroup ?? string.Empty, change.OldTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(j.SubCategory ?? string.Empty, change.OldSubTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
+                    {
+                        rec.Category = change.NewCategoryName;
+                        rec.MaterialGroup = change.NewTypeName;
+                        rec.SubCategory = change.NewSubTypeName;
+                    }
+                }
+
+                CleanupMaterialsAfterDelete();
+            }
+
             SaveState();
             RefreshTreePreserveState();
+            ApplyAllFilters();
         }
 
         // ================= КНОПКИ =================
@@ -1406,7 +1428,7 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(materialName))
                 return new List<string>();
 
-            return Regex.Matches(materialName, @"[A-Za-zА-Яа-яЁё]+|\d+")
+            return Regex.Matches(materialName, @"[A-Za-zА-Яа-яЁё]+|\d+(?:[\.,]\d+)?")
                  .Select(m => m.Value)
                 .ToList();
         }
