@@ -4,6 +4,7 @@ using System.Globalization;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -22,7 +23,7 @@ namespace ConstructionControl
 
         public class MaterialSplitRuleRow : INotifyPropertyChanged
         {
-            private readonly string[] segments = new string[6];
+            private readonly string[] segments = new string[10];
             private string categoryName;
             private string typeName;
             private string subTypeName;
@@ -59,6 +60,10 @@ namespace ConstructionControl
             public string Segment4 { get => segments[3]; set => SetSegment(3, value); }
             public string Segment5 { get => segments[4]; set => SetSegment(4, value); }
             public string Segment6 { get => segments[5]; set => SetSegment(5, value); }
+            public string Segment7 { get => segments[6]; set => SetSegment(6, value); }
+            public string Segment8 { get => segments[7]; set => SetSegment(7, value); }
+            public string Segment9 { get => segments[8]; set => SetSegment(8, value); }
+            public string Segment10 { get => segments[9]; set => SetSegment(9, value); }
 
             public void SetRule(string rule)
             {
@@ -77,6 +82,10 @@ namespace ConstructionControl
                 OnPropertyChanged(nameof(Segment4));
                 OnPropertyChanged(nameof(Segment5));
                 OnPropertyChanged(nameof(Segment6));
+                OnPropertyChanged(nameof(Segment7));
+                OnPropertyChanged(nameof(Segment8));
+                OnPropertyChanged(nameof(Segment9));
+                OnPropertyChanged(nameof(Segment10));
             }
             public string GetRule() => NormalizeRule(string.Join("|", segments));
 
@@ -119,6 +128,7 @@ namespace ConstructionControl
 
         private readonly ObservableCollection<MaterialSplitRuleRow> rows;
         private bool isBulkUpdating;
+        private int visibleLevelColumns = 6;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
 
@@ -167,6 +177,59 @@ namespace ConstructionControl
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableTypeName)));
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableSubTypeName)));
             RulesGrid.ItemsSource = cvs.View;
+            visibleLevelColumns = rows.Any() ? System.Math.Max(6, rows.Max(GetUsedSegmentCount)) : 6;
+            ApplyLevelColumnVisibility();
+        }
+
+        private static int GetUsedSegmentCount(MaterialSplitRuleRow row)
+        {
+            for (var i = 10; i >= 1; i--)
+            {
+                var value = i switch
+                {
+                    1 => row.Segment1,
+                    2 => row.Segment2,
+                    3 => row.Segment3,
+                    4 => row.Segment4,
+                    5 => row.Segment5,
+                    6 => row.Segment6,
+                    7 => row.Segment7,
+                    8 => row.Segment8,
+                    9 => row.Segment9,
+                    _ => row.Segment10
+                };
+
+                if (!string.IsNullOrWhiteSpace(value))
+                    return i;
+            }
+
+            return 0;
+        }
+
+        private void AddLevelColumn_Click(object sender, RoutedEventArgs e)
+        {
+            if (visibleLevelColumns >= 10)
+                return;
+
+            visibleLevelColumns++;
+            ApplyLevelColumnVisibility();
+        }
+
+        private void RemoveLevelColumn_Click(object sender, RoutedEventArgs e)
+        {
+            if (visibleLevelColumns <= 6)
+                return;
+
+            visibleLevelColumns--;
+            ApplyLevelColumnVisibility();
+        }
+
+        private void ApplyLevelColumnVisibility()
+        {
+            LevelColumn7.Visibility = visibleLevelColumns >= 7 ? Visibility.Visible : Visibility.Collapsed;
+            LevelColumn8.Visibility = visibleLevelColumns >= 8 ? Visibility.Visible : Visibility.Collapsed;
+            LevelColumn9.Visibility = visibleLevelColumns >= 9 ? Visibility.Visible : Visibility.Collapsed;
+            LevelColumn10.Visibility = visibleLevelColumns >= 10 ? Visibility.Visible : Visibility.Collapsed;
         }
         private void RulesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {
@@ -297,7 +360,7 @@ namespace ConstructionControl
 
         private static List<int> BuildRulePattern(string sourceMaterialName, string normalizedRule)
         {
-            var materialTokens = MainWindow.GetSegmentsFromText(sourceMaterialName);
+            var materialTokens = GetPatternTokens(sourceMaterialName);
             if (materialTokens.Count == 0)
                 return null;
 
@@ -315,7 +378,7 @@ namespace ConstructionControl
 
             foreach (var segment in segmentDefinitions)
             {
-                var segmentTokens = MainWindow.GetSegmentsFromText(segment);
+                var segmentTokens = GetPatternTokens(segment);
                 if (segmentTokens.Count == 0)
                     return null;
 
@@ -347,7 +410,7 @@ namespace ConstructionControl
             if (pattern == null || pattern.Count == 0)
                 return string.Empty;
 
-            var targetTokens = MainWindow.GetSegmentsFromText(targetMaterialName);
+            var targetTokens = GetPatternTokens(targetMaterialName);
             if (targetTokens.Count == 0)
                 return string.Empty;
 
@@ -423,6 +486,16 @@ namespace ConstructionControl
                 .Where(x => !string.IsNullOrWhiteSpace(x));
 
             return string.Join("|", parts);
+        }
+
+        private static List<string> GetPatternTokens(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return new List<string>();
+
+            return Regex.Matches(value, @"[A-Za-zА-Яа-яЁё]+|\d+(?:[\.,]\d+)?|[^A-Za-zА-Яа-яЁё0-9\s]")
+                .Select(x => x.Value)
+                .ToList();
         }
     }
 }

@@ -9,21 +9,50 @@
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <TextBlock Text="Для каждого типа задайте сегменты через символ |. После изменения можно выбрать, к каким материалам применить такое же правило разбиения."
                    Foreground="#374151"
+                     TextWrapping="Wrap"
                    Margin="0,0,0,8"/>
+        <Border Grid.Row="1"
+                Background="#F8FAFC"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="8"
+                Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Text="Уровни разбиения:"
+                           VerticalAlignment="Center"
+                           Foreground="#334155"
+                           Margin="0,0,8,0"/>
+                <Button Content="+ Добавить уровень"
+                        Click="AddLevelColumn_Click"
+                        Margin="0,0,6,0"
+                        Padding="10,4"/>
+                <Button Content="− Скрыть уровень"
+                        Click="RemoveLevelColumn_Click"
+                        Padding="10,4"/>
+            </StackPanel>
+        </Border>
 
         <DataGrid x:Name="RulesGrid"
-                  Grid.Row="1"
+                                    Grid.Row="2"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
                   HeadersVisibility="Column"
                   IsReadOnly="False"
+                                    GridLinesVisibility="Horizontal"
+                  AlternatingRowBackground="#F8FAFC"
+                  RowBackground="White"
+                  BorderBrush="#CBD5E1"
+                  BorderThickness="1"
+                  FrozenColumnCount="4"
                   CellEditEnding="RulesGrid_CellEditEnding">
             <DataGrid.GroupStyle>
                 <GroupStyle>
@@ -78,10 +107,14 @@
                 <DataGridTextColumn Header="Уровень 4" Binding="{Binding Segment4, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                 <DataGridTextColumn Header="Уровень 5" Binding="{Binding Segment5, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                 <DataGridTextColumn Header="Уровень 6" Binding="{Binding Segment6, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn x:Name="LevelColumn7" Header="Уровень 7" Binding="{Binding Segment7, UpdateSourceTrigger=PropertyChanged}" Width="*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="LevelColumn8" Header="Уровень 8" Binding="{Binding Segment8, UpdateSourceTrigger=PropertyChanged}" Width="*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="LevelColumn9" Header="Уровень 9" Binding="{Binding Segment9, UpdateSourceTrigger=PropertyChanged}" Width="*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="LevelColumn10" Header="Уровень 10" Binding="{Binding Segment10, UpdateSourceTrigger=PropertyChanged}" Width="*" Visibility="Collapsed"/>
             </DataGrid.Columns>
         </DataGrid>
 
-        <StackPanel Grid.Row="2"
+        <StackPanel Grid.Row="3"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,10,0,0">
