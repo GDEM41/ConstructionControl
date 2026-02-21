@@ -12,29 +12,55 @@ namespace ConstructionControl
     {
         public class MaterialSplitRuleSource
         {
-           
+            public string CategoryName { get; set; }
             public string TypeName { get; set; }
+            public string SubTypeName { get; set; }
             public string MaterialName { get; set; }
         }
 
         public class MaterialSplitRuleRow : INotifyPropertyChanged
         {
-            private string splitPath;
-
-           
+            private readonly string[] segments = new string[6];
+            public string CategoryName { get; set; }
             public string TypeName { get; set; }
+            public string SubTypeName { get; set; }
             public string MaterialName { get; set; }
-            public string SplitPath
-            {
-                get => splitPath;
-                set
-                {
-                    if (splitPath == value)
-                        return;
 
-                    splitPath = value;
-                    OnPropertyChanged();
-                }
+            public string Segment1 { get => segments[0]; set => SetSegment(0, value); }
+            public string Segment2 { get => segments[1]; set => SetSegment(1, value); }
+            public string Segment3 { get => segments[2]; set => SetSegment(2, value); }
+            public string Segment4 { get => segments[3]; set => SetSegment(3, value); }
+            public string Segment5 { get => segments[4]; set => SetSegment(4, value); }
+            public string Segment6 { get => segments[5]; set => SetSegment(5, value); }
+
+            public void SetRule(string rule)
+            {
+
+                var parts = NormalizeRule(rule)
+                    .Split('|', System.StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => x.Trim())
+                    .ToList();
+
+                for (var i = 0; i < segments.Length; i++)
+                    segments[i] = i < parts.Count ? parts[i] : string.Empty;
+
+                OnPropertyChanged(nameof(Segment1));
+                OnPropertyChanged(nameof(Segment2));
+                OnPropertyChanged(nameof(Segment3));
+                OnPropertyChanged(nameof(Segment4));
+                OnPropertyChanged(nameof(Segment5));
+                OnPropertyChanged(nameof(Segment6));
+            }
+            public string GetRule() => NormalizeRule(string.Join("|", segments));
+
+            private void SetSegment(int index, string value)
+            {
+                var normalized = (value ?? string.Empty).Trim();
+                if (string.Equals(segments[index], normalized, System.StringComparison.CurrentCulture))
+                    return;
+
+                segments[index] = normalized;
+                OnPropertyChanged($"Segment{index + 1}");
             }
 
             public event PropertyChangedEventHandler PropertyChanged;
@@ -52,21 +78,27 @@ namespace ConstructionControl
             InitializeComponent();
 
             rows = new ObservableCollection<MaterialSplitRuleRow>(
-                     materials
+                      materials
                     .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
                     .GroupBy(x => x.MaterialName)
                     .Select(g => g.First())
-                    .OrderBy(x => x.TypeName)
+                    .OrderBy(x => x.CategoryName)
+                    .ThenBy(x => x.TypeName)
+                    .ThenBy(x => x.SubTypeName)
                     .ThenBy(x => x.MaterialName)
                     .Select(x => new MaterialSplitRuleRow
                     {
-                        
+                        CategoryName = x.CategoryName,
                         TypeName = x.TypeName,
-                        MaterialName = x.MaterialName,
-                        SplitPath = existingRules != null && existingRules.TryGetValue(x.MaterialName, out var rule)
-                            ? rule
-                            : string.Empty
+                        SubTypeName = x.SubTypeName,
+                        MaterialName = x.MaterialName
                     }));
+            foreach (var row in rows)
+            {
+                row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
+                    ? rule
+                    : string.Empty);
+            }
 
             RulesGrid.ItemsSource = rows;
         }
@@ -78,10 +110,10 @@ namespace ConstructionControl
             if (e.Row?.Item is not MaterialSplitRuleRow edited)
                 return;
 
-            var normalizedRule = NormalizeRule(edited.SplitPath);
+            var normalizedRule = edited.GetRule();
             if (string.IsNullOrWhiteSpace(normalizedRule))
                 return;
-            edited.SplitPath = normalizedRule;
+            edited.SetRule(normalizedRule);
 
             var targets = PromptRuleTargets(edited);
             if (targets == null || targets.Count == 0)
@@ -101,7 +133,7 @@ namespace ConstructionControl
 
                     var convertedRule = ApplyRuleByPattern(target.MaterialName, sourcePattern);
                     if (!string.IsNullOrWhiteSpace(convertedRule))
-                        target.SplitPath = convertedRule;
+                        target.SetRule(convertedRule);
                 }
             }
             finally
@@ -113,7 +145,9 @@ namespace ConstructionControl
         {
             var candidates = rows
                 .Where(x => !ReferenceEquals(x, edited)
-                            && string.Equals(x.TypeName, edited.TypeName, System.StringComparison.CurrentCultureIgnoreCase))
+                            && string.Equals(x.CategoryName, edited.CategoryName, System.StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals(x.TypeName, edited.TypeName, System.StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals(x.SubTypeName, edited.SubTypeName, System.StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
             if (candidates.Count == 0)
@@ -123,7 +157,7 @@ namespace ConstructionControl
 
             panel.Children.Add(new TextBlock
             {
-                Text = $"Применить разбиение к другим элементам типа \"{edited.TypeName}\"?",
+                Text = $"Применить разбиение к другим элементам ({edited.CategoryName} / {edited.TypeName} / {edited.SubTypeName})?",
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap
             });
@@ -268,10 +302,9 @@ namespace ConstructionControl
         private void Save_Click(object sender, RoutedEventArgs e)
         {
             ResultRules = rows
-                .Where(x => !string.IsNullOrWhiteSpace(x.SplitPath))
-                .ToDictionary(
-                    x => x.MaterialName,
-                    x => NormalizeRule(x.SplitPath));
+                .Select(x => new { x.MaterialName, Rule = x.GetRule() })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Rule))
+                .ToDictionary(x => x.MaterialName, x => x.Rule);
 
 
             DialogResult = true;

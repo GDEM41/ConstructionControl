@@ -26,18 +26,29 @@
                   IsReadOnly="False"
                   CellEditEnding="RulesGrid_CellEditEnding">
             <DataGrid.Columns>
-               
+                <DataGridTextColumn Header="Категория"
+                                    Binding="{Binding CategoryName}"
+                                    IsReadOnly="True"
+                                    Width="1*"/>
+
                 <DataGridTextColumn Header="Тип"
                                     Binding="{Binding TypeName}"
                                     IsReadOnly="True"
-                                    Width="1.2*"/>
+                                    Width="1.1*"/>
+                <DataGridTextColumn Header="Подтип"
+                                    Binding="{Binding SubTypeName}"
+                                    IsReadOnly="True"
+                                    Width="1.1*"/>
                 <DataGridTextColumn Header="Материал"
                                     Binding="{Binding MaterialName}"
                                     IsReadOnly="True"
-                                    Width="2.2*"/>
-                <DataGridTextColumn Header="Разбиение"
-                                    Binding="{Binding SplitPath, UpdateSourceTrigger=PropertyChanged}"
-                                    Width="2.4*"/>
+                                    Width="1.7*"/>
+                <DataGridTextColumn Header="Уровень 1" Binding="{Binding Segment1, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Уровень 2" Binding="{Binding Segment2, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Уровень 3" Binding="{Binding Segment3, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Уровень 4" Binding="{Binding Segment4, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Уровень 5" Binding="{Binding Segment5, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Уровень 6" Binding="{Binding Segment6, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
             </DataGrid.Columns>
         </DataGrid>
 

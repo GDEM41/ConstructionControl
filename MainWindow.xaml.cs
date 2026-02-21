@@ -771,9 +771,9 @@ namespace ConstructionControl
                 {
                     MaterialName = j.MaterialName,
 
-                    TypeName = j.Category == "Основные"
-                        ? (string.IsNullOrWhiteSpace(j.MaterialGroup) ? "(без типа)" : j.MaterialGroup)
-                        : (string.IsNullOrWhiteSpace(j.SubCategory) ? "(без типа)" : j.SubCategory)
+                    CategoryName = string.IsNullOrWhiteSpace(j.Category) ? "(без категории)" : j.Category,
+                    TypeName = string.IsNullOrWhiteSpace(j.MaterialGroup) ? "(без типа)" : j.MaterialGroup,
+                    SubTypeName = string.IsNullOrWhiteSpace(j.SubCategory) ? "(без подтипа)" : j.SubCategory
                 })
                 .ToList();
 
