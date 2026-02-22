@@ -406,13 +406,30 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(normalizedRule))
                 return;
             edited.SetRule(normalizedRule);
+        }
+
+        private void ApplySplitToOthers_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow edited)
+                return;
+
+            var normalizedRule = edited.GetRule();
+            if (string.IsNullOrWhiteSpace(normalizedRule))
+            {
+                MessageBox.Show("Сначала задайте уровни разбиения для выбранного материала.");
+                return;
+            }
 
             var targets = PromptRuleTargets(edited);
             if (targets == null || targets.Count == 0)
                 return;
 
             var sourcePattern = BuildRulePattern(edited.EditableMaterialName, normalizedRule);
-
+            if (sourcePattern == null || sourcePattern.Count == 0)
+            {
+                MessageBox.Show("Не удалось построить шаблон разбиения для выбранного материала.");
+                return;
+            }
 
 
             isBulkUpdating = true;

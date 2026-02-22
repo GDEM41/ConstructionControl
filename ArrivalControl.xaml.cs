@@ -86,6 +86,11 @@ namespace ConstructionControl
         private void MaterialGroupTextChanged(object sender, TextChangedEventArgs e)
         {
             var group = MaterialGroupBox.Text?.Trim();
+            var existingNames = items
+               .Select(x => x.MaterialName)
+               .Where(x => !string.IsNullOrWhiteSpace(x))
+               .Distinct()
+               .ToList();
 
             foreach (var item in items)
             {
@@ -115,18 +120,16 @@ namespace ConstructionControl
 
 
             }
-            // ДОБАВЛЯЕМ ВРЕМЕННО ВВЕДЁННЫЕ МАТЕРИАЛЫ ИЗ ТЕКУЩИХ СТРОК
-            foreach (var it in items)
+            // сохраняем только введённые в текущем типе значения
+            foreach (var item in items)
             {
-                if (!string.IsNullOrWhiteSpace(it.MaterialName))
+                foreach (var name in existingNames)
                 {
-                    foreach (var row in items)
-                    {
-                        if (!row.AvailableNames.Contains(it.MaterialName))
-                            row.AvailableNames.Add(it.MaterialName);
-                    }
+                    if (!item.AvailableNames.Contains(name))
+                        item.AvailableNames.Add(name);
                 }
             }
+
 
         }
 
@@ -275,7 +278,7 @@ namespace ConstructionControl
             // очищаем при смене материала
             item.Unit = null;
             item.Stb = null;
-
+            item.Supplier = null;
             var archive = currentObject.Archive;
 
             // если в архиве единица одна — ставим автоматом
@@ -296,7 +299,9 @@ namespace ConstructionControl
                 return;
 
             var last = journal
-                .Where(j => j.MaterialName == item.MaterialName)
+                    .Where(j => string.Equals(j.Category, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(j.MaterialGroup, MaterialGroupBox.Text?.Trim(), System.StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(j.MaterialName, item.MaterialName, System.StringComparison.CurrentCultureIgnoreCase))
                 .OrderByDescending(j => j.Date)
                 .FirstOrDefault();
 
@@ -305,6 +310,7 @@ namespace ConstructionControl
 
             item.Unit = last.Unit;
             item.Stb = last.Stb;
+            item.Supplier = last.Supplier;
         }
 
 

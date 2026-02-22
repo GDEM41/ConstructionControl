@@ -785,6 +785,7 @@ namespace ConstructionControl
                         MaterialName = x.MaterialName,
                         CategoryName = x.CategoryName ?? string.Empty,
                         TypeName = x.TypeName ?? string.Empty,
+                        SubTypeName = x.SubTypeName ?? string.Empty,
                         Level4Name = x.ExtraLevels != null && x.ExtraLevels.Count > 0 ? x.ExtraLevels[0] : string.Empty,
                         Level5Name = x.ExtraLevels != null && x.ExtraLevels.Count > 1 ? x.ExtraLevels[1] : string.Empty,
                         Level6Name = x.ExtraLevels != null && x.ExtraLevels.Count > 2 ? x.ExtraLevels[2] : string.Empty
@@ -837,9 +838,12 @@ namespace ConstructionControl
                 CleanupMaterialsAfterDelete();
             }
             SyncLegacyMaterialsFromCatalog();
+            RebuildArchiveFromCurrentData();
             SaveState();
             RefreshTreePreserveState();
             ArrivalPanel.SetObject(currentObject, journal);
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
             ApplyAllFilters();
         }
 
@@ -1339,6 +1343,42 @@ namespace ConstructionControl
                     currentObject.Archive.Materials[groupName].Add(item.MaterialName);
             }
         }
+        private void RebuildArchiveFromCurrentData()
+        {
+            if (currentObject == null)
+                return;
+
+            var archive = new ObjectArchive();
+
+            foreach (var rec in journal)
+            {
+                if (!string.IsNullOrWhiteSpace(rec.MaterialGroup))
+                {
+                    if (!archive.Groups.Contains(rec.MaterialGroup))
+                        archive.Groups.Add(rec.MaterialGroup);
+
+                    if (!archive.Materials.ContainsKey(rec.MaterialGroup))
+                        archive.Materials[rec.MaterialGroup] = new List<string>();
+
+                    if (!string.IsNullOrWhiteSpace(rec.MaterialName) && !archive.Materials[rec.MaterialGroup].Contains(rec.MaterialName))
+                        archive.Materials[rec.MaterialGroup].Add(rec.MaterialName);
+                }
+
+                if (!string.IsNullOrWhiteSpace(rec.Unit) && !archive.Units.Contains(rec.Unit))
+                    archive.Units.Add(rec.Unit);
+
+                if (!string.IsNullOrWhiteSpace(rec.Supplier) && !archive.Suppliers.Contains(rec.Supplier))
+                    archive.Suppliers.Add(rec.Supplier);
+
+                if (!string.IsNullOrWhiteSpace(rec.Passport) && !archive.Passports.Contains(rec.Passport))
+                    archive.Passports.Add(rec.Passport);
+
+                if (!string.IsNullOrWhiteSpace(rec.Stb) && !archive.Stb.Contains(rec.Stb))
+                    archive.Stb.Add(rec.Stb);
+            }
+
+            currentObject.Archive = archive;
+        }
         private void CleanupMaterialsAfterDelete()
         {
             // Какие группы реально используются
@@ -1414,11 +1454,31 @@ namespace ConstructionControl
                     IsExpanded = false
                 };
 
-                foreach (var m in g.Select(x => x.MaterialName)
-                                  .Distinct()
-                                  .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                var materialsBySubType = g
+                      .Select(x => x.MaterialName)
+                      .Where(x => !string.IsNullOrWhiteSpace(x))
+                      .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                      .GroupBy(material => GetMainMaterialSubType(g.Key, material) ?? string.Empty)
+                      .OrderBy(x => string.IsNullOrWhiteSpace(x.Key) ? "~~~~" : x.Key, StringComparer.CurrentCultureIgnoreCase)
+                      .ToList();
+
+                foreach (var subTypeGroup in materialsBySubType)
                 {
-                    AddMaterialTreeNodes(groupNode, m, g.Key, "Основные", null);
+                    var targetParent = groupNode;
+
+                    if (!string.IsNullOrWhiteSpace(subTypeGroup.Key))
+                    {
+                        targetParent = new TreeViewItem
+                        {
+                            Header = subTypeGroup.Key,
+                            Tag = "SubType",
+                            IsExpanded = false
+                        };
+                        groupNode.Items.Add(targetParent);
+                    }
+
+                    foreach (var m in subTypeGroup.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                        AddMaterialTreeNodes(targetParent, m, g.Key, "Основные", subTypeGroup.Key);
                 }
 
                 mainNode.Items.Add(groupNode);
@@ -1453,6 +1513,18 @@ namespace ConstructionControl
             newRoot.Items.Add(extraNode);
 
             ObjectsTree.Items.Add(newRoot);
+        }
+        private string GetMainMaterialSubType(string groupName, string materialName)
+        {
+            if (currentObject?.MaterialCatalog == null)
+                return string.Empty;
+
+            return currentObject.MaterialCatalog
+                .Where(x => string.Equals(x.CategoryName ?? string.Empty, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(x.TypeName ?? string.Empty, groupName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(x.MaterialName ?? string.Empty, materialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.SubTypeName ?? string.Empty)
+                .FirstOrDefault() ?? string.Empty;
         }
 
         private void AddMaterialTreeNodes(TreeViewItem parent, string materialName, string groupName, string category, string subCategory)

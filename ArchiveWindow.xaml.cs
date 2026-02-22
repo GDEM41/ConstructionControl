@@ -78,6 +78,10 @@ namespace ConstructionControl
             obj.Demand.Clear();
             obj.MaterialGroups.Clear();
             obj.MaterialNamesByGroup.Clear();
+            obj.MaterialCatalog ??= new List<MaterialCatalogItem>();
+            obj.MaterialCatalog.Clear();
+            obj.MaterialTreeSplitRules ??= new Dictionary<string, string>();
+            obj.MaterialTreeSplitRules.Clear();
             obj.SummaryVisibleGroups.Clear();
             obj.Archive = new ObjectArchive();
 

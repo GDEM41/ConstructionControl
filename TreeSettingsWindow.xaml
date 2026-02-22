@@ -49,6 +49,10 @@
                         Padding="12,6"/>
                 <Button Content="Переименовать тип для всех"
                         Click="RenameTypeForAll_Click"
+                        Margin="0,0,10,0"
+                        Padding="12,6"/>
+                <Button Content="Применить разбиение к другим"
+                        Click="ApplySplitToOthers_Click"
                         Margin="0,0,14,0"
                         Padding="12,6"/>
                 <TextBlock Text="Уровни разбиения:"

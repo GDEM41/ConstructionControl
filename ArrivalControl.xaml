@@ -93,7 +93,17 @@
         <DataGrid x:Name="ItemsGrid"
                   Grid.Row="1"
                   AutoGenerateColumns="False"
-                  CanUserAddRows="False">
+                  CanUserAddRows="False"
+                  GridLinesVisibility="Horizontal"
+                  RowBackground="White"
+                  AlternatingRowBackground="#F8FAFC"
+                  BorderBrush="#CBD5E1"
+                  BorderThickness="1"
+                  RowHeaderWidth="0"
+                  HeadersVisibility="Column"
+                  VerticalGridLinesBrush="#E2E8F0"
+                  HorizontalGridLinesBrush="#E2E8F0"
+                  FontSize="13">
 
             <DataGrid.Columns>
 
