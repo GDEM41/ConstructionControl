@@ -27,6 +27,7 @@ namespace ConstructionControl
             private string categoryName;
             private string typeName;
             private string subTypeName;
+            private string materialName;
             public string CategoryName { get; set; }
             public string TypeName { get; set; }
             public string SubTypeName { get; set; }
@@ -34,7 +35,7 @@ namespace ConstructionControl
             public string OriginalCategoryName { get; set; }
             public string OriginalTypeName { get; set; }
             public string OriginalSubTypeName { get; set; }
-
+            public string OriginalMaterialName { get; set; }
             public string EditableCategoryName
             {
                 get => categoryName;
@@ -53,7 +54,11 @@ namespace ConstructionControl
                 set => SetField(ref subTypeName, value, nameof(EditableSubTypeName));
             }
 
-
+            public string EditableMaterialName
+            {
+                get => materialName;
+                set => SetField(ref materialName, value, nameof(EditableMaterialName));
+            }
             public string Segment1 { get => segments[0]; set => SetSegment(0, value); }
             public string Segment2 { get => segments[1]; set => SetSegment(1, value); }
             public string Segment3 { get => segments[2]; set => SetSegment(2, value); }
@@ -124,6 +129,8 @@ namespace ConstructionControl
             public string NewCategoryName { get; set; }
             public string NewTypeName { get; set; }
             public string NewSubTypeName { get; set; }
+            public string OldMaterialName { get; set; }
+            public string NewMaterialName { get; set; }
         }
 
         private readonly ObservableCollection<MaterialSplitRuleRow> rows;
@@ -131,6 +138,7 @@ namespace ConstructionControl
         private int visibleLevelColumns = 6;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
+        public List<MaterialCatalogItem> ResultCatalog { get; private set; } = new();
 
         public TreeSettingsWindow(IEnumerable<MaterialSplitRuleSource> materials, Dictionary<string, string> existingRules)
         {
@@ -165,7 +173,9 @@ namespace ConstructionControl
                 row.OriginalSubTypeName = row.SubTypeName;
                 row.EditableCategoryName = row.CategoryName;
                 row.EditableTypeName = row.TypeName;
+                row.OriginalMaterialName = row.MaterialName;
                 row.EditableSubTypeName = row.SubTypeName;
+                row.EditableMaterialName = row.MaterialName;
 
                 row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
                     ? rule
@@ -204,6 +214,38 @@ namespace ConstructionControl
             }
 
             return 0;
+        }
+        private void AddEntry_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = RulesGrid.SelectedItem as MaterialSplitRuleRow;
+            var newRow = new MaterialSplitRuleRow
+            {
+                EditableCategoryName = selected?.EditableCategoryName ?? string.Empty,
+                EditableTypeName = selected?.EditableTypeName ?? string.Empty,
+                EditableSubTypeName = selected?.EditableSubTypeName ?? string.Empty,
+                EditableMaterialName = string.Empty,
+                CategoryName = selected?.EditableCategoryName ?? string.Empty,
+                TypeName = selected?.EditableTypeName ?? string.Empty,
+                SubTypeName = selected?.EditableSubTypeName ?? string.Empty,
+                MaterialName = string.Empty,
+                OriginalCategoryName = string.Empty,
+                OriginalTypeName = string.Empty,
+                OriginalSubTypeName = string.Empty,
+                OriginalMaterialName = string.Empty
+            };
+
+            var index = selected != null ? rows.IndexOf(selected) + 1 : rows.Count;
+            rows.Insert(index, newRow);
+            RulesGrid.SelectedItem = newRow;
+            RulesGrid.ScrollIntoView(newRow);
+        }
+
+        private void RemoveEntry_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
+
+            rows.Remove(selected);
         }
 
         private void AddLevelColumn_Click(object sender, RoutedEventArgs e)
@@ -248,7 +290,7 @@ namespace ConstructionControl
             if (targets == null || targets.Count == 0)
                 return;
 
-            var sourcePattern = BuildRulePattern(edited.MaterialName, normalizedRule);
+            var sourcePattern = BuildRulePattern(edited.EditableMaterialName, normalizedRule);
 
 
 
@@ -260,7 +302,7 @@ namespace ConstructionControl
                     if (ReferenceEquals(target, edited))
                         continue;
 
-                    var convertedRule = ApplyRuleByPattern(target.MaterialName, sourcePattern);
+                    var convertedRule = ApplyRuleByPattern(target.EditableMaterialName, sourcePattern);
                     if (!string.IsNullOrWhiteSpace(convertedRule))
                         target.SetRule(convertedRule);
                 }
@@ -274,9 +316,9 @@ namespace ConstructionControl
         {
             var candidates = rows
                 .Where(x => !ReferenceEquals(x, edited)
-                            && string.Equals(x.CategoryName, edited.CategoryName, System.StringComparison.CurrentCultureIgnoreCase)
-                            && string.Equals(x.TypeName, edited.TypeName, System.StringComparison.CurrentCultureIgnoreCase)
-                            && string.Equals(x.SubTypeName, edited.SubTypeName, System.StringComparison.CurrentCultureIgnoreCase))
+                            && string.Equals(x.EditableCategoryName, edited.EditableCategoryName, System.StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals(x.EditableTypeName, edited.EditableTypeName, System.StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals(x.EditableSubTypeName, edited.EditableSubTypeName, System.StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
             if (candidates.Count == 0)
@@ -286,7 +328,7 @@ namespace ConstructionControl
 
             panel.Children.Add(new TextBlock
             {
-                Text = $"Применить разбиение к другим элементам ({edited.CategoryName} / {edited.TypeName} / {edited.SubTypeName})?",
+                Text = $"Применить разбиение к другим элементам ({edited.EditableCategoryName} / {edited.EditableTypeName} / {edited.EditableSubTypeName})?",
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap
             });
@@ -435,16 +477,24 @@ namespace ConstructionControl
                 row.CategoryName = NormalizeMetaValue(row.EditableCategoryName);
                 row.TypeName = NormalizeMetaValue(row.EditableTypeName);
                 row.SubTypeName = NormalizeMetaValue(row.EditableSubTypeName);
+                row.MaterialName = NormalizeMetaValue(row.EditableMaterialName);
+                row.MaterialName = NormalizeMetaValue(row.EditableMaterialName);
             }
 
-            ResultRules = rows
+
+            var validRows = rows
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                .ToList();
+
+            ResultRules = validRows
                 .Select(x => new { x.MaterialName, Rule = x.GetRule() })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Rule))
                 .ToDictionary(x => x.MaterialName, x => x.Rule);
-            ResultBindingChanges = rows
+            ResultBindingChanges = validRows
                 .Where(x => !string.Equals(x.OriginalCategoryName, x.CategoryName, System.StringComparison.CurrentCulture)
                          || !string.Equals(x.OriginalTypeName, x.TypeName, System.StringComparison.CurrentCulture)
-                         || !string.Equals(x.OriginalSubTypeName, x.SubTypeName, System.StringComparison.CurrentCulture))
+                         || !string.Equals(x.OriginalSubTypeName, x.SubTypeName, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalMaterialName, x.MaterialName, System.StringComparison.CurrentCulture))
                 .Select(x => new MaterialBindingChange
                 {
                     MaterialName = x.MaterialName,
@@ -453,11 +503,33 @@ namespace ConstructionControl
                     OldSubTypeName = x.OriginalSubTypeName,
                     NewCategoryName = x.CategoryName,
                     NewTypeName = x.TypeName,
-                    NewSubTypeName = x.SubTypeName
+                    NewSubTypeName = x.SubTypeName,
+                    OldMaterialName = x.OriginalMaterialName,
+                    NewMaterialName = x.MaterialName
                 })
                 .ToList();
 
-
+            ResultCatalog = validRows
+                                      .Select(x => new MaterialCatalogItem
+                                      {
+                                          CategoryName = x.CategoryName,
+                                          TypeName = x.TypeName,
+                                          SubTypeName = x.SubTypeName,
+                                          MaterialName = x.MaterialName
+                                      })
+                     .GroupBy(x => new
+                     {
+                         Category = x.CategoryName ?? string.Empty,
+                         Type = x.TypeName ?? string.Empty,
+                         SubType = x.SubTypeName ?? string.Empty,
+                         Material = x.MaterialName ?? string.Empty
+                     })
+                     .Select(x => x.First())
+                     .OrderBy(x => x.CategoryName)
+                     .ThenBy(x => x.TypeName)
+                     .ThenBy(x => x.SubTypeName)
+                     .ThenBy(x => x.MaterialName)
+                     .ToList();
 
             DialogResult = true;
             Close();

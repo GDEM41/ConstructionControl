@@ -40,6 +40,7 @@ namespace ConstructionControl
         public Dictionary<string, string> SupplierByGroup { get; set; } = new();
 
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
+        public List<MaterialCatalogItem> MaterialCatalog { get; set; } = new();
         public Dictionary<string, string> MaterialTreeSplitRules { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
@@ -242,7 +243,13 @@ namespace ConstructionControl
         public string Unit;
         public Dictionary<int, Dictionary<int, double>> Floors; // block → floor → qty
     }
-
+    public class MaterialCatalogItem
+    {
+        public string CategoryName { get; set; }
+        public string TypeName { get; set; }
+        public string SubTypeName { get; set; }
+        public string MaterialName { get; set; }
+    }
 
     public class MaterialGroup
     {

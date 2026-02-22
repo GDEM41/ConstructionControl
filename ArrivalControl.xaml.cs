@@ -99,6 +99,20 @@ namespace ConstructionControl
                     foreach (var n in names)
                         item.AvailableNames.Add(n);
                 }
+                if (currentObject.MaterialCatalog != null)
+                {
+                    foreach (var n in currentObject.MaterialCatalog
+                        .Where(x => string.Equals(x.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals(x.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase)
+                            && !string.IsNullOrWhiteSpace(x.MaterialName))
+                        .Select(x => x.MaterialName)
+                        .Distinct())
+                    {
+                        if (!item.AvailableNames.Contains(n))
+                            item.AvailableNames.Add(n);
+                    }
+                }
+
 
             }
             // ДОБАВЛЯЕМ ВРЕМЕННО ВВЕДЁННЫЕ МАТЕРИАЛЫ ИЗ ТЕКУЩИХ СТРОК
@@ -294,6 +308,26 @@ namespace ConstructionControl
         }
 
 
+        private void SyncArchiveWithMaterialCatalog()
+        {
+            if (currentObject?.MaterialCatalog == null)
+                return;
+
+            foreach (var entry in currentObject.MaterialCatalog
+                .Where(x => string.Equals(x.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(x.TypeName)
+                    && !string.IsNullOrWhiteSpace(x.MaterialName)))
+            {
+                if (!currentObject.Archive.Groups.Contains(entry.TypeName))
+                    currentObject.Archive.Groups.Add(entry.TypeName);
+
+                if (!currentObject.Archive.Materials.ContainsKey(entry.TypeName))
+                    currentObject.Archive.Materials[entry.TypeName] = new();
+
+                if (!currentObject.Archive.Materials[entry.TypeName].Contains(entry.MaterialName))
+                    currentObject.Archive.Materials[entry.TypeName].Add(entry.MaterialName);
+            }
+        }
 
 
 

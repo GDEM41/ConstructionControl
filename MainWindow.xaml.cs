@@ -764,6 +764,7 @@ namespace ConstructionControl
                 MessageBox.Show("Сначала создайте объект");
                 return;
             }
+            currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
 
             var materialNames = journal
                 .Where(j => !string.IsNullOrWhiteSpace(j.MaterialName))
@@ -775,6 +776,15 @@ namespace ConstructionControl
                     TypeName = j.MaterialGroup ?? string.Empty,
                     SubTypeName = j.SubCategory ?? string.Empty
                 })
+                                .Concat(currentObject.MaterialCatalog
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                    .Select(x => new TreeSettingsWindow.MaterialSplitRuleSource
+                    {
+                        MaterialName = x.MaterialName,
+                        CategoryName = x.CategoryName ?? string.Empty,
+                        TypeName = x.TypeName ?? string.Empty,
+                        SubTypeName = x.SubTypeName ?? string.Empty
+                    }))
                 .ToList();
 
             var w = new TreeSettingsWindow(materialNames, currentObject.MaterialTreeSplitRules ?? new())
@@ -786,6 +796,7 @@ namespace ConstructionControl
                 return;
 
             currentObject.MaterialTreeSplitRules = w.ResultRules;
+            currentObject.MaterialCatalog = w.ResultCatalog ?? new List<MaterialCatalogItem>();
 
             if (w.ResultBindingChanges?.Count > 0)
             {
@@ -793,7 +804,7 @@ namespace ConstructionControl
                 foreach (var change in w.ResultBindingChanges)
                 {
                     foreach (var rec in journal.Where(j =>
-                                 string.Equals(j.MaterialName ?? string.Empty, change.MaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                                     string.Equals(j.MaterialName ?? string.Empty, change.OldMaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
                               && string.Equals(j.Category ?? string.Empty, change.OldCategoryName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
                               && string.Equals(j.MaterialGroup ?? string.Empty, change.OldTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
                               && string.Equals(j.SubCategory ?? string.Empty, change.OldSubTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
@@ -801,14 +812,16 @@ namespace ConstructionControl
                         rec.Category = change.NewCategoryName;
                         rec.MaterialGroup = change.NewTypeName;
                         rec.SubCategory = change.NewSubTypeName;
+                        rec.MaterialName = change.NewMaterialName;
                     }
                 }
 
                 CleanupMaterialsAfterDelete();
             }
-
+            SyncLegacyMaterialsFromCatalog();
             SaveState();
             RefreshTreePreserveState();
+            ArrivalPanel.SetObject(currentObject, journal);
             ApplyAllFilters();
         }
 
@@ -1190,9 +1203,32 @@ namespace ConstructionControl
                     currentObject.MaterialNamesByGroup[arrival.MaterialGroup] = new List<string>();
                 }
             }
+            currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
 
             foreach (var i in arrival.Items)
             {
+                if (!string.IsNullOrWhiteSpace(i.MaterialName))
+                {
+                    var categoryName = arrival.Category ?? string.Empty;
+                    var typeName = arrival.Category == "Основные" ? (arrival.MaterialGroup ?? string.Empty) : (arrival.SubCategory ?? string.Empty);
+                    var subTypeName = arrival.Category == "Основные" ? string.Empty : (arrival.MaterialGroup ?? string.Empty);
+
+                    if (!currentObject.MaterialCatalog.Any(x =>
+                        string.Equals(x.CategoryName ?? string.Empty, categoryName, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals(x.TypeName ?? string.Empty, typeName, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals(x.SubTypeName ?? string.Empty, subTypeName, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals(x.MaterialName ?? string.Empty, i.MaterialName, StringComparison.CurrentCultureIgnoreCase)))
+                    {
+                        currentObject.MaterialCatalog.Add(new MaterialCatalogItem
+                        {
+                            CategoryName = categoryName,
+                            TypeName = typeName,
+                            SubTypeName = subTypeName,
+                            MaterialName = i.MaterialName
+                        });
+                    }
+                }
+
                 if (arrival.Category == "Основные")
                 {
                     // === список на дереве ===
@@ -1236,7 +1272,7 @@ namespace ConstructionControl
 
 
 
-
+            SyncLegacyMaterialsFromCatalog();
             SaveState();
             RefreshTreePreserveState();
    
@@ -1250,7 +1286,41 @@ namespace ConstructionControl
 
         }
 
+        private void SyncLegacyMaterialsFromCatalog()
+        {
+            if (currentObject == null)
+                return;
 
+            currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
+
+            foreach (var item in currentObject.MaterialCatalog.Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)))
+            {
+                if (!string.Equals(item.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    continue;
+
+                var groupName = item.TypeName ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(groupName))
+                    continue;
+
+                if (!currentObject.MaterialGroups.Any(g => string.Equals(g.Name, groupName, StringComparison.CurrentCultureIgnoreCase)))
+                    currentObject.MaterialGroups.Add(new MaterialGroup { Name = groupName });
+
+                if (!currentObject.MaterialNamesByGroup.ContainsKey(groupName))
+                    currentObject.MaterialNamesByGroup[groupName] = new List<string>();
+
+                if (!currentObject.MaterialNamesByGroup[groupName].Contains(item.MaterialName))
+                    currentObject.MaterialNamesByGroup[groupName].Add(item.MaterialName);
+
+                if (!currentObject.Archive.Groups.Contains(groupName))
+                    currentObject.Archive.Groups.Add(groupName);
+
+                if (!currentObject.Archive.Materials.ContainsKey(groupName))
+                    currentObject.Archive.Materials[groupName] = new List<string>();
+
+                if (!currentObject.Archive.Materials[groupName].Contains(item.MaterialName))
+                    currentObject.Archive.Materials[groupName].Add(item.MaterialName);
+            }
+        }
         private void CleanupMaterialsAfterDelete()
         {
             // Какие группы реально используются

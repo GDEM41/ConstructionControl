@@ -192,7 +192,7 @@
             <MenuItem Header="Архив" Click="OpenArchive_Click" />
 
             <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
-                <MenuItem Header="Настройки дерева" Click="TreeSettings_Click"/>
+                <MenuItem Header="База материалов" Click="TreeSettings_Click"/>
                 <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>
 
