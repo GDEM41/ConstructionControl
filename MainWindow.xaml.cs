@@ -77,6 +77,7 @@ namespace ConstructionControl
         private bool summaryFilterUpdating;
         private List<string> summaryFilterGroups = new();
         private bool summaryHasOverage;
+        private bool summaryMountedMode;
         private TextBlock summaryOverageNote;
         private readonly ObservableCollection<string> brigadierNames = new();
         private readonly ObservableCollection<string> specialties = new();
@@ -2358,7 +2359,7 @@ namespace ConstructionControl
         {
             var note = new TextBlock
             {
-                Text = "Формат ячейки: план / пришло",
+                Text = summaryMountedMode ? "Формат ячейки: смонтировано / пришло" : "Формат ячейки: план / пришло",
                 Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -2468,8 +2469,8 @@ namespace ConstructionControl
                 blockStart += blockColumns;
             }
 
-            AddCell(summaryGrid, 0, summaryTotalColumn, "Всего на здание", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
-            AddCell(summaryGrid, 0, summaryNotArrivedColumn, "Не доехало", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+            AddCell(summaryGrid, 0, summaryTotalColumn, summaryMountedMode ? "Смонтировано" : "Всего на здание", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+            AddCell(summaryGrid, 0, summaryNotArrivedColumn, summaryMountedMode ? "В остатке" : "Не доехало", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
             AddCell(summaryGrid, 0, summaryArrivedColumn, "Пришло", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
 
             summaryRowIndex = 2;
@@ -2480,7 +2481,7 @@ namespace ConstructionControl
             if (summaryGrid == null)
                 return;
 
-            var blockTotals = new Dictionary<int, double>(); // ✅ ДОБАВИТЬ
+            var blockTotals = new Dictionary<int, double>();
 
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -2498,7 +2499,9 @@ namespace ConstructionControl
                 double blockTotal = 0;
                 foreach (var floor in block.Floors)
                 {
-                    blockTotal += GetDemandValue(demand, block.Block, floor);
+                    blockTotal += summaryMountedMode
+                        ? GetMountedValue(demand, block.Block, floor)
+                        : GetDemandValue(demand, block.Block, floor);
                 }
 
                 blockTotals[block.Block] = blockTotal;  // теперь ок
@@ -2518,9 +2521,6 @@ namespace ConstructionControl
                     && blockTotal > 0
                     && blockFilled.TryGetValue(block.Block, out var filled) && filled);
             bool rowOverage = totalArrival > totalPlanned;
-            var rowHighlight = rowComplete
-                ? new SolidColorBrush(Color.FromRgb(209, 250, 229))
-                : null;
             var filledHighlight = new SolidColorBrush(Color.FromRgb(220, 252, 231));
             var blockHighlight = new SolidColorBrush(Color.FromRgb(219, 234, 254));
             var warningHighlight = new SolidColorBrush(Color.FromRgb(254, 243, 199));
@@ -2532,8 +2532,8 @@ namespace ConstructionControl
                     summaryOverageNote.Visibility = Visibility.Visible;
             }
 
-            AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, bg: rowHighlight, noWrap: true, minWidth: 60);
-            AddCell(summaryGrid, summaryRowIndex, 1, mat, bg: rowHighlight, noWrap: true, minWidth: 220);
+            AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, noWrap: true, minWidth: 60);
+            AddCell(summaryGrid, summaryRowIndex, 1, mat, noWrap: true, minWidth: 220);
 
             foreach (var col in summaryColumns)
             {
@@ -2543,19 +2543,21 @@ namespace ConstructionControl
                    
                     bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
                     bool blockIsOverage = blockOverage.TryGetValue(col.Block, out var over) && over;
-                    Brush cellBg = rowHighlight ?? (blockIsOverage ? warningHighlight : (blockComplete ? blockHighlight : null));
+                    Brush cellBg = blockIsOverage ? warningHighlight : (blockComplete ? blockHighlight : null);
                     AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
                 else if (col.Floor.HasValue)
                 {
                     double plan = GetDemandValue(demand, col.Block, col.Floor.Value);
+                    double mounted = GetMountedValue(demand, col.Block, col.Floor.Value);
                     double arrived = allocations.TryGetValue(col.Block, out var blockDict)
                         && blockDict.TryGetValue(col.Floor.Value, out var arr)
                         ? arr
                         : 0;
 
-                    bool floorOverage = plan > 0 ? arrived > plan : arrived > 0;
-                    bool floorFilled = plan > 0 && Math.Abs(arrived - plan) < 0.0001;
+                    double compareBase = summaryMountedMode ? mounted : plan;
+                    bool floorOverage = compareBase > 0 ? arrived > compareBase : arrived > 0;
+                    bool floorFilled = compareBase > 0 && Math.Abs(arrived - compareBase) < 0.0001;
                     if (floorOverage)
                     {
                         summaryHasOverage = true;
@@ -2563,15 +2565,17 @@ namespace ConstructionControl
                             summaryOverageNote.Visibility = Visibility.Visible;
                     }
 
-                    Brush cellBg = rowHighlight ?? (floorOverage ? warningHighlight : (floorFilled ? filledHighlight : null));
-                    AddDiagonalDemandCell(summaryGrid, summaryRowIndex, col.ColumnIndex, plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44);
+                    Brush cellBg = floorOverage ? warningHighlight : (floorFilled ? filledHighlight : null);
+                    AddDiagonalSummaryCell(summaryGrid, summaryRowIndex, col.ColumnIndex, summaryMountedMode ? mounted : plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44, summaryMountedMode);
                 }
             }
 
-            double notArrived = Math.Max(0, totalPlanned - totalArrival);
-            Brush arrivedBg = rowHighlight ?? (rowOverage ? warningHighlight : null);
-            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
-            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, bg: rowHighlight, noWrap: true, minWidth: 70);
+            double notArrived = summaryMountedMode
+               ? Math.Max(0, totalArrival - totalPlanned)
+               : Math.Max(0, totalPlanned - totalArrival);
+            Brush arrivedBg = rowOverage ? warningHighlight : null;
+            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowComplete ? blockHighlight : null, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, noWrap: true, minWidth: 70);
             AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
 
             summaryRowIndex++;
@@ -2683,6 +2687,37 @@ namespace ConstructionControl
             SummaryFilterSubtitle.Text = selectedGroups[0];
         }
 
+        private void OpenDemandEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+                return;
+
+            var rows = journal
+                .Where(x => x.Category == "Основные")
+                .GroupBy(x => new { x.MaterialGroup, x.MaterialName })
+                .Select(g => new DemandEditorWindow.DemandMaterialRow
+                {
+                    Group = g.Key.MaterialGroup,
+                    Material = g.Key.MaterialName,
+                    Unit = g.Select(x => x.Unit).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u)) ?? string.Empty
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Group) && !string.IsNullOrWhiteSpace(x.Material))
+                .ToList();
+
+            var window = new DemandEditorWindow(currentObject, rows)
+            {
+                Owner = this
+            };
+
+            if (window.ShowDialog() == true)
+                RefreshSummaryTable();
+        }
+
+        private void SummaryModeSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            summaryMountedMode = SummaryMountedModeSwitch?.IsChecked == true;
+            RefreshSummaryTable();
+        }
 
 
         private List<string> GetMaterialsForGroup(string group)
@@ -2832,7 +2867,8 @@ namespace ConstructionControl
                 demand = new MaterialDemand
                 {
                     Unit = unit,
-                    Floors = new Dictionary<int, Dictionary<int, double>>()
+                    Floors = new Dictionary<int, Dictionary<int, double>>(),
+                    MountedFloors = new Dictionary<int, Dictionary<int, double>>()
                 };
 
                 currentObject.Demand[demandKey] = demand;
@@ -2840,6 +2876,8 @@ namespace ConstructionControl
 
             if (string.IsNullOrWhiteSpace(demand.Unit))
                 demand.Unit = unit;
+            demand.Floors ??= new Dictionary<int, Dictionary<int, double>>();
+            demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
 
             return demand;
         }
@@ -2852,7 +2890,15 @@ namespace ConstructionControl
 
             return 0;
         }
+        private double GetMountedValue(MaterialDemand demand, int block, int floor)
+        {
+            if (demand.MountedFloors != null
+                && demand.MountedFloors.TryGetValue(block, out var floors)
+                && floors.TryGetValue(floor, out var value))
+                return value;
 
+            return 0;
+        }
         private string GetFloorLabel(int floor)
         {
             return floor == 0 ? "Подвал" : floor.ToString();
@@ -2938,7 +2984,7 @@ namespace ConstructionControl
 
             g.Children.Add(border);
         }
-        void AddDiagonalDemandCell(Grid g, int r, int c, double plan, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth)
+        void AddDiagonalSummaryCell(Grid g, int r, int c, double topValue, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth, bool editableTop)
         {
             var container = new Grid
             {
@@ -2960,9 +3006,9 @@ namespace ConstructionControl
 
             container.Children.Add(line);
 
-            var planBox = new TextBox
+            var topBox = new TextBox
             {
-                Text = FormatNumber(plan),
+                Text = FormatNumber(topValue),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Margin = new Thickness(2, 1, 2, 1),
@@ -2970,8 +3016,8 @@ namespace ConstructionControl
                 VerticalAlignment = VerticalAlignment.Top,
                 MinWidth = 22,
                 FontSize = 11,
-                IsReadOnly = isLocked,
-                IsEnabled = !isLocked,
+                IsReadOnly = !editableTop || isLocked,
+                IsEnabled = editableTop && !isLocked,
                 Tag = new DemandCellTag
                 {
                     DemandKey = demandKey,
@@ -2981,7 +3027,8 @@ namespace ConstructionControl
                 }
             };
 
-            planBox.LostFocus += DemandCell_LostFocus;
+            if (editableTop)
+                topBox.LostFocus += MountedCell_LostFocus;
 
             var arrivedText = new TextBlock
             {
@@ -2993,7 +3040,7 @@ namespace ConstructionControl
                 FontSize = 11
             };
 
-            container.Children.Add(planBox);
+            container.Children.Add(topBox);
             container.Children.Add(arrivedText);
 
             var border = new Border
@@ -3012,7 +3059,7 @@ namespace ConstructionControl
             g.Children.Add(border);
         }
 
-        private void DemandCell_LostFocus(object sender, RoutedEventArgs e)
+        private void MountedCell_LostFocus(object sender, RoutedEventArgs e)
         {
             if (sender is not TextBox tb || tb.Tag is not DemandCellTag tag)
                 return;
@@ -3026,10 +3073,11 @@ namespace ConstructionControl
 
             var demand = GetOrCreateDemand(tag.DemandKey, tag.Unit);
 
-            if (!demand.Floors.ContainsKey(tag.Block))
-                demand.Floors[tag.Block] = new Dictionary<int, double>();
+            demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
+            if (!demand.MountedFloors.ContainsKey(tag.Block))
+                demand.MountedFloors[tag.Block] = new Dictionary<int, double>();
 
-            demand.Floors[tag.Block][tag.Floor] = value;
+            demand.MountedFloors[tag.Block][tag.Floor] = value;
 
             RefreshSummaryTable();
         }

@@ -47,6 +47,10 @@
                         Click="RemoveEntry_Click"
                         Margin="0,0,14,0"
                         Padding="12,6"/>
+                <Button Content="Переименовать тип для всех"
+                        Click="RenameTypeForAll_Click"
+                        Margin="0,0,14,0"
+                        Padding="12,6"/>
                 <TextBlock Text="Уровни разбиения:"
                            VerticalAlignment="Center"
                            Foreground="#334155"

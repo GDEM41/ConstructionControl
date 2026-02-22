@@ -306,6 +306,47 @@ namespace ConstructionControl
 
             rows.Remove(selected);
         }
+        private void RenameTypeForAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
+
+            var oldType = NormalizeMetaValue(selected.EditableTypeName);
+            if (string.IsNullOrWhiteSpace(oldType))
+                return;
+
+            var dialog = new Window
+            {
+                Title = "Переименовать тип",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                SizeToContent = SizeToContent.WidthAndHeight
+            };
+
+            var box = new TextBox { Text = oldType, MinWidth = 260, Margin = new Thickness(0, 8, 0, 0) };
+            var root = new StackPanel { Margin = new Thickness(12) };
+            root.Children.Add(new TextBlock { Text = $"Новое название типа для всех материалов с типом \"{oldType}\":" });
+            root.Children.Add(box);
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            var cancel = new Button { Content = "Отмена", Width = 90, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+            var ok = new Button { Content = "Применить", Width = 90, IsDefault = true };
+            ok.Click += (_, _) => dialog.DialogResult = true;
+            buttons.Children.Add(cancel);
+            buttons.Children.Add(ok);
+            root.Children.Add(buttons);
+            dialog.Content = root;
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var newType = NormalizeMetaValue(box.Text);
+            if (string.IsNullOrWhiteSpace(newType) || string.Equals(newType, oldType, System.StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            foreach (var row in rows.Where(r => string.Equals(NormalizeMetaValue(r.EditableTypeName), oldType, System.StringComparison.CurrentCultureIgnoreCase)))
+                row.EditableTypeName = newType;
+        }
 
         private void AddLevelColumn_Click(object sender, RoutedEventArgs e)
         {

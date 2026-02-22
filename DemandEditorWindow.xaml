@@ -1,0 +1,24 @@
+﻿<Window x:Class="ConstructionControl.DemandEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Потребность по этажам"
+        Height="700"
+        Width="1200"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC">
+    <DockPanel Margin="12">
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,10">
+            <TextBlock Text="Заполните потребность по этажам. Таблица подстраивается под блоки и этажность текущего объекта."
+                       Foreground="#334155"/>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+            <Grid x:Name="DemandGrid"/>
+        </ScrollViewer>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Отмена" Width="110" Margin="0,0,8,0" Click="Cancel_Click"/>
+            <Button Content="Сохранить" Width="110" Background="#2563EB" Foreground="White" BorderBrush="#1D4ED8" Click="Save_Click"/>
+        </StackPanel>
+    </DockPanel>
+</Window>

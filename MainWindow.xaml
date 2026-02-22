@@ -326,59 +326,39 @@
 
 
                     <!-- ===== СВОДНАЯ ===== -->
-                    <TabItem Header="Сводная таблица">
-                        <DockPanel>
+                        <TabItem Header="Сводка">
+                            <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="0,0,0,8">
-                                <TextBlock Text="Типы для отображения"
-                                           FontWeight="SemiBold"
-                                           Foreground="#374151"
-                                           Margin="0,0,0,6"/>
-                                <Grid Width="260">
-                                    <ToggleButton x:Name="SummaryFilterButton"
-                                                  Style="{StaticResource SummaryFilterToggle}"
-                                                  HorizontalContentAlignment="Left">
-                                        <StackPanel>
-                                            <TextBlock Text="Фильтр типов"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="#111827"/>
-                                            <TextBlock x:Name="SummaryFilterSubtitle"
-                                                       Text="Нет доступных типов"
-                                                       Foreground="#6B7280"
-                                                       FontSize="12"/>
-                                        </StackPanel>
-                                    </ToggleButton>
-                                    <Popup PlacementTarget="{Binding ElementName=SummaryFilterButton}"
-                                           IsOpen="{Binding IsChecked, ElementName=SummaryFilterButton}"
-                                           PopupAnimation="Fade"
-                                           AllowsTransparency="True"
-                                           StaysOpen="False">
-                                        <Border Background="White"
-                                                BorderBrush="#E5E7EB"
-                                                BorderThickness="1"
-                                                CornerRadius="10"
-                                                Padding="12"
-                                                MinWidth="260">
-                                            <Border.Effect>
-                                                <DropShadowEffect BlurRadius="12"
-                                                                  ShadowDepth="2"
-                                                                  Opacity="0.18"/>
-                                            </Border.Effect>
-                                            <StackPanel>
-                                                <TextBlock Text="Показывать в сводной"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#111827"
-                                                           Margin="0,0,0,6"/>
-                                                <ScrollViewer MaxHeight="200"
-                                                              VerticalScrollBarVisibility="Auto">
-                                                    <StackPanel x:Name="SummaryTypeFilterPanel"/>
-                                                </ScrollViewer>
-                                               
-                                            </StackPanel>
-                                        </Border>
-                                    </Popup>
-                                </Grid>
-                            </StackPanel>
+                                    <WrapPanel>
+                                        <Grid Width="260" Margin="0,0,10,6">
+                                            <ToggleButton x:Name="SummaryFilterButton"
+                                                      Style="{StaticResource SummaryFilterToggle}"
+                                                      HorizontalContentAlignment="Left">
+                                                <StackPanel>
+                                                    <TextBlock Text="Фильтр типов" FontWeight="SemiBold" Foreground="#111827"/>
+                                                    <TextBlock x:Name="SummaryFilterSubtitle" Text="Нет доступных типов" Foreground="#6B7280" FontSize="12"/>
+
+                                                </StackPanel>
+                                            </ToggleButton>
+                                            <Popup PlacementTarget="{Binding ElementName=SummaryFilterButton}" IsOpen="{Binding IsChecked, ElementName=SummaryFilterButton}" PopupAnimation="Fade" AllowsTransparency="True" StaysOpen="False">
+                                                <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="10" Padding="12" MinWidth="260">
+                                                    <Border.Effect>
+                                                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18"/>
+                                                    </Border.Effect>
+                                                    <StackPanel>
+                                                        <TextBlock Text="Показывать в сводке" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,6"/>
+                                                        <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                                                            <StackPanel x:Name="SummaryTypeFilterPanel"/>
+                                                        </ScrollViewer>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                        <Button Content="Потребность по этажам" Click="OpenDemandEditor_Click" Padding="12,10" Margin="0,0,10,6"/>
+                                        <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" VerticalAlignment="Center" Margin="0,0,10,6" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
+                                    </WrapPanel>
+                                </StackPanel>
                             <ListBox x:Name="SummaryPanel"
                                      BorderThickness="0"
                                      Background="Transparent"

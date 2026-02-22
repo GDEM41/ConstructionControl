@@ -240,8 +240,13 @@ namespace ConstructionControl
 
     public class MaterialDemand
     {
-        public string Unit;
-        public Dictionary<int, Dictionary<int, double>> Floors; // block → floor → qty
+        public string Unit { get; set; }
+
+        public Dictionary<int, Dictionary<int, double>> Floors { get; set; }
+            = new Dictionary<int, Dictionary<int, double>>();
+
+        public Dictionary<int, Dictionary<int, double>> MountedFloors { get; set; }
+            = new Dictionary<int, Dictionary<int, double>>();
     }
     public class MaterialCatalogItem
     {
