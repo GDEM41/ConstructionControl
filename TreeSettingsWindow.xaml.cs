@@ -19,6 +19,9 @@ namespace ConstructionControl
             public string TypeName { get; set; }
             public string SubTypeName { get; set; }
             public string MaterialName { get; set; }
+            public string Level4Name { get; set; }
+            public string Level5Name { get; set; }
+            public string Level6Name { get; set; }
         }
 
         public class MaterialSplitRuleRow : INotifyPropertyChanged
@@ -28,14 +31,23 @@ namespace ConstructionControl
             private string typeName;
             private string subTypeName;
             private string materialName;
+            private string level4Name;
+            private string level5Name;
+            private string level6Name;
             public string CategoryName { get; set; }
             public string TypeName { get; set; }
             public string SubTypeName { get; set; }
             public string MaterialName { get; set; }
+            public string Level4Name { get; set; }
+            public string Level5Name { get; set; }
+            public string Level6Name { get; set; }
             public string OriginalCategoryName { get; set; }
             public string OriginalTypeName { get; set; }
             public string OriginalSubTypeName { get; set; }
             public string OriginalMaterialName { get; set; }
+            public string OriginalLevel4Name { get; set; }
+            public string OriginalLevel5Name { get; set; }
+            public string OriginalLevel6Name { get; set; }
             public string EditableCategoryName
             {
                 get => categoryName;
@@ -58,6 +70,23 @@ namespace ConstructionControl
             {
                 get => materialName;
                 set => SetField(ref materialName, value, nameof(EditableMaterialName));
+            }
+            public string EditableLevel4Name
+            {
+                get => level4Name;
+                set => SetField(ref level4Name, value, nameof(EditableLevel4Name));
+            }
+
+            public string EditableLevel5Name
+            {
+                get => level5Name;
+                set => SetField(ref level5Name, value, nameof(EditableLevel5Name));
+            }
+
+            public string EditableLevel6Name
+            {
+                get => level6Name;
+                set => SetField(ref level6Name, value, nameof(EditableLevel6Name));
             }
             public string Segment1 { get => segments[0]; set => SetSegment(0, value); }
             public string Segment2 { get => segments[1]; set => SetSegment(1, value); }
@@ -129,12 +158,19 @@ namespace ConstructionControl
             public string NewCategoryName { get; set; }
             public string NewTypeName { get; set; }
             public string NewSubTypeName { get; set; }
+            public string OldLevel4Name { get; set; }
+            public string OldLevel5Name { get; set; }
+            public string OldLevel6Name { get; set; }
+            public string NewLevel4Name { get; set; }
+            public string NewLevel5Name { get; set; }
+            public string NewLevel6Name { get; set; }
             public string OldMaterialName { get; set; }
             public string NewMaterialName { get; set; }
         }
 
         private readonly ObservableCollection<MaterialSplitRuleRow> rows;
         private bool isBulkUpdating;
+        private int visibleCatalogColumns = 3;
         private int visibleLevelColumns = 6;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
@@ -152,7 +188,10 @@ namespace ConstructionControl
                                             Material = x.MaterialName,
                                             Category = NormalizeMetaValue(x.CategoryName),
                                             Type = NormalizeMetaValue(x.TypeName),
-                                            SubType = NormalizeMetaValue(x.SubTypeName)
+                                            SubType = NormalizeMetaValue(x.SubTypeName),
+                                            Level4 = NormalizeMetaValue(x.Level4Name),
+                                            Level5 = NormalizeMetaValue(x.Level5Name),
+                                            Level6 = NormalizeMetaValue(x.Level6Name)
                                         })
                     .Select(g => g.First())
                     .OrderBy(x => x.CategoryName)
@@ -164,6 +203,9 @@ namespace ConstructionControl
                         CategoryName = NormalizeMetaValue(x.CategoryName),
                         TypeName = NormalizeMetaValue(x.TypeName),
                         SubTypeName = NormalizeMetaValue(x.SubTypeName),
+                        Level4Name = NormalizeMetaValue(x.Level4Name),
+                        Level5Name = NormalizeMetaValue(x.Level5Name),
+                        Level6Name = NormalizeMetaValue(x.Level6Name),
                         MaterialName = x.MaterialName
                     }));
             foreach (var row in rows)
@@ -174,9 +216,16 @@ namespace ConstructionControl
                 row.EditableCategoryName = row.CategoryName;
                 row.EditableTypeName = row.TypeName;
                 row.OriginalMaterialName = row.MaterialName;
+                row.OriginalLevel4Name = row.Level4Name;
+                row.OriginalLevel5Name = row.Level5Name;
+                row.OriginalLevel6Name = row.Level6Name;
                 row.EditableSubTypeName = row.SubTypeName;
+                row.EditableLevel4Name = row.Level4Name;
+                row.EditableLevel5Name = row.Level5Name;
+                row.EditableLevel6Name = row.Level6Name;
                 row.EditableMaterialName = row.MaterialName;
 
+                visibleCatalogColumns = rows.Any(x => !string.IsNullOrWhiteSpace(x.Level6Name)) ? 6 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level5Name)) ? 5 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level4Name)) ? 4 : 3;
                 row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
                     ? rule
                     : string.Empty);
@@ -188,6 +237,7 @@ namespace ConstructionControl
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableSubTypeName)));
             RulesGrid.ItemsSource = cvs.View;
             visibleLevelColumns = rows.Any() ? System.Math.Max(6, rows.Max(GetUsedSegmentCount)) : 6;
+            ApplyCatalogColumnVisibility();
             ApplyLevelColumnVisibility();
         }
 
@@ -224,14 +274,23 @@ namespace ConstructionControl
                 EditableTypeName = selected?.EditableTypeName ?? string.Empty,
                 EditableSubTypeName = selected?.EditableSubTypeName ?? string.Empty,
                 EditableMaterialName = string.Empty,
+                EditableLevel4Name = selected?.EditableLevel4Name ?? string.Empty,
+                EditableLevel5Name = selected?.EditableLevel5Name ?? string.Empty,
+                EditableLevel6Name = selected?.EditableLevel6Name ?? string.Empty,
                 CategoryName = selected?.EditableCategoryName ?? string.Empty,
                 TypeName = selected?.EditableTypeName ?? string.Empty,
                 SubTypeName = selected?.EditableSubTypeName ?? string.Empty,
+                Level4Name = selected?.EditableLevel4Name ?? string.Empty,
+                Level5Name = selected?.EditableLevel5Name ?? string.Empty,
+                Level6Name = selected?.EditableLevel6Name ?? string.Empty,
                 MaterialName = string.Empty,
                 OriginalCategoryName = string.Empty,
                 OriginalTypeName = string.Empty,
                 OriginalSubTypeName = string.Empty,
-                OriginalMaterialName = string.Empty
+                OriginalMaterialName = string.Empty,
+                OriginalLevel4Name = string.Empty,
+                OriginalLevel5Name = string.Empty,
+                OriginalLevel6Name = string.Empty
             };
 
             var index = selected != null ? rows.IndexOf(selected) + 1 : rows.Count;
@@ -250,6 +309,12 @@ namespace ConstructionControl
 
         private void AddLevelColumn_Click(object sender, RoutedEventArgs e)
         {
+            if (visibleCatalogColumns < 6)
+            {
+                visibleCatalogColumns++;
+                ApplyCatalogColumnVisibility();
+                return;
+            }
             if (visibleLevelColumns >= 10)
                 return;
 
@@ -259,11 +324,26 @@ namespace ConstructionControl
 
         private void RemoveLevelColumn_Click(object sender, RoutedEventArgs e)
         {
-            if (visibleLevelColumns <= 6)
+            if (visibleLevelColumns > 6)
+            {
+                visibleLevelColumns--;
+                ApplyLevelColumnVisibility();
+                return;
+            }
+
+            if (visibleCatalogColumns <= 3)
                 return;
 
-            visibleLevelColumns--;
-            ApplyLevelColumnVisibility();
+            visibleCatalogColumns--;
+            ApplyCatalogColumnVisibility();
+        }
+
+
+        private void ApplyCatalogColumnVisibility()
+        {
+            CatalogLevel4Column.Visibility = visibleCatalogColumns >= 4 ? Visibility.Visible : Visibility.Collapsed;
+            CatalogLevel5Column.Visibility = visibleCatalogColumns >= 5 ? Visibility.Visible : Visibility.Collapsed;
+            CatalogLevel6Column.Visibility = visibleCatalogColumns >= 6 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void ApplyLevelColumnVisibility()
@@ -477,7 +557,9 @@ namespace ConstructionControl
                 row.CategoryName = NormalizeMetaValue(row.EditableCategoryName);
                 row.TypeName = NormalizeMetaValue(row.EditableTypeName);
                 row.SubTypeName = NormalizeMetaValue(row.EditableSubTypeName);
-                row.MaterialName = NormalizeMetaValue(row.EditableMaterialName);
+                row.Level4Name = NormalizeMetaValue(row.EditableLevel4Name);
+                row.Level5Name = NormalizeMetaValue(row.EditableLevel5Name);
+                row.Level6Name = NormalizeMetaValue(row.EditableLevel6Name);
                 row.MaterialName = NormalizeMetaValue(row.EditableMaterialName);
             }
 
@@ -494,6 +576,9 @@ namespace ConstructionControl
                 .Where(x => !string.Equals(x.OriginalCategoryName, x.CategoryName, System.StringComparison.CurrentCulture)
                          || !string.Equals(x.OriginalTypeName, x.TypeName, System.StringComparison.CurrentCulture)
                          || !string.Equals(x.OriginalSubTypeName, x.SubTypeName, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalLevel4Name, x.Level4Name, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalLevel5Name, x.Level5Name, System.StringComparison.CurrentCulture)
+                         || !string.Equals(x.OriginalLevel6Name, x.Level6Name, System.StringComparison.CurrentCulture)
                          || !string.Equals(x.OriginalMaterialName, x.MaterialName, System.StringComparison.CurrentCulture))
                 .Select(x => new MaterialBindingChange
                 {
@@ -501,9 +586,15 @@ namespace ConstructionControl
                     OldCategoryName = x.OriginalCategoryName,
                     OldTypeName = x.OriginalTypeName,
                     OldSubTypeName = x.OriginalSubTypeName,
+                    OldLevel4Name = x.OriginalLevel4Name,
+                    OldLevel5Name = x.OriginalLevel5Name,
+                    OldLevel6Name = x.OriginalLevel6Name,
                     NewCategoryName = x.CategoryName,
                     NewTypeName = x.TypeName,
                     NewSubTypeName = x.SubTypeName,
+                    NewLevel4Name = x.Level4Name,
+                    NewLevel5Name = x.Level5Name,
+                    NewLevel6Name = x.Level6Name,
                     OldMaterialName = x.OriginalMaterialName,
                     NewMaterialName = x.MaterialName
                 })
@@ -515,6 +606,8 @@ namespace ConstructionControl
                                           CategoryName = x.CategoryName,
                                           TypeName = x.TypeName,
                                           SubTypeName = x.SubTypeName,
+                                          ExtraLevels = new List<string> { x.Level4Name, x.Level5Name, x.Level6Name }
+                                              .Where(v => !string.IsNullOrWhiteSpace(v)).ToList(),
                                           MaterialName = x.MaterialName
                                       })
                      .GroupBy(x => new
@@ -522,6 +615,9 @@ namespace ConstructionControl
                          Category = x.CategoryName ?? string.Empty,
                          Type = x.TypeName ?? string.Empty,
                          SubType = x.SubTypeName ?? string.Empty,
+                         Level4 = x.ExtraLevels != null && x.ExtraLevels.Count > 0 ? x.ExtraLevels[0] : string.Empty,
+                         Level5 = x.ExtraLevels != null && x.ExtraLevels.Count > 1 ? x.ExtraLevels[1] : string.Empty,
+                         Level6 = x.ExtraLevels != null && x.ExtraLevels.Count > 2 ? x.ExtraLevels[2] : string.Empty,
                          Material = x.MaterialName ?? string.Empty
                      })
                      .Select(x => x.First())

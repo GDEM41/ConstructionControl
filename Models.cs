@@ -248,6 +248,7 @@ namespace ConstructionControl
         public string CategoryName { get; set; }
         public string TypeName { get; set; }
         public string SubTypeName { get; set; }
+        public List<string> ExtraLevels { get; set; } = new();
         public string MaterialName { get; set; }
     }
 

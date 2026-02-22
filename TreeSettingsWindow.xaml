@@ -73,7 +73,7 @@
                   RowBackground="White"
                   BorderBrush="#CBD5E1"
                   BorderThickness="1"
-                  FrozenColumnCount="4"
+                   FrozenColumnCount="7"
                   CellEditEnding="RulesGrid_CellEditEnding">
             <DataGrid.GroupStyle>
                 <GroupStyle>
@@ -108,6 +108,9 @@
                 <DataGridTextColumn Header="Категория" Binding="{Binding EditableCategoryName, UpdateSourceTrigger=PropertyChanged}" Width="1*"/>
                 <DataGridTextColumn Header="Тип" Binding="{Binding EditableTypeName, UpdateSourceTrigger=PropertyChanged}" Width="1.1*"/>
                 <DataGridTextColumn Header="Подтип" Binding="{Binding EditableSubTypeName, UpdateSourceTrigger=PropertyChanged}" Width="1.1*"/>
+                <DataGridTextColumn x:Name="CatalogLevel4Column" Header="Подподтип" Binding="{Binding EditableLevel4Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="CatalogLevel5Column" Header="Уровень 5" Binding="{Binding EditableLevel5Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="CatalogLevel6Column" Header="Уровень 6" Binding="{Binding EditableLevel6Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
                 <DataGridTextColumn Header="Материал" Binding="{Binding EditableMaterialName, UpdateSourceTrigger=PropertyChanged}" Width="1.5*"/>
                 <DataGridTextColumn Header="Уровень 1" Binding="{Binding Segment1, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                 <DataGridTextColumn Header="Уровень 2" Binding="{Binding Segment2, UpdateSourceTrigger=PropertyChanged}" Width="*"/>

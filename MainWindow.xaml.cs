@@ -783,7 +783,9 @@ namespace ConstructionControl
                         MaterialName = x.MaterialName,
                         CategoryName = x.CategoryName ?? string.Empty,
                         TypeName = x.TypeName ?? string.Empty,
-                        SubTypeName = x.SubTypeName ?? string.Empty
+                        Level4Name = x.ExtraLevels != null && x.ExtraLevels.Count > 0 ? x.ExtraLevels[0] : string.Empty,
+                        Level5Name = x.ExtraLevels != null && x.ExtraLevels.Count > 1 ? x.ExtraLevels[1] : string.Empty,
+                        Level6Name = x.ExtraLevels != null && x.ExtraLevels.Count > 2 ? x.ExtraLevels[2] : string.Empty
                     }))
                 .ToList();
 
