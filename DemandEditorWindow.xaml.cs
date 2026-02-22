@@ -22,6 +22,7 @@ namespace ConstructionControl
         private readonly List<DemandMaterialRow> rows;
         private readonly List<(int Block, int Floor)> floorColumns = new();
         private readonly Dictionary<string, List<TextBox>> editorsByGroup = new();
+        private readonly Dictionary<string, int> columnsCountByGroup = new();
 
         public DemandEditorWindow(ProjectObject projectObject, IEnumerable<DemandMaterialRow> sourceRows)
         {
@@ -53,6 +54,7 @@ namespace ConstructionControl
         {
             TypeTabs.Items.Clear();
             editorsByGroup.Clear();
+            columnsCountByGroup.Clear();
 
             foreach (var group in rows.Select(r => r.Group).Distinct().OrderBy(x => x))
             {
@@ -84,10 +86,22 @@ namespace ConstructionControl
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             AddCell(grid, 0, 0, "Материал", true, "#E2E8F0", true);
-            for (int i = 0; i < floorColumns.Count; i++)
+            Grid.SetRowSpan(grid.Children[^1], 2);
+
+            int startColumn = 1;
+            foreach (var blockGroup in floorColumns.GroupBy(x => x.Block))
             {
-                var col = floorColumns[i];
-                AddCell(grid, 0, i + 1, $"Б{col.Block}-{(col.Floor == 0 ? "П" : col.Floor.ToString())}", true, "#E2E8F0", true);
+                AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, "#CBD5E1", true, HorizontalAlignment.Center);
+                Grid.SetColumnSpan(grid.Children[^1], blockGroup.Count());
+
+                int offset = 0;
+                foreach (var column in blockGroup)
+                {
+                    AddCell(grid, 1, startColumn + offset, column.Floor == 0 ? "Подвал" : column.Floor.ToString(), true, "#E2E8F0", true, HorizontalAlignment.Center);
+                    offset++;
+                }
+
+                startColumn += blockGroup.Count();
             }
 
             var editors = new List<TextBox>();
@@ -96,7 +110,7 @@ namespace ConstructionControl
                 var row = groupRows[rowIndex];
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var bg = rowIndex % 2 == 0 ? "White" : "#F8FAFC";
-                AddCell(grid, rowIndex + 1, 0, row.Material, false, bg, false);
+                AddCell(grid, rowIndex + 2, 0, row.Material, false, bg, false);
 
                 string key = $"{row.Group}::{row.Material}";
                 var demand = GetOrCreateDemand(key, row.Unit);
@@ -116,7 +130,7 @@ namespace ConstructionControl
                         BorderThickness = new Thickness(1)
                     };
                     box.PreviewKeyDown += Cell_PreviewKeyDown;
-                    Grid.SetRow(box, rowIndex + 1);
+                    Grid.SetRow(box, rowIndex + 2);
                     Grid.SetColumn(box, i + 1);
                     grid.Children.Add(box);
                     editors.Add(box);
@@ -124,6 +138,7 @@ namespace ConstructionControl
             }
 
             editorsByGroup[group] = editors;
+            columnsCountByGroup[group] = floorColumns.Count;
             return grid;
         }
         private void Cell_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -133,24 +148,42 @@ namespace ConstructionControl
 
             int index = -1;
             List<TextBox> list = null;
+            string groupName = null;
             foreach (var kv in editorsByGroup)
             {
                 index = kv.Value.IndexOf(current);
                 if (index >= 0)
                 {
                     list = kv.Value;
+                    groupName = kv.Key;
                     break;
                 }
             }
 
-            if (list == null)
+            if (list == null || groupName == null || !columnsCountByGroup.TryGetValue(groupName, out int columnsCount) || columnsCount <= 0)
                 return;
 
-            int target = index;
-            if (e.Key == Key.Right || e.Key == Key.Enter || e.Key == Key.Down)
-                target = Math.Min(list.Count - 1, index + 1);
-            else if (e.Key == Key.Left || e.Key == Key.Up)
-                target = Math.Max(0, index - 1);
+            int currentRow = index / columnsCount;
+            int currentCol = index % columnsCount;
+            int rowsCount = (int)Math.Ceiling((double)list.Count / columnsCount);
+
+            int targetRow = currentRow;
+            int targetCol = currentCol;
+
+            if (e.Key == Key.Right)
+                targetCol = Math.Min(columnsCount - 1, currentCol + 1);
+            else if (e.Key == Key.Left)
+                targetCol = Math.Max(0, currentCol - 1);
+            else if (e.Key == Key.Down || e.Key == Key.Enter)
+                targetRow = Math.Min(rowsCount - 1, currentRow + 1);
+            else if (e.Key == Key.Up)
+                targetRow = Math.Max(0, currentRow - 1);
+            else
+                return;
+
+            int target = targetRow * columnsCount + targetCol;
+            if (target >= list.Count)
+                target = list.Count - 1;
 
             if (target != index)
             {
@@ -203,7 +236,7 @@ namespace ConstructionControl
             return 0;
         }
 
-        private void AddCell(Grid grid, int row, int col, string text, bool bold, string bg, bool header)
+        private void AddCell(Grid grid, int row, int col, string text, bool bold, string bg, bool header, HorizontalAlignment alignment = HorizontalAlignment.Left)
         {
             var border = new Border
             {
@@ -216,7 +249,9 @@ namespace ConstructionControl
             {
                 Text = text,
                 FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-                Foreground = header ? new SolidColorBrush(Color.FromRgb(30, 41, 59)) : new SolidColorBrush(Color.FromRgb(51, 65, 85))
+                Foreground = header ? new SolidColorBrush(Color.FromRgb(30, 41, 59)) : new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                HorizontalAlignment = alignment,
+                TextAlignment = alignment == HorizontalAlignment.Center ? TextAlignment.Center : TextAlignment.Left
             };
            
             Grid.SetRow(border, row);
