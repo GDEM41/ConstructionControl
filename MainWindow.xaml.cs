@@ -769,7 +769,8 @@ namespace ConstructionControl
             currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
 
             var materialNames = journal
-                .Where(j => !string.IsNullOrWhiteSpace(j.MaterialName))
+                    .Where(j => !string.IsNullOrWhiteSpace(j.MaterialName)
+                    && string.Equals(j.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
                 .Select(j => new TreeSettingsWindow.MaterialSplitRuleSource
                 {
                     MaterialName = j.MaterialName,
@@ -779,7 +780,8 @@ namespace ConstructionControl
                     SubTypeName = j.SubCategory ?? string.Empty
                 })
                                 .Concat(currentObject.MaterialCatalog
-                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)
+                    && string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
                     .Select(x => new TreeSettingsWindow.MaterialSplitRuleSource
                     {
                         MaterialName = x.MaterialName,
@@ -1315,7 +1317,8 @@ namespace ConstructionControl
 
             currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
 
-            foreach (var item in currentObject.MaterialCatalog.Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)))
+            foreach (var item in currentObject.MaterialCatalog.Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)
+               && string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)))
             {
                 if (!string.Equals(item.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
                     continue;
@@ -2214,7 +2217,55 @@ namespace ConstructionControl
             SaveState();
             MessageBox.Show("Данные сохранены");
         }
+        private void RefreshButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoadState();
+            if (currentObject != null)
+                ArrivalPanel.SetObject(currentObject, journal);
+            RefreshTreePreserveState();
+            RefreshSummaryTable();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            ApplyAllFilters();
+        }
 
+        private void ExportAllData_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new SaveFileDialog
+            {
+                Filter = "ConstructionControl backup (*.ccbak)|*.ccbak",
+                FileName = $"backup_{DateTime.Now:yyyyMMdd_HHmm}.ccbak"
+            };
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var state = new AppState { CurrentObject = currentObject, Journal = journal };
+            File.WriteAllText(dlg.FileName, JsonSerializer.Serialize(state));
+            MessageBox.Show("Резервная копия сохранена.");
+        }
+
+        private void ImportAllData_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Filter = "ConstructionControl backup (*.ccbak)|*.ccbak|JSON (*.json)|*.json"
+            };
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(dlg.FileName));
+            if (state == null)
+                return;
+
+            PushUndo();
+            RestoreState(state);
+            RebuildArchiveFromCurrentData();
+            SaveState();
+            RefreshTreePreserveState();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            ApplyAllFilters();
+        }
         private void LockToggle_Checked(object sender, RoutedEventArgs e)
         {
             LockButton_Checked(sender, e);
@@ -3125,7 +3176,7 @@ namespace ConstructionControl
 
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = bg,
                 MinHeight = 30
@@ -3209,7 +3260,7 @@ namespace ConstructionControl
 
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = bg ?? Brushes.White,
                 MinHeight = 30,
@@ -3325,10 +3376,10 @@ namespace ConstructionControl
             int colQty = 90;
             int colSupplier = Math.Max(220, maxSupplier * 7);
             int colPassport = Math.Max(260, maxPassport * 7);
-           
 
 
-            int maxTotalWidth = 1400;
+
+            int maxTotalWidth = (int)System.Math.Max(900, ActualWidth - 180);
             int total = colDate + colTtn + colName + colStb + colUnit + colQty + colSupplier + colPassport;
 
             if (total > maxTotalWidth)
@@ -3407,7 +3458,7 @@ namespace ConstructionControl
                 // Лёгкая горизонтальная разделительная линия между днями
                 var daySeparator = new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(220, 223, 227)), // тот же тон что в таблице
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)), // тот же тон что в таблице
                     BorderThickness = new Thickness(0, 1, 0, 0),
                     Margin = new Thickness(0, 12, 0, 8) // чуть воздуха
                 };

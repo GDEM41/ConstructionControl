@@ -170,7 +170,7 @@ namespace ConstructionControl
 
         private readonly ObservableCollection<MaterialSplitRuleRow> rows;
         private bool isBulkUpdating;
-        private int visibleCatalogColumns = 3;
+        private int visibleCatalogColumns = 5;
         private int visibleLevelColumns = 6;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
@@ -182,7 +182,8 @@ namespace ConstructionControl
 
             rows = new ObservableCollection<MaterialSplitRuleRow>(
                       materials
-                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)
+                    && string.Equals(NormalizeMetaValue(x.CategoryName), "Основные", System.StringComparison.CurrentCultureIgnoreCase))
                                         .GroupBy(x => new
                                         {
                                             Material = x.MaterialName,
@@ -200,7 +201,7 @@ namespace ConstructionControl
                     .ThenBy(x => x.MaterialName)
                     .Select(x => new MaterialSplitRuleRow
                     {
-                        CategoryName = NormalizeMetaValue(x.CategoryName),
+                        CategoryName = "Основные",
                         TypeName = NormalizeMetaValue(x.TypeName),
                         SubTypeName = NormalizeMetaValue(x.SubTypeName),
                         Level4Name = NormalizeMetaValue(x.Level4Name),
@@ -225,7 +226,7 @@ namespace ConstructionControl
                 row.EditableLevel6Name = row.Level6Name;
                 row.EditableMaterialName = row.MaterialName;
 
-                visibleCatalogColumns = rows.Any(x => !string.IsNullOrWhiteSpace(x.Level6Name)) ? 6 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level5Name)) ? 5 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level4Name)) ? 4 : 3;
+                visibleCatalogColumns = rows.Any(x => !string.IsNullOrWhiteSpace(x.Level6Name)) ? 6 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level5Name)) ? 5 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level4Name)) ? 4 : 5;
                 row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
                     ? rule
                     : string.Empty);
@@ -239,6 +240,17 @@ namespace ConstructionControl
             visibleLevelColumns = rows.Any() ? System.Math.Max(6, rows.Max(GetUsedSegmentCount)) : 6;
             ApplyCatalogColumnVisibility();
             ApplyLevelColumnVisibility();
+            Closing += TreeSettingsWindow_Closing;
+        }
+
+        private bool isAutoSaving;
+        private void TreeSettingsWindow_Closing(object sender, CancelEventArgs e)
+        {
+            if (isAutoSaving)
+                return;
+
+            isAutoSaving = true;
+            Save_Click(this, new RoutedEventArgs());
         }
 
         private static int GetUsedSegmentCount(MaterialSplitRuleRow row)
@@ -270,14 +282,14 @@ namespace ConstructionControl
             var selected = RulesGrid.SelectedItem as MaterialSplitRuleRow;
             var newRow = new MaterialSplitRuleRow
             {
-                EditableCategoryName = selected?.EditableCategoryName ?? string.Empty,
+                EditableCategoryName = "Основные",
                 EditableTypeName = selected?.EditableTypeName ?? string.Empty,
                 EditableSubTypeName = selected?.EditableSubTypeName ?? string.Empty,
                 EditableMaterialName = string.Empty,
                 EditableLevel4Name = selected?.EditableLevel4Name ?? string.Empty,
                 EditableLevel5Name = selected?.EditableLevel5Name ?? string.Empty,
                 EditableLevel6Name = selected?.EditableLevel6Name ?? string.Empty,
-                CategoryName = selected?.EditableCategoryName ?? string.Empty,
+                CategoryName = "Основные",
                 TypeName = selected?.EditableTypeName ?? string.Empty,
                 SubTypeName = selected?.EditableSubTypeName ?? string.Empty,
                 Level4Name = selected?.EditableLevel4Name ?? string.Empty,
@@ -347,7 +359,47 @@ namespace ConstructionControl
             foreach (var row in rows.Where(r => string.Equals(NormalizeMetaValue(r.EditableTypeName), oldType, System.StringComparison.CurrentCultureIgnoreCase)))
                 row.EditableTypeName = newType;
         }
+        private void ApplySubTypeToOthers_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
 
+            var subtype = NormalizeMetaValue(selected.EditableSubTypeName);
+            var candidates = rows
+                .Where(r => !ReferenceEquals(r, selected)
+                    && string.Equals(NormalizeMetaValue(r.EditableTypeName), NormalizeMetaValue(selected.EditableTypeName), System.StringComparison.CurrentCultureIgnoreCase))
+                .OrderBy(r => r.EditableMaterialName)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return;
+
+            var targets = PromptRowsSelection(candidates, "Выберите материалы для применения подтипа");
+            foreach (var row in targets)
+                row.EditableSubTypeName = subtype;
+        }
+
+        private List<MaterialSplitRuleRow> PromptRowsSelection(List<MaterialSplitRuleRow> candidates, string title)
+        {
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock { Text = title, Margin = new Thickness(0, 0, 0, 8) });
+            var checks = new List<(MaterialSplitRuleRow Row, CheckBox Check)>();
+            var list = new StackPanel();
+            foreach (var c in candidates)
+            {
+                var cb = new CheckBox { Content = c.EditableMaterialName, Margin = new Thickness(0, 2, 0, 2) };
+                list.Children.Add(cb);
+                checks.Add((c, cb));
+            }
+            panel.Children.Add(new ScrollViewer { Height = 240, Content = list });
+            var wnd = new Window { Title = "Выбор материалов", Owner = this, Content = panel, SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+            var ok = new Button { Content = "Применить", Width = 90, Margin = new Thickness(0, 8, 0, 0), IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right };
+            ok.Click += (_, __) => wnd.DialogResult = true;
+            panel.Children.Add(ok);
+            if (wnd.ShowDialog() != true)
+                return new List<MaterialSplitRuleRow>();
+            return checks.Where(x => x.Check.IsChecked == true).Select(x => x.Row).ToList();
+        }
         private void AddLevelColumn_Click(object sender, RoutedEventArgs e)
         {
             if (visibleCatalogColumns < 6)
@@ -612,7 +664,8 @@ namespace ConstructionControl
         {
             foreach (var row in rows)
             {
-                row.CategoryName = NormalizeMetaValue(row.EditableCategoryName);
+                row.CategoryName = "Основные";
+                row.EditableCategoryName = "Основные";
                 row.TypeName = NormalizeMetaValue(row.EditableTypeName);
                 row.SubTypeName = NormalizeMetaValue(row.EditableSubTypeName);
                 row.Level4Name = NormalizeMetaValue(row.EditableLevel4Name);
@@ -623,7 +676,8 @@ namespace ConstructionControl
 
 
             var validRows = rows
-                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)
+                    && string.Equals(NormalizeMetaValue(x.CategoryName), "Основные", System.StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
             ResultRules = validRows

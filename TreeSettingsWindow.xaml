@@ -53,8 +53,13 @@
                         Padding="12,6"/>
                 <Button Content="Применить разбиение к другим"
                         Click="ApplySplitToOthers_Click"
+                                                Margin="0,0,8,0"
+                        Padding="12,6"/>
+                <Button Content="Применить подтип к материалам"
+                        Click="ApplySubTypeToOthers_Click"
                         Margin="0,0,14,0"
                         Padding="12,6"/>
+                
                 <TextBlock Text="Уровни разбиения:"
                            VerticalAlignment="Center"
                            Foreground="#334155"
@@ -117,7 +122,7 @@
                 <DataGridTextColumn Header="Тип" Binding="{Binding EditableTypeName, UpdateSourceTrigger=PropertyChanged}" Width="1.1*"/>
                 <DataGridTextColumn Header="Подтип" Binding="{Binding EditableSubTypeName, UpdateSourceTrigger=PropertyChanged}" Width="1.1*"/>
                 <DataGridTextColumn x:Name="CatalogLevel4Column" Header="Подподтип" Binding="{Binding EditableLevel4Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
-                <DataGridTextColumn x:Name="CatalogLevel5Column" Header="Уровень 5" Binding="{Binding EditableLevel5Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
+                <DataGridTextColumn x:Name="CatalogLevel5Column" Header="Подподподтип" Binding="{Binding EditableLevel5Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Visible"/>
                 <DataGridTextColumn x:Name="CatalogLevel6Column" Header="Уровень 6" Binding="{Binding EditableLevel6Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
                 <DataGridTextColumn Header="Материал" Binding="{Binding EditableMaterialName, UpdateSourceTrigger=PropertyChanged}" Width="1.5*"/>
                 <DataGridTextColumn Header="Уровень 1" Binding="{Binding Segment1, UpdateSourceTrigger=PropertyChanged}" Width="*"/>

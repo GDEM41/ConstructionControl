@@ -294,16 +294,23 @@
         IsEnabled="False">
                     ↪
                 </Button>
-
-
-                <Separator Margin="10,0"/>
+                
+                    <Separator Margin="6,0"/>
+                
+                    <Button Style="{StaticResource IconButton}"
+                        ToolTip="Обновить"
+                        Click="RefreshButton_Click">⟳</Button>
+                    <Separator Margin="10,0"/>
 
                 <Button Style="{StaticResource SecondaryButton}"
                         Click="ImportExcel_Click">
                     📥 Импорт Excel
                 </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="ExportAllData_Click">🗄 Экспорт всего</Button>
+                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="ImportAllData_Click">📂 Импорт всего</Button>
 
-            </ToolBar>
+
+                </ToolBar>
         </Border>
 
         <!-- ================= ОСНОВНАЯ ОБЛАСТЬ ================= -->
@@ -634,8 +641,9 @@
                                    Margin="0,50,0,0"
                                    AutoGenerateColumns="False"
                                     CanUserAddRows="False"
-                                    ColumnWidth="Auto"
-                                   CanUserResizeColumns="False"
+                                    ColumnWidth="*"
+                                   MinColumnWidth="90"
+                                   CanUserResizeColumns="True"
                                    Grid.ColumnSpan="2">
 
                                 <DataGrid.Columns>

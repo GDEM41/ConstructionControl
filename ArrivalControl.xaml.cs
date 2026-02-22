@@ -67,7 +67,9 @@ namespace ConstructionControl
             currentObject = obj;
             journal = journalRecords;
 
-            MaterialGroupBox.ItemsSource = currentObject.Archive.Groups;
+            MaterialGroupBox.ItemsSource = currentObject.Archive.Groups
+                .OrderBy(x => x)
+                .ToList();
 
 
             items.Clear();
@@ -101,7 +103,7 @@ namespace ConstructionControl
 
                 if (currentObject.Archive.Materials.TryGetValue(group, out var names))
                 {
-                    foreach (var n in names)
+                    foreach (var n in names.OrderBy(x => x))
                         item.AvailableNames.Add(n);
                 }
                 if (currentObject.MaterialCatalog != null)
@@ -111,6 +113,7 @@ namespace ConstructionControl
                             && string.Equals(x.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase)
                             && !string.IsNullOrWhiteSpace(x.MaterialName))
                         .Select(x => x.MaterialName)
+                        .OrderBy(x => x)
                         .Distinct())
                     {
                         if (!item.AvailableNames.Contains(n))
@@ -128,6 +131,10 @@ namespace ConstructionControl
                     if (!item.AvailableNames.Contains(name))
                         item.AvailableNames.Add(name);
                 }
+                var sorted = item.AvailableNames.OrderBy(x => x).ToList();
+                item.AvailableNames.Clear();
+                foreach (var n in sorted)
+                    item.AvailableNames.Add(n);
             }
 
 
@@ -300,7 +307,6 @@ namespace ConstructionControl
 
             var last = journal
                     .Where(j => string.Equals(j.Category, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals(j.MaterialGroup, MaterialGroupBox.Text?.Trim(), System.StringComparison.CurrentCultureIgnoreCase)
                     && string.Equals(j.MaterialName, item.MaterialName, System.StringComparison.CurrentCultureIgnoreCase))
                 .OrderByDescending(j => j.Date)
                 .FirstOrDefault();
@@ -351,4 +357,3 @@ namespace ConstructionControl
 
     }
 }
-
