@@ -76,6 +76,7 @@ namespace ConstructionControl
         private bool summaryFilterInitialized;
         private bool summaryFilterUpdating;
         private List<string> summaryFilterGroups = new();
+        private string summarySelectedSubType = string.Empty;
         private bool summaryHasOverage;
         private bool summaryMountedMode;
         private TextBlock summaryOverageNote;
@@ -800,6 +801,20 @@ namespace ConstructionControl
 
             currentObject.MaterialTreeSplitRules = w.ResultRules;
             currentObject.MaterialCatalog = w.ResultCatalog ?? new List<MaterialCatalogItem>();
+            var validMainMaterials = currentObject.MaterialCatalog
+    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
+    .Select(x => x.MaterialName)
+    .Where(x => !string.IsNullOrWhiteSpace(x))
+    .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+            journal.RemoveAll(x => x.Category == "Основные" && !validMainMaterials.Contains(x.MaterialName ?? string.Empty));
+            currentObject.Demand = currentObject.Demand
+                .Where(kv =>
+                {
+                    var keyParts = kv.Key.Split("::", StringSplitOptions.None);
+                    return keyParts.Length == 2 && validMainMaterials.Contains(keyParts[1]);
+                })
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
 
             if (w.ResultBindingChanges?.Count > 0)
             {
@@ -1521,7 +1536,7 @@ namespace ConstructionControl
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .ToList();
             }
-            return GetSegmentsFromText(materialName);
+            return new List<string> { materialName };
         }
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
@@ -2566,7 +2581,7 @@ namespace ConstructionControl
                     }
 
                     Brush cellBg = floorOverage ? warningHighlight : (floorFilled ? filledHighlight : null);
-                    AddDiagonalSummaryCell(summaryGrid, summaryRowIndex, col.ColumnIndex, summaryMountedMode ? mounted : plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44, summaryMountedMode);
+                    AddDiagonalSummaryCell(summaryGrid, summaryRowIndex, col.ColumnIndex, summaryMountedMode ? mounted : plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44, true, summaryMountedMode);
                 }
             }
 
@@ -2597,8 +2612,8 @@ namespace ConstructionControl
             summaryFilterUpdating = true;
             summaryFilterGroups = groups.ToList();
 
-            if (SummaryTypeFilterPanel != null)
-                SummaryTypeFilterPanel.Children.Clear();
+            SummaryTypeFilterPanel?.Children.Clear();
+            SummarySubTypeFilterPanel?.Children.Clear();
 
             if (groups.Count == 0)
             {
@@ -2607,9 +2622,7 @@ namespace ConstructionControl
                 return;
             }
 
-            var selectedGroups = currentObject.SummaryVisibleGroups
-                .Where(groups.Contains)
-                .ToList();
+            var selectedGroups = currentObject.SummaryVisibleGroups.Where(groups.Contains).ToList();
 
             if (selectedGroups.Count == 0)
                 selectedGroups = new List<string> { groups[0] };
@@ -2641,11 +2654,57 @@ namespace ConstructionControl
                     SummaryTypeFilterPanel.Children.Add(radio);
                 }
             }
-                       UpdateSummaryFilterSubtitle(groups, selectedGroups);
-                       summaryFilterUpdating = false;
+
+            RenderSummarySubTypeFilter(selectedGroups.FirstOrDefault());
+            UpdateSummaryFilterSubtitle(groups, selectedGroups);
+            summaryFilterUpdating = false;
         }
 
+        private void RenderSummarySubTypeFilter(string selectedGroup)
+        {
+            if (SummarySubTypeFilterPanel == null)
+                return;
 
+            SummarySubTypeFilterPanel.Children.Clear();
+            if (string.IsNullOrWhiteSpace(selectedGroup))
+                return;
+
+            var subTypes = currentObject.MaterialCatalog
+                .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                         && string.Equals(x.TypeName ?? string.Empty, selectedGroup, StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.SubTypeName ?? string.Empty)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .OrderBy(x => x)
+                .ToList();
+
+            if (subTypes.Count == 0)
+            {
+                summarySelectedSubType = string.Empty;
+                return;
+            }
+
+            var radioStyle = FindResource("SummaryFilterRadio") as Style;
+            var values = new List<string> { "Все" };
+            values.AddRange(subTypes);
+            if (!values.Contains(summarySelectedSubType))
+                summarySelectedSubType = "Все";
+
+            foreach (var subType in values)
+            {
+                var radio = new RadioButton
+                {
+                    Content = subType,
+                    GroupName = "SummarySubTypeFilter",
+                    Margin = new Thickness(0, 2, 0, 2),
+                    IsChecked = subType == summarySelectedSubType,
+                    Tag = subType,
+                    Style = radioStyle
+                };
+                radio.Checked += SummarySubTypeFilter_Checked;
+                SummarySubTypeFilterPanel.Children.Add(radio);
+            }
+        }
         private void SummaryFilterOptionChanged(object sender, RoutedEventArgs e)
         {
             if (summaryFilterUpdating || currentObject == null)
@@ -2655,17 +2714,26 @@ namespace ConstructionControl
                 return;
 
             var selectedGroup = radio.Tag?.ToString();
-            var selected = string.IsNullOrWhiteSpace(selectedGroup)
-                ? new List<string>()
-                : new List<string> { selectedGroup };
+            var selected = string.IsNullOrWhiteSpace(selectedGroup) ? new List<string>() : new List<string> { selectedGroup };
 
             currentObject.SummaryVisibleGroups = selected;
+            RenderSummarySubTypeFilter(selectedGroup);
             UpdateSummaryFilterSubtitle(summaryFilterGroups, selected);
 
             
             RefreshSummaryTable();
         }
+        private void SummarySubTypeFilter_Checked(object sender, RoutedEventArgs e)
+        {
+            if (summaryFilterUpdating)
+                return;
 
+            if (sender is RadioButton radio)
+            {
+                summarySelectedSubType = radio.Tag?.ToString() ?? "Все";
+                RefreshSummaryTable();
+            }
+        }
 
         private void UpdateSummaryFilterSubtitle(List<string> groups, List<string> selectedGroups)
         {
@@ -2692,16 +2760,21 @@ namespace ConstructionControl
             if (currentObject == null)
                 return;
 
-            var rows = journal
-                .Where(x => x.Category == "Основные")
-                .GroupBy(x => new { x.MaterialGroup, x.MaterialName })
-                .Select(g => new DemandEditorWindow.DemandMaterialRow
+            var rows = currentObject.MaterialCatalog
+                .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                         && !string.IsNullOrWhiteSpace(x.TypeName)
+                         && !string.IsNullOrWhiteSpace(x.MaterialName))
+                .Select(x => new DemandEditorWindow.DemandMaterialRow
                 {
-                    Group = g.Key.MaterialGroup,
-                    Material = g.Key.MaterialName,
-                    Unit = g.Select(x => x.Unit).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u)) ?? string.Empty
+                    Group = x.TypeName,
+                    Material = x.MaterialName,
+                    Unit = journal.Where(j => j.MaterialName == x.MaterialName)
+                                  .Select(j => j.Unit)
+                                  .FirstOrDefault(u => !string.IsNullOrWhiteSpace(u)) ?? string.Empty
                 })
-                .Where(x => !string.IsNullOrWhiteSpace(x.Group) && !string.IsNullOrWhiteSpace(x.Material))
+                               .DistinctBy(x => $"{x.Group}::{x.Material}")
+                .OrderBy(x => x.Group)
+                .ThenBy(x => x.Material)
                 .ToList();
 
             var window = new DemandEditorWindow(currentObject, rows)
@@ -2722,6 +2795,23 @@ namespace ConstructionControl
 
         private List<string> GetMaterialsForGroup(string group)
         {
+            if (currentObject.MaterialCatalog?.Count > 0)
+            {
+                var catalogMaterials = currentObject.MaterialCatalog
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.TypeName ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)
+                             && (string.IsNullOrWhiteSpace(summarySelectedSubType)
+                                 || summarySelectedSubType == "Все"
+                                 || string.Equals(x.SubTypeName ?? string.Empty, summarySelectedSubType, StringComparison.CurrentCultureIgnoreCase)))
+                    .Select(x => x.MaterialName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .OrderBy(n => n)
+                    .ToList();
+
+                if (catalogMaterials.Count > 0)
+                    return catalogMaterials;
+            }
             if (currentObject.MaterialNamesByGroup.TryGetValue(group, out var list) && list.Count > 0)
                 return list;
 
@@ -2924,6 +3014,7 @@ namespace ConstructionControl
             public int Block { get; set; }
             public int Floor { get; set; }
             public string Unit { get; set; }
+            public bool IsMountedMode { get; set; }
         }
 
         private void Undo_Click(object sender, RoutedEventArgs e)
@@ -2984,7 +3075,7 @@ namespace ConstructionControl
 
             g.Children.Add(border);
         }
-        void AddDiagonalSummaryCell(Grid g, int r, int c, double topValue, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth, bool editableTop)
+        void AddDiagonalSummaryCell(Grid g, int r, int c, double topValue, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth, bool editableTop, bool isMountedMode)
         {
             var container = new Grid
             {
@@ -3023,12 +3114,13 @@ namespace ConstructionControl
                     DemandKey = demandKey,
                     Block = block,
                     Floor = floor,
-                    Unit = unit
+                    Unit = unit,
+                    IsMountedMode = isMountedMode
                 }
             };
 
             if (editableTop)
-                topBox.LostFocus += MountedCell_LostFocus;
+                topBox.LostFocus += SummaryCell_LostFocus;
 
             var arrivedText = new TextBlock
             {
@@ -3059,7 +3151,7 @@ namespace ConstructionControl
             g.Children.Add(border);
         }
 
-        private void MountedCell_LostFocus(object sender, RoutedEventArgs e)
+        private void SummaryCell_LostFocus(object sender, RoutedEventArgs e)
         {
             if (sender is not TextBox tb || tb.Tag is not DemandCellTag tag)
                 return;
@@ -3073,11 +3165,18 @@ namespace ConstructionControl
 
             var demand = GetOrCreateDemand(tag.DemandKey, tag.Unit);
 
-            demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
-            if (!demand.MountedFloors.ContainsKey(tag.Block))
-                demand.MountedFloors[tag.Block] = new Dictionary<int, double>();
+            var target = tag.IsMountedMode ? demand.MountedFloors : demand.Floors;
+            target ??= new Dictionary<int, Dictionary<int, double>>();
 
-            demand.MountedFloors[tag.Block][tag.Floor] = value;
+            if (tag.IsMountedMode)
+                demand.MountedFloors = target;
+            else
+                demand.Floors = target;
+
+            if (!target.ContainsKey(tag.Block))
+                target[tag.Block] = new Dictionary<int, double>();
+
+            target[tag.Block][tag.Floor] = value;
 
             RefreshSummaryTable();
         }

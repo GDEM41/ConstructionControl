@@ -11,7 +11,17 @@
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
-
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="110"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
         <Style x:Key="ChipToggle" TargetType="ToggleButton">
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Margin" Value="4,4,4,4"/>
@@ -127,20 +137,42 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ModernSummaryActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+            <Setter Property="Background" Value="#1D4ED8"/>
+            <Setter Property="BorderBrush" Value="#1E40AF"/>
+        </Style>
+
+        <Style x:Key="ModernSummaryModeToggle" TargetType="CheckBox">
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Background" Value="#EEF2FF"/>
+            <Setter Property="BorderBrush" Value="#C7D2FE"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Bd" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1D4ED8"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
 
         <!-- Кнопка основная -->
-        <Style x:Key="PrimaryButton" TargetType="Button">
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="MinWidth" Value="110"/>
-            <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#2563EB"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-        </Style>
+
 
         <!-- Кнопка вторичная -->
         <Style x:Key="SecondaryButton" TargetType="Button"
@@ -330,7 +362,7 @@
                             <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="0,0,0,8">
-                                    <WrapPanel>
+                                    <WrapPanel VerticalAlignment="Center">
                                         <Grid Width="260" Margin="0,0,10,6">
                                             <ToggleButton x:Name="SummaryFilterButton"
                                                       Style="{StaticResource SummaryFilterToggle}"
@@ -351,12 +383,19 @@
                                                         <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                                                             <StackPanel x:Name="SummaryTypeFilterPanel"/>
                                                         </ScrollViewer>
+                                                        <Separator Margin="0,8,0,8"/>
+                                                        <TextBlock Text="Подтип" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,6"/>
+                                                        <StackPanel x:Name="SummarySubTypeFilterPanel"/>
                                                     </StackPanel>
                                                 </Border>
                                             </Popup>
                                         </Grid>
-                                        <Button Content="Потребность по этажам" Click="OpenDemandEditor_Click" Padding="12,10" Margin="0,0,10,6"/>
-                                        <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" VerticalAlignment="Center" Margin="0,0,10,6" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
+                                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Потребность по этажам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
+                                                <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" Style="{StaticResource ModernSummaryModeToggle}" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
+                                            </StackPanel>
+                                        </Border>
                                     </WrapPanel>
                                 </StackPanel>
                             <ListBox x:Name="SummaryPanel"
