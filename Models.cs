@@ -183,11 +183,8 @@ namespace ConstructionControl
             if (double.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out _)
                 || double.TryParse(input, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
             {
-                if (!entry.ArrivalMarked || !entry.DepartureMarked)
-                {
-                    errorMessage = "Сначала отметьте приход и уход сотрудника (П, затем У), после этого можно ставить часы.";
-                    return false;
-                }
+                entry.ArrivalMarked = true;
+                entry.DepartureMarked = true;
 
                 entry.Hours = input;
                 month.DayValues[day] = input;

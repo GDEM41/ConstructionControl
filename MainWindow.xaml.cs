@@ -218,6 +218,18 @@ namespace ConstructionControl
                 source.SetDayValue(monthKey, day, value);
                 RecalculateTotal();
             }
+            public string this[int day]
+            {
+                get => GetDayValue(day);
+                set
+                {
+                    SetDayValue(day, value);
+
+                    // уведомляем WPF
+                    OnPropertyChanged($"Item[{day}]");
+                    OnPropertyChanged(nameof(MonthTotalHours));
+                }
+            }
 
             public void RecalculateTotal()
             {
@@ -1045,11 +1057,10 @@ namespace ConstructionControl
                 var column = new DataGridTextColumn
                 {
                     Header = day.ToString(),
-                    Binding = new Binding(".")
+                    Binding = new Binding($"[{day}]")
                     {
-                        Mode = BindingMode.OneWay,
-                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
-                        Converter = new TimesheetDayBindingConverter(day)
+                        Mode = BindingMode.TwoWay,
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
                     },
                     Width = 38
                 };
