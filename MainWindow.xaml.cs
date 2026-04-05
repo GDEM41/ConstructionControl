@@ -15,6 +15,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Documents;
 using WpfPath = System.Windows.Shapes.Path;
 using System.Text.RegularExpressions;
 
@@ -86,6 +87,89 @@ namespace ConstructionControl
         private string otSearchText = string.Empty;
         private bool isTreePinned;
         private Point treeDragStart;
+        private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
+        private readonly ObservableCollection<string> timesheetBrigades = new();
+        private DateTime timesheetMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+        private string selectedTimesheetBrigade = "Все бригады";
+
+        private sealed class TimesheetRowViewModel : INotifyPropertyChanged
+        {
+            private readonly TimesheetPersonEntry source;
+            private readonly string monthKey;
+            private int number;
+            private bool isCrewStart;
+            private bool isCrewEnd;
+            private double monthTotalHours;
+
+            public TimesheetRowViewModel(TimesheetPersonEntry source, string monthKey)
+            {
+                this.source = source;
+                this.monthKey = monthKey;
+                FullName = source.FullName;
+                Specialty = source.Specialty;
+                Rank = source.Rank;
+                BrigadeName = source.BrigadeName;
+                IsBrigadier = source.IsBrigadier;
+                PersonId = source.PersonId;
+            }
+
+            public Guid PersonId { get; }
+            public string FullName { get; }
+            public string Specialty { get; }
+            public string Rank { get; }
+            public string BrigadeName { get; }
+            public bool IsBrigadier { get; }
+
+            public int Number
+            {
+                get => number;
+                set { number = value; OnPropertyChanged(nameof(Number)); }
+            }
+
+            public bool IsCrewStart
+            {
+                get => isCrewStart;
+                set { isCrewStart = value; OnPropertyChanged(nameof(IsCrewStart)); }
+            }
+
+            public bool IsCrewEnd
+            {
+                get => isCrewEnd;
+                set { isCrewEnd = value; OnPropertyChanged(nameof(IsCrewEnd)); }
+            }
+
+            public double MonthTotalHours
+            {
+                get => monthTotalHours;
+                set { monthTotalHours = value; OnPropertyChanged(nameof(MonthTotalHours)); }
+            }
+
+            public string GetDayValue(int day) => source.GetDayValue(monthKey, day);
+
+            public void SetDayValue(int day, string value)
+            {
+                source.SetDayValue(monthKey, day, value);
+                RecalculateTotal();
+            }
+
+            public void RecalculateTotal()
+            {
+                double total = 0;
+                for (var day = 1; day <= 31; day++)
+                {
+                    var raw = source.GetDayValue(monthKey, day);
+                    if (double.TryParse(raw, NumberStyles.Any, CultureInfo.CurrentCulture, out var hours)
+                        || double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out hours))
+                    {
+                        total += hours;
+                    }
+                }
+                MonthTotalHours = total;
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+            private void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
 
         private sealed class TreeNodeMeta
         {
@@ -113,6 +197,7 @@ namespace ConstructionControl
 
             LoadState();
             InitializeOtJournal();
+            InitializeTimesheet();
             ApplyAllFilters();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
@@ -158,6 +243,8 @@ namespace ConstructionControl
 
             UpdateOtReminders();
             OtJournalGrid.Items.Refresh();
+            if (item.Header?.ToString() == "Табель")
+                RebuildTimesheetView();
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -205,6 +292,7 @@ namespace ConstructionControl
             NormalizeOtRows();
             SortOtJournal();
             UpdateOtReminders();
+            RebuildTimesheetView();
         }
         private bool OtJournalFilter(object item)
         {
@@ -545,6 +633,7 @@ namespace ConstructionControl
             RefreshProfessions();
             UpdateOtReminders();
             SaveState();
+            RebuildTimesheetView();
         }
         private void MarkRepeatDone(OtJournalEntry row)
         {
@@ -632,6 +721,7 @@ namespace ConstructionControl
             UpdateOtReminders();
             
             SaveState();
+            RebuildTimesheetView();
         }
         private void OtSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -651,6 +741,7 @@ namespace ConstructionControl
                 SortOtJournal();
                 UpdateOtReminders();
                 SaveState();
+                RebuildTimesheetView();
             }));
         }
 
@@ -665,6 +756,7 @@ namespace ConstructionControl
                 SortOtJournal();
                 UpdateOtReminders();
                 SaveState();
+                RebuildTimesheetView();
             }));
         }
 
@@ -709,6 +801,417 @@ namespace ConstructionControl
                     }
                 }
             }
+        }
+
+        private void InitializeTimesheet()
+        {
+            EnsureTimesheetStorage();
+            SyncTimesheetPeopleWithOtJournal();
+            RebuildTimesheetView();
+        }
+
+        private void EnsureTimesheetStorage()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.TimesheetPeople ??= new List<TimesheetPersonEntry>();
+        }
+
+        private void SyncTimesheetPeopleWithOtJournal()
+        {
+            if (currentObject?.OtJournal == null)
+                return;
+
+            EnsureTimesheetStorage();
+
+            var existingIds = currentObject.TimesheetPeople.Select(x => x.PersonId).ToHashSet();
+            var otPeople = currentObject.OtJournal
+                .Where(x => !x.IsDismissed && !string.IsNullOrWhiteSpace(x.FullName))
+                .GroupBy(x => x.PersonId == Guid.Empty ? Guid.NewGuid() : x.PersonId)
+                .Select(g => g.OrderByDescending(x => x.InstructionDate).First())
+                .ToList();
+
+            foreach (var person in otPeople)
+            {
+                if (person.PersonId == Guid.Empty)
+                    person.PersonId = Guid.NewGuid();
+
+                if (existingIds.Contains(person.PersonId))
+                    continue;
+
+                currentObject.TimesheetPeople.Add(new TimesheetPersonEntry
+                {
+                    PersonId = person.PersonId,
+                    FullName = person.FullName?.Trim(),
+                    Specialty = person.Specialty,
+                    Rank = person.Rank,
+                    IsBrigadier = person.IsBrigadier,
+                    BrigadeName = person.IsBrigadier ? person.FullName?.Trim() : person.BrigadierName
+                });
+            }
+        }
+
+        private void RebuildTimesheetView()
+        {
+            if (currentObject == null)
+            {
+                TimesheetGrid.ItemsSource = null;
+                return;
+            }
+
+            EnsureTimesheetStorage();
+            SyncTimesheetPeopleWithOtJournal();
+            BuildTimesheetColumns();
+            RefreshTimesheetBrigades();
+            RefreshTimesheetRows();
+            TimesheetMonthText.Text = timesheetMonth.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+        }
+
+        private void RefreshTimesheetBrigades()
+        {
+            timesheetBrigades.Clear();
+            timesheetBrigades.Add("Все бригады");
+
+            if (currentObject?.TimesheetPeople == null)
+                return;
+
+            foreach (var brigade in currentObject.TimesheetPeople
+                         .Select(x => NormalizeBrigadeName(x))
+                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                timesheetBrigades.Add(brigade);
+            }
+
+            TimesheetBrigadeFilter.ItemsSource = timesheetBrigades;
+            if (!timesheetBrigades.Contains(selectedTimesheetBrigade))
+                selectedTimesheetBrigade = "Все бригады";
+            TimesheetBrigadeFilter.SelectedItem = selectedTimesheetBrigade;
+        }
+
+        private string NormalizeBrigadeName(TimesheetPersonEntry row)
+        {
+            if (row.IsBrigadier)
+                return string.IsNullOrWhiteSpace(row.FullName) ? "Без бригады" : row.FullName.Trim();
+
+            return string.IsNullOrWhiteSpace(row.BrigadeName) ? "Без бригады" : row.BrigadeName.Trim();
+        }
+
+        private void RefreshTimesheetRows()
+        {
+            timesheetRows.Clear();
+            if (currentObject?.TimesheetPeople == null)
+                return;
+
+            var monthKey = timesheetMonth.ToString("yyyy-MM");
+            var filtered = currentObject.TimesheetPeople
+                .Where(x => selectedTimesheetBrigade == "Все бригады"
+                            || string.Equals(NormalizeBrigadeName(x), selectedTimesheetBrigade, StringComparison.CurrentCultureIgnoreCase))
+                .OrderBy(x => NormalizeBrigadeName(x), StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.IsBrigadier ? 0 : 1)
+                .ThenBy(x => x.FullName ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var grouped = filtered.GroupBy(x => NormalizeBrigadeName(x)).ToList();
+            var number = 1;
+            foreach (var group in grouped)
+            {
+                var rows = group.ToList();
+                for (var i = 0; i < rows.Count; i++)
+                {
+                    var vm = new TimesheetRowViewModel(rows[i], monthKey)
+                    {
+                        Number = number++,
+                        IsCrewStart = i == 0,
+                        IsCrewEnd = i == rows.Count - 1
+                    };
+                    vm.RecalculateTotal();
+                    timesheetRows.Add(vm);
+                }
+            }
+
+            TimesheetGrid.ItemsSource = timesheetRows;
+        }
+
+        private void BuildTimesheetColumns()
+        {
+            if (TimesheetGrid == null)
+                return;
+
+            TimesheetGrid.Columns.Clear();
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "№", Binding = new Binding(nameof(TimesheetRowViewModel.Number)), IsReadOnly = true, Width = 45 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "ФИО", Binding = new Binding(nameof(TimesheetRowViewModel.FullName)), IsReadOnly = true, Width = 220 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Специальность", Binding = new Binding(nameof(TimesheetRowViewModel.Specialty)), IsReadOnly = true, Width = 170 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Разряд", Binding = new Binding(nameof(TimesheetRowViewModel.Rank)), IsReadOnly = true, Width = 70 });
+
+            var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
+            for (var day = 1; day <= daysInMonth; day++)
+            {
+                var date = new DateTime(timesheetMonth.Year, timesheetMonth.Month, day);
+                var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+                var column = new DataGridTextColumn
+                {
+                    Header = day.ToString(),
+                    Binding = new Binding(".")
+                    {
+                        Mode = BindingMode.OneWay,
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
+                        Converter = new TimesheetDayBindingConverter(day)
+                    },
+                    Width = 38
+                };
+                if (isWeekend)
+                {
+                    column.CellStyle = new Style(typeof(DataGridCell))
+                    {
+                        Setters = { new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(236, 236, 236))) }
+                    };
+                }
+                TimesheetGrid.Columns.Add(column);
+            }
+
+            TimesheetGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Итого часов",
+                Binding = new Binding(nameof(TimesheetRowViewModel.MonthTotalHours)) { StringFormat = "0.##" },
+                IsReadOnly = true,
+                Width = 95
+            });
+        }
+
+        private sealed class TimesheetDayBindingConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayBindingConverter(int day) => this.day = day;
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row ? row.GetDayValue(day) : string.Empty;
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => value?.ToString() ?? string.Empty;
+        }
+
+        private void TimesheetGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
+        {
+            if (e.Row.Item is not TimesheetRowViewModel)
+                return;
+
+            var day = ParseDayFromHeader(e.Column?.Header);
+            if (day <= 0)
+                e.Cancel = true;
+        }
+
+        private void TimesheetGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.Row.Item is not TimesheetRowViewModel row || e.EditingElement is not TextBox tb)
+                return;
+
+            var day = ParseDayFromHeader(e.Column?.Header);
+            if (day <= 0)
+                return;
+
+            var value = tb.Text?.Trim() ?? string.Empty;
+            row.SetDayValue(day, value);
+            SaveState();
+
+            if (day == DateTime.Today.Day
+                && timesheetMonth.Year == DateTime.Today.Year
+                && timesheetMonth.Month == DateTime.Today.Month
+                && !string.IsNullOrWhiteSpace(value)
+                && currentObject?.OtJournal != null)
+            {
+                var due = currentObject.OtJournal.Any(x =>
+                    x.PersonId == row.PersonId &&
+                    x.IsPendingRepeat &&
+                    !x.IsDismissed);
+
+                if (due)
+                    MessageBox.Show($"⚠ {row.FullName}: требуется срочный повторный инструктаж по ОТ.", "Напоминание по ОТ", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private static int ParseDayFromHeader(object header)
+            => int.TryParse(header?.ToString(), out var day) ? day : -1;
+
+        private void TimesheetGrid_LoadingRow(object sender, DataGridRowEventArgs e)
+        {
+            if (e.Row.Item is not TimesheetRowViewModel row)
+                return;
+
+            e.Row.FontWeight = row.IsBrigadier ? FontWeights.Bold : FontWeights.Normal;
+            e.Row.BorderBrush = Brushes.Black;
+            e.Row.BorderThickness = new Thickness(0, row.IsCrewStart ? 2 : 0, 0, row.IsCrewEnd ? 2 : 0);
+        }
+
+        private void TimesheetGrid_AutoGeneratingColumn(object sender, DataGridAutoGeneratingColumnEventArgs e)
+        {
+            e.Cancel = true;
+        }
+
+        private void TimesheetPrevMonth_Click(object sender, RoutedEventArgs e)
+        {
+            timesheetMonth = timesheetMonth.AddMonths(-1);
+            RebuildTimesheetView();
+        }
+
+        private void TimesheetNextMonth_Click(object sender, RoutedEventArgs e)
+        {
+            timesheetMonth = timesheetMonth.AddMonths(1);
+            RebuildTimesheetView();
+        }
+
+        private void TimesheetCurrentMonth_Click(object sender, RoutedEventArgs e)
+        {
+            timesheetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            RebuildTimesheetView();
+        }
+
+        private void TimesheetBrigadeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            selectedTimesheetBrigade = TimesheetBrigadeFilter.SelectedItem?.ToString() ?? "Все бригады";
+            RefreshTimesheetRows();
+        }
+
+        private void AddTimesheetPerson_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            var fullName = TimesheetFullNameTextBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                MessageBox.Show("Введите ФИО.");
+                return;
+            }
+
+            EnsureTimesheetStorage();
+            var person = new TimesheetPersonEntry
+            {
+                PersonId = Guid.NewGuid(),
+                FullName = fullName,
+                Specialty = TimesheetSpecialtyTextBox.Text?.Trim(),
+                Rank = TimesheetRankTextBox.Text?.Trim(),
+                IsBrigadier = TimesheetIsBrigadierCheckBox.IsChecked == true,
+                BrigadeName = TimesheetBrigadeTextBox.Text?.Trim()
+            };
+
+            if (person.IsBrigadier && string.IsNullOrWhiteSpace(person.BrigadeName))
+                person.BrigadeName = person.FullName;
+
+            currentObject.TimesheetPeople.Add(person);
+            EnsurePersonInOtJournal(person);
+
+            TimesheetFullNameTextBox.Text = string.Empty;
+            TimesheetSpecialtyTextBox.Text = string.Empty;
+            TimesheetRankTextBox.Text = string.Empty;
+            TimesheetBrigadeTextBox.Text = string.Empty;
+            TimesheetIsBrigadierCheckBox.IsChecked = false;
+
+            RefreshBrigadierNames();
+            RebuildTimesheetView();
+            SortOtJournal();
+            SaveState();
+        }
+
+        private void EnsurePersonInOtJournal(TimesheetPersonEntry person)
+        {
+            if (currentObject?.OtJournal == null)
+                return;
+
+            var exists = currentObject.OtJournal.Any(x =>
+                (person.PersonId != Guid.Empty && x.PersonId == person.PersonId)
+                || (!string.IsNullOrWhiteSpace(x.FullName) && string.Equals(x.FullName.Trim(), person.FullName?.Trim(), StringComparison.CurrentCultureIgnoreCase)));
+
+            if (exists)
+                return;
+
+            var ot = new OtJournalEntry
+            {
+                PersonId = person.PersonId,
+                InstructionDate = DateTime.Today,
+                FullName = person.FullName,
+                Specialty = person.Specialty,
+                Rank = person.Rank,
+                Profession = person.Specialty,
+                InstructionType = "Первичный на рабочем месте",
+                RepeatPeriodMonths = 3,
+                IsBrigadier = person.IsBrigadier,
+                BrigadierName = person.IsBrigadier ? null : person.BrigadeName
+            };
+            ot.PropertyChanged += OtJournalEntry_PropertyChanged;
+            currentObject.OtJournal.Add(ot);
+        }
+
+        private void TimesheetPrintFilled_Click(object sender, RoutedEventArgs e) => PrintTimesheet(blank: false);
+        private void TimesheetPrintBlank_Click(object sender, RoutedEventArgs e) => PrintTimesheet(blank: true);
+
+        private void PrintTimesheet(bool blank)
+        {
+            if (timesheetRows.Count == 0)
+            {
+                MessageBox.Show("Нет строк для печати.");
+                return;
+            }
+
+            var doc = BuildTimesheetDocument(blank);
+            var pd = new PrintDialog();
+            if (pd.ShowDialog() != true)
+                return;
+
+            doc.PageHeight = pd.PrintableAreaHeight;
+            doc.PageWidth = pd.PrintableAreaWidth;
+            doc.ColumnWidth = pd.PrintableAreaWidth;
+            pd.PrintDocument(((IDocumentPaginatorSource)doc).DocumentPaginator, "Табель");
+        }
+
+        private FlowDocument BuildTimesheetDocument(bool blank)
+        {
+            var doc = new FlowDocument { FontFamily = new FontFamily("Segoe UI"), FontSize = 10 };
+            doc.Blocks.Add(new Paragraph(new Run($"Табель за {timesheetMonth:MMMM yyyy}")) { FontSize = 14, FontWeight = FontWeights.Bold });
+            doc.Blocks.Add(new Paragraph(new Run($"Фильтр: {selectedTimesheetBrigade}")));
+
+            var table = new Table();
+            doc.Blocks.Add(table);
+            table.Columns.Add(new TableColumn { Width = new GridLength(25) });
+            table.Columns.Add(new TableColumn { Width = new GridLength(130) });
+            table.Columns.Add(new TableColumn { Width = new GridLength(90) });
+            table.Columns.Add(new TableColumn { Width = new GridLength(40) });
+            var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
+            for (var i = 1; i <= daysInMonth; i++)
+                table.Columns.Add(new TableColumn { Width = new GridLength(22) });
+            table.Columns.Add(new TableColumn { Width = new GridLength(55) });
+
+            var group = new TableRowGroup();
+            table.RowGroups.Add(group);
+            var header = new TableRow { FontWeight = FontWeights.Bold, Background = Brushes.LightGray };
+            group.Rows.Add(header);
+            header.Cells.Add(new TableCell(new Paragraph(new Run("№"))));
+            header.Cells.Add(new TableCell(new Paragraph(new Run("ФИО"))));
+            header.Cells.Add(new TableCell(new Paragraph(new Run("Спец."))));
+            header.Cells.Add(new TableCell(new Paragraph(new Run("Раз."))));
+            for (var i = 1; i <= daysInMonth; i++)
+                header.Cells.Add(new TableCell(new Paragraph(new Run(i.ToString()))));
+            header.Cells.Add(new TableCell(new Paragraph(new Run("Итого"))));
+
+            foreach (var row in timesheetRows)
+            {
+                var tr = new TableRow();
+                if (row.IsBrigadier)
+                    tr.FontWeight = FontWeights.Bold;
+                group.Rows.Add(tr);
+
+                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Number.ToString()))));
+                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.FullName))));
+                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Specialty))));
+                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Rank))));
+                for (var i = 1; i <= daysInMonth; i++)
+                    tr.Cells.Add(new TableCell(new Paragraph(new Run(blank ? string.Empty : row.GetDayValue(i)))));
+                tr.Cells.Add(new TableCell(new Paragraph(new Run(blank ? string.Empty : row.MonthTotalHours.ToString("0.##")))));
+            }
+
+            return doc;
         }
 
 

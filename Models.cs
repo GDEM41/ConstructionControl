@@ -45,6 +45,110 @@ namespace ConstructionControl
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
         public List<OtJournalEntry> OtJournal { get; set; } = new();
+        public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
+    }
+
+    public class TimesheetPersonEntry : INotifyPropertyChanged
+    {
+        private Guid personId = Guid.NewGuid();
+        private string fullName;
+        private string specialty;
+        private string rank;
+        private string brigadeName;
+        private bool isBrigadier;
+
+        public Guid PersonId
+        {
+            get => personId;
+            set => SetField(ref personId, value);
+        }
+
+        public string FullName
+        {
+            get => fullName;
+            set => SetField(ref fullName, value);
+        }
+
+        public string Specialty
+        {
+            get => specialty;
+            set => SetField(ref specialty, value);
+        }
+
+        public string Rank
+        {
+            get => rank;
+            set => SetField(ref rank, value);
+        }
+
+        public string BrigadeName
+        {
+            get => brigadeName;
+            set => SetField(ref brigadeName, value);
+        }
+
+        public bool IsBrigadier
+        {
+            get => isBrigadier;
+            set => SetField(ref isBrigadier, value);
+        }
+
+        public List<TimesheetMonthEntry> Months { get; set; } = new();
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public string GetDayValue(string monthKey, int day)
+        {
+            var month = Months.FirstOrDefault(x => x.MonthKey == monthKey);
+            if (month == null || day < 1 || day > 31)
+                return string.Empty;
+
+            if (month.DayValues.TryGetValue(day, out var value))
+                return value ?? string.Empty;
+
+            return string.Empty;
+        }
+
+        public void SetDayValue(string monthKey, int day, string value)
+        {
+            if (string.IsNullOrWhiteSpace(monthKey) || day < 1 || day > 31)
+                return;
+
+            var month = Months.FirstOrDefault(x => x.MonthKey == monthKey);
+            if (month == null)
+            {
+                month = new TimesheetMonthEntry { MonthKey = monthKey };
+                Months.Add(month);
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+                month.DayValues.Remove(day);
+            else
+                month.DayValues[day] = value.Trim();
+
+            OnPropertyChanged(nameof(Months));
+        }
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public class TimesheetMonthEntry
+    {
+        public string MonthKey { get; set; }
+        public Dictionary<int, string> DayValues { get; set; } = new();
     }
 
     public class OtJournalEntry : INotifyPropertyChanged
@@ -346,4 +450,3 @@ namespace ConstructionControl
 
 
 }
-
