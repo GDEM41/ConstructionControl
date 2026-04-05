@@ -1002,6 +1002,10 @@
                                           SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
                                     <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
                                     <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click">🖨 Печать пустого</Button>
+                                                                        <TextBlock Margin="12,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Foreground="#4B5563"
+                                               Text="День: сначала П (приход), потом У (уход), затем часы"/>
                                 </WrapPanel>
 
                                 <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">

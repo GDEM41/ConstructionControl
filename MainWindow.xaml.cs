@@ -1107,7 +1107,15 @@ namespace ConstructionControl
                 return;
 
             var value = tb.Text?.Trim() ?? string.Empty;
-            row.SetDayValue(day, value);
+            if (!row.Source.TryApplyDayValue(timesheetMonth.ToString("yyyy-MM"), day, value, out var validationError))
+            {
+                MessageBox.Show(validationError, "Проверка табеля", MessageBoxButton.OK, MessageBoxImage.Warning);
+                e.Cancel = true;
+                Dispatcher.BeginInvoke(new Action(RefreshTimesheetRows));
+                return;
+            }
+
+            row.RecalculateTotal();
             SaveState();
 
             if (day == DateTime.Today.Day
