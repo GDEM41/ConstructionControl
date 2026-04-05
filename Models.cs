@@ -6,6 +6,7 @@ using System.Linq;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace ConstructionControl
 {
@@ -46,8 +47,10 @@ namespace ConstructionControl
         public Dictionary<string, string> MaterialTreeSplitRules { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
+        public Dictionary<string, List<string>> SummaryMarksByGroup { get; set; } = new();
         public List<OtJournalEntry> OtJournal { get; set; } = new();
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
+        public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
     }
 
     public class TimesheetPersonEntry : INotifyPropertyChanged
@@ -452,6 +455,12 @@ namespace ConstructionControl
     {
         public string Unit { get; set; }
 
+        public Dictionary<int, Dictionary<string, double>> Levels { get; set; }
+            = new Dictionary<int, Dictionary<string, double>>();
+
+        public Dictionary<int, Dictionary<string, double>> MountedLevels { get; set; }
+            = new Dictionary<int, Dictionary<string, double>>();
+
         public Dictionary<int, Dictionary<int, double>> Floors { get; set; }
             = new Dictionary<int, Dictionary<int, double>>();
 
@@ -464,6 +473,7 @@ namespace ConstructionControl
         public string TypeName { get; set; }
         public string SubTypeName { get; set; }
         public List<string> ExtraLevels { get; set; } = new();
+        public List<string> LevelMarks { get; set; } = new();
         public string MaterialName { get; set; }
     }
 
@@ -550,6 +560,203 @@ namespace ConstructionControl
         public string Name { get; set; }
         public double Quantity { get; set; }
         public string Passport { get; set; }
+    }
+
+    public class ProductionJournalEntry : INotifyPropertyChanged
+    {
+        private DateTime date = DateTime.Today;
+        private string actionName;
+        private string workName;
+        private string elementsText;
+        private string blocksText;
+        private string marksText;
+        private string brigadeName;
+        private string weather;
+        private string deviations;
+        private bool requiresHiddenWorkAct;
+        private string remainingInfo;
+
+        public DateTime Date
+        {
+            get => date;
+            set => SetField(ref date, value);
+        }
+
+        public string ActionName
+        {
+            get => actionName;
+            set => SetField(ref actionName, value);
+        }
+
+        public string WorkName
+        {
+            get => workName;
+            set => SetField(ref workName, value);
+        }
+
+        public string ElementsText
+        {
+            get => elementsText;
+            set => SetField(ref elementsText, value);
+        }
+
+        public string BlocksText
+        {
+            get => blocksText;
+            set => SetField(ref blocksText, value);
+        }
+
+        public string MarksText
+        {
+            get => marksText;
+            set => SetField(ref marksText, value);
+        }
+
+        public string BrigadeName
+        {
+            get => brigadeName;
+            set => SetField(ref brigadeName, value);
+        }
+
+        public string Weather
+        {
+            get => weather;
+            set => SetField(ref weather, value);
+        }
+
+        public string Deviations
+        {
+            get => deviations;
+            set => SetField(ref deviations, value);
+        }
+
+        public bool RequiresHiddenWorkAct
+        {
+            get => requiresHiddenWorkAct;
+            set => SetField(ref requiresHiddenWorkAct, value);
+        }
+
+        public string RemainingInfo
+        {
+            get => remainingInfo;
+            set => SetField(ref remainingInfo, value);
+        }
+
+        public string WorkKey => $"{ActionName?.Trim()}::{WorkName?.Trim()}";
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            return true;
+        }
+    }
+
+    public static class LevelMarkHelper
+    {
+        public static string GetLegacyMarkLabel(int floor)
+            => floor == 0 ? "Подвал" : floor.ToString();
+
+        public static List<string> GetDefaultMarks(ProjectObject projectObject)
+        {
+            var result = new List<string>();
+            if (projectObject == null)
+                return result;
+
+            if (projectObject.HasBasement)
+                result.Add(GetLegacyMarkLabel(0));
+
+            var maxFloors = projectObject.SameFloorsInBlocks
+                ? projectObject.FloorsPerBlock
+                : projectObject.FloorsByBlock.Values.DefaultIfEmpty(0).Max();
+
+            for (var floor = 1; floor <= maxFloors; floor++)
+                result.Add(GetLegacyMarkLabel(floor));
+
+            return result;
+        }
+
+        public static List<string> GetMarksForGroup(ProjectObject projectObject, string group)
+        {
+            var marks = new List<string>();
+            if (projectObject == null)
+                return marks;
+
+            if (!string.IsNullOrWhiteSpace(group)
+                && projectObject.SummaryMarksByGroup != null
+                && projectObject.SummaryMarksByGroup.TryGetValue(group, out var configured)
+                && configured != null)
+            {
+                marks.AddRange(configured.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()));
+            }
+
+            if (marks.Count == 0 && projectObject.MaterialCatalog != null)
+            {
+                marks.AddRange(projectObject.MaterialCatalog
+                    .Where(x => string.Equals(x.TypeName ?? string.Empty, group ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+                    .SelectMany(x => x.LevelMarks ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim()));
+            }
+
+            if (marks.Count == 0 && projectObject.Demand != null)
+            {
+                foreach (var pair in projectObject.Demand)
+                {
+                    var parts = pair.Key.Split(new[] { "::" }, StringSplitOptions.None);
+                    if (parts.Length != 2 || !string.Equals(parts[0], group ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+                        continue;
+
+                    if (pair.Value?.Levels == null)
+                        continue;
+
+                    foreach (var block in pair.Value.Levels.Values)
+                        marks.AddRange(block.Keys.Where(x => !string.IsNullOrWhiteSpace(x)));
+                }
+            }
+
+            if (marks.Count == 0)
+                marks.AddRange(GetDefaultMarks(projectObject));
+
+            return marks
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        public static List<int> ParseBlocks(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return new List<int>();
+
+            return Regex.Matches(text, @"\d+")
+                .Cast<Match>()
+                .Select(x => int.TryParse(x.Value, out var value) ? value : 0)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+        }
+
+        public static List<string> ParseMarks(string text) => SplitText(text);
+
+        public static List<string> SplitText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return new List<string>();
+
+            return text
+                .Split(new[] { ';', ',', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
     }
 
 

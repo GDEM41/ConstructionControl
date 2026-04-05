@@ -470,7 +470,7 @@
                                           Margin="0,0,10,0"
                                           SelectionChanged="BlockSelector_SelectionChanged"/>
 
-                                                                <TextBlock Text="Этажи в таблице"
+                                                                <TextBlock Text="Отметки в таблице"
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
                                 <ListBox x:Name="FloorsRangeSelector"
@@ -488,7 +488,7 @@
                                         </ItemsPanelTemplate>
                                     </ListBox.ItemsPanel>
                                 </ListBox>
-                                <Button Content="📊 По этажам"
+                                <Button Content="📊 По отметкам"
                                         Tag="DemandRange"
                                         Style="{StaticResource PillButton}"
                                         

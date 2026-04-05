@@ -66,6 +66,7 @@ namespace ConstructionControl
                 return;
 
             LoadPreview(sheetName);
+            PopulateFloors();
         }
         private void LoadPreview(string sheetName)
         {
@@ -133,29 +134,20 @@ namespace ConstructionControl
             if (_currentObject == null)
                 return;
 
-            if (BlockSelector.SelectedItem is not int block)
-                return;
-
-            var floors = GetFloorsForBlock(block);
-
-            PopulateFloorsRangeSelector(floors);
+            var marks = GetMarksForSelectedSheet();
+            PopulateFloorsRangeSelector(marks);
         }
 
-        private void PopulateFloorsRangeSelector(List<int> floors)
+        private void PopulateFloorsRangeSelector(List<string> marks)
         {
-            var options = floors
-                .Select(floor => new FloorOption(floor, GetFloorLabel(floor)))
+            var options = marks
+                .Select(mark => new FloorOption(mark, mark))
                 .ToList();
 
             FloorsRangeSelector.ItemsSource = options;
             FloorsRangeSelector.SelectedItems.Clear();
             foreach (var option in options)
                 FloorsRangeSelector.SelectedItems.Add(option);
-        }
-
-        private static string GetFloorLabel(int floor)
-        {
-            return floor == 0 ? "Подвал" : floor.ToString();
         }
 
         private string ToExcelColumn(int columnNumber)
@@ -520,13 +512,13 @@ namespace ConstructionControl
                 return;
             }
 
-            var selectedFloors = GetSelectedFloorsForRange();
-            if (selectedFloors.Count != 1)
+            var selectedMarks = GetSelectedFloorsForRange();
+            if (selectedMarks.Count != 1)
             {
-                MessageBox.Show("Выберите один этаж для заполнения.");
+                MessageBox.Show("Выберите одну отметку для заполнения.");
                 return;
             }
-            int floor = selectedFloors[0];
+            string mark = selectedMarks[0];
 
 
             if (SheetsList.SelectedItem == null)
@@ -580,6 +572,7 @@ namespace ConstructionControl
                     demand = new MaterialDemand
                     {
                         Unit = unit,
+                        Levels = new Dictionary<int, Dictionary<string, double>>(),
                         Floors = new Dictionary<int, Dictionary<int, double>>()
                     };
                     _currentObject.Demand[demandKey] = demand;
@@ -587,16 +580,18 @@ namespace ConstructionControl
 
                 if (string.IsNullOrWhiteSpace(demand.Unit))
                     demand.Unit = unit;
+                demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
 
-                if (!demand.Floors.ContainsKey(block))
-                    demand.Floors[block] = new Dictionary<int, double>();
+                if (!demand.Levels.ContainsKey(block))
+                    demand.Levels[block] = new Dictionary<string, double>();
 
-                demand.Floors[block][floor] = value;
+                demand.Levels[block][mark] = value;
                 EnsureMaterialGroup(group, material);
             }
 
             DemandUpdated = true;
-            MessageBox.Show($"Кол-во по этажу {floor} для блока {block} импортировано.");
+            EnsureSummaryMarks(group, new[] { mark });
+            MessageBox.Show($"Кол-во по отметке {mark} для блока {block} импортировано.");
         }
 
         private void ApplyDemandRange()
@@ -625,10 +620,10 @@ namespace ConstructionControl
                 return;
             }
 
-            var selectedFloors = GetSelectedFloorsForRange();
-            if (selectedFloors.Count == 0)
+            var selectedMarks = GetSelectedFloorsForRange();
+            if (selectedMarks.Count == 0)
             {
-                MessageBox.Show("Выберите этажи в таблице.");
+                MessageBox.Show("Выберите отметки в таблице.");
                 return;
             }
 
@@ -650,9 +645,9 @@ namespace ConstructionControl
                 return;
             }
 
-            if (selectedCells.Count != selectedFloors.Count)
+            if (selectedCells.Count != selectedMarks.Count)
             {
-                MessageBox.Show($"Выберите {selectedFloors.Count} ячеек по этажам. Сейчас выбрано: {selectedCells.Count}.");
+                MessageBox.Show($"Выберите {selectedMarks.Count} ячеек по отметкам. Сейчас выбрано: {selectedCells.Count}.");
                 return;
             }
 
@@ -690,6 +685,7 @@ namespace ConstructionControl
                     demand = new MaterialDemand
                     {
                         Unit = unit,
+                        Levels = new Dictionary<int, Dictionary<string, double>>(),
                         Floors = new Dictionary<int, Dictionary<int, double>>()
                     };
                     _currentObject.Demand[demandKey] = demand;
@@ -697,9 +693,10 @@ namespace ConstructionControl
 
                 if (string.IsNullOrWhiteSpace(demand.Unit))
                     demand.Unit = unit;
+                demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
 
-                if (!demand.Floors.ContainsKey(block))
-                    demand.Floors[block] = new Dictionary<int, double>();
+                if (!demand.Levels.ContainsKey(block))
+                    demand.Levels[block] = new Dictionary<string, double>();
 
                 for (int i = 0; i < selectedColumns.Count; i++)
                 {
@@ -707,7 +704,7 @@ namespace ConstructionControl
                     if (!double.TryParse(cellText, out var value))
                         value = 0;
 
-                    demand.Floors[block][selectedFloors[i]] = value;
+                    demand.Levels[block][selectedMarks[i]] = value;
                 }
 
                 EnsureMaterialGroup(group, material);
@@ -715,24 +712,15 @@ namespace ConstructionControl
             }
             
             DemandUpdated = true;
+            EnsureSummaryMarks(group, selectedMarks);
 
-            MessageBox.Show($"Значения по этажам для блока {block} обновлены. Строк обработано: {importedRows}.");
+            MessageBox.Show($"Значения по отметкам для блока {block} обновлены. Строк обработано: {importedRows}.");
         }
 
-        private List<int> GetFloorsForBlock(int block)
+        private List<string> GetMarksForSelectedSheet()
         {
-            var list = new List<int>();
-            if (_currentObject.HasBasement)
-                list.Add(0);
-
-            int floors = _currentObject.SameFloorsInBlocks
-                ? _currentObject.FloorsPerBlock
-                : (_currentObject.FloorsByBlock.TryGetValue(block, out var f) ? f : 0);
-
-            for (int floor = 1; floor <= floors; floor++)
-                list.Add(floor);
-
-            return list;
+            var group = SheetsList.SelectedItem?.ToString() ?? string.Empty;
+            return LevelMarkHelper.GetMarksForGroup(_currentObject, group);
         }
 
         
@@ -755,10 +743,28 @@ namespace ConstructionControl
         }
 
 
-        private List<int> GetSelectedFloorsForRange()
+        private void EnsureSummaryMarks(string group, IEnumerable<string> marks)
+        {
+            _currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+            if (!_currentObject.SummaryMarksByGroup.TryGetValue(group, out var existing) || existing == null)
+                existing = new List<string>();
+
+            foreach (var mark in marks.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()))
+            {
+                if (!existing.Contains(mark, System.StringComparer.CurrentCultureIgnoreCase))
+                    existing.Add(mark);
+            }
+
+            if (existing.Count == 0)
+                existing.AddRange(LevelMarkHelper.GetMarksForGroup(_currentObject, group));
+
+            _currentObject.SummaryMarksByGroup[group] = existing;
+        }
+
+        private List<string> GetSelectedFloorsForRange()
         {
             if (FloorsRangeSelector.Items.Count == 0)
-                return new List<int>();
+                return new List<string>();
 
             var selected = FloorsRangeSelector.SelectedItems
                 .Cast<FloorOption>()
@@ -766,7 +772,7 @@ namespace ConstructionControl
                 .ToHashSet();
 
             if (selected.Count == 0)
-                return new List<int>();
+                return new List<string>();
 
             return FloorsRangeSelector.Items
                 .Cast<FloorOption>()
@@ -777,13 +783,13 @@ namespace ConstructionControl
 
         private sealed class FloorOption
         {
-            public FloorOption(int value, string label)
+            public FloorOption(string value, string label)
             {
                 Value = value;
                 Label = label;
             }
 
-            public int Value { get; }
+            public string Value { get; }
             public string Label { get; }
         } 
 

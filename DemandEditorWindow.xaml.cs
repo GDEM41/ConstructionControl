@@ -20,7 +20,7 @@ namespace ConstructionControl
 
         private readonly ProjectObject currentObject;
         private readonly List<DemandMaterialRow> rows;
-        private readonly List<(int Block, int Floor)> floorColumns = new();
+        private readonly Dictionary<string, List<(int Block, string Mark)>> markColumnsByGroup = new();
         private readonly Dictionary<string, List<TextBox>> editorsByGroup = new();
         private readonly Dictionary<string, int> columnsCountByGroup = new();
 
@@ -29,25 +29,7 @@ namespace ConstructionControl
             InitializeComponent();
             currentObject = projectObject;
             rows = sourceRows.OrderBy(x => x.Group).ThenBy(x => x.Material).ToList();
-            BuildColumns();
             RenderTabs();
-        }
-
-        private void BuildColumns()
-        {
-            floorColumns.Clear();
-            for (int b = 1; b <= currentObject.BlocksCount; b++)
-            {
-                int floors = currentObject.SameFloorsInBlocks
-                    ? currentObject.FloorsPerBlock
-                    : (currentObject.FloorsByBlock.TryGetValue(b, out var value) ? value : 0);
-
-                if (currentObject.HasBasement)
-                    floorColumns.Add((b, 0));
-
-                for (int f = 1; f <= floors; f++)
-                    floorColumns.Add((b, f));
-            }
         }
 
         private void RenderTabs()
@@ -79,9 +61,10 @@ namespace ConstructionControl
         private Grid BuildGroupGrid(string group)
         {
             var groupRows = rows.Where(x => x.Group == group).ToList();
+            var markColumns = BuildColumns(group);
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
-            foreach (var _ in floorColumns)
+            foreach (var _ in markColumns)
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 64 });
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -89,7 +72,7 @@ namespace ConstructionControl
             Grid.SetRowSpan(grid.Children[^1], 2);
 
             int startColumn = 1;
-            foreach (var blockGroup in floorColumns.GroupBy(x => x.Block))
+            foreach (var blockGroup in markColumns.GroupBy(x => x.Block))
             {
                 AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, "#CBD5E1", true, HorizontalAlignment.Center);
                 Grid.SetColumnSpan(grid.Children[^1], blockGroup.Count());
@@ -97,7 +80,7 @@ namespace ConstructionControl
                 int offset = 0;
                 foreach (var column in blockGroup)
                 {
-                    AddCell(grid, 1, startColumn + offset, column.Floor == 0 ? "Подвал" : column.Floor.ToString(), true, "#E2E8F0", true, HorizontalAlignment.Center);
+                    AddCell(grid, 1, startColumn + offset, column.Mark, true, "#E2E8F0", true, HorizontalAlignment.Center);
                     offset++;
                 }
 
@@ -114,10 +97,10 @@ namespace ConstructionControl
 
                 string key = $"{row.Group}::{row.Material}";
                 var demand = GetOrCreateDemand(key, row.Unit);
-                for (int i = 0; i < floorColumns.Count; i++)
+                for (int i = 0; i < markColumns.Count; i++)
                 {
-                    var col = floorColumns[i];
-                    var value = GetValue(demand.Floors, col.Block, col.Floor);
+                    var col = markColumns[i];
+                    var value = GetValue(demand.Levels, col.Block, col.Mark);
                     var box = new TextBox
                     {
                         Text = Format(value),
@@ -125,7 +108,7 @@ namespace ConstructionControl
                         Margin = new Thickness(2),
                         Padding = new Thickness(4, 2, 4, 2),
                         HorizontalContentAlignment = HorizontalAlignment.Right,
-                        Tag = (key, row.Unit, col.Block, col.Floor),
+                        Tag = (key, row.Unit, col.Block, col.Mark),
                         BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E1")),
                         BorderThickness = new Thickness(1)
                     };
@@ -138,8 +121,26 @@ namespace ConstructionControl
             }
 
             editorsByGroup[group] = editors;
-            columnsCountByGroup[group] = floorColumns.Count;
+            columnsCountByGroup[group] = markColumns.Count;
             return grid;
+        }
+
+        private List<(int Block, string Mark)> BuildColumns(string group)
+        {
+            if (markColumnsByGroup.TryGetValue(group, out var existing))
+                return existing;
+
+            var columns = new List<(int Block, string Mark)>();
+            var marks = LevelMarkHelper.GetMarksForGroup(currentObject, group);
+
+            for (int b = 1; b <= currentObject.BlocksCount; b++)
+            {
+                foreach (var mark in marks)
+                    columns.Add((b, mark));
+            }
+
+            markColumnsByGroup[group] = columns;
+            return columns;
         }
         private void Cell_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -203,12 +204,16 @@ namespace ConstructionControl
                 demand = new MaterialDemand
                 {
                     Unit = unit,
+                    Levels = new Dictionary<int, Dictionary<string, double>>(),
+                    MountedLevels = new Dictionary<int, Dictionary<string, double>>(),
                     Floors = new Dictionary<int, Dictionary<int, double>>(),
                     MountedFloors = new Dictionary<int, Dictionary<int, double>>()
                 };
                 currentObject.Demand[key] = demand;
             }
 
+            demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
+            demand.MountedLevels ??= new Dictionary<int, Dictionary<string, double>>();
             demand.Floors ??= new Dictionary<int, Dictionary<int, double>>();
             demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
             if (string.IsNullOrWhiteSpace(demand.Unit))
@@ -217,9 +222,9 @@ namespace ConstructionControl
             return demand;
         }
 
-        private static double GetValue(Dictionary<int, Dictionary<int, double>> map, int block, int floor)
+        private static double GetValue(Dictionary<int, Dictionary<string, double>> map, int block, string mark)
         {
-            if (map != null && map.TryGetValue(block, out var floors) && floors.TryGetValue(floor, out var value))
+            if (map != null && map.TryGetValue(block, out var levels) && levels.TryGetValue(mark, out var value))
                 return value;
             return 0;
         }
@@ -263,10 +268,10 @@ namespace ConstructionControl
         {
             foreach (var tb in editorsByGroup.Values.SelectMany(x => x))
             {
-                var (key, unit, block, floor) = ((string, string, int, int))tb.Tag;
+                var (key, unit, block, mark) = ((string, string, int, string))tb.Tag;
                 var demand = GetOrCreateDemand(key, unit);
-                demand.Floors.TryAdd(block, new Dictionary<int, double>());
-                demand.Floors[block][floor] = Parse(tb.Text);
+                demand.Levels.TryAdd(block, new Dictionary<string, double>());
+                demand.Levels[block][mark] = Parse(tb.Text);
             }
 
             DialogResult = true;

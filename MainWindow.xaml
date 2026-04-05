@@ -424,7 +424,7 @@
                                         </Grid>
                                         <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
                                             <StackPanel Orientation="Horizontal">
-                                                <Button Content="Потребность по этажам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
+                                                <Button Content="Потребность по отметкам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
                                                 <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" Style="{StaticResource ModernSummaryModeToggle}" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
                                             </StackPanel>
                                         </Border>
@@ -1045,6 +1045,192 @@
                                       SelectionMode="Extended"
                                       SelectedCellsChanged="TimesheetGrid_SelectedCellsChanged"
                                       PreviewKeyDown="TimesheetGrid_PreviewKeyDown"/>
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem Header="ПР">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button Style="{StaticResource PrimaryButton}" Click="AddProductionRow_Click">➕ Добавить запись ПР</Button>
+                                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="DeleteProductionRow_Click">🗑 Удалить выбранную</Button>
+                                </StackPanel>
+
+                                <DataGrid x:Name="ProductionJournalGrid"
+                                          Grid.Row="1"
+                                          AutoGenerateColumns="False"
+                                          CanUserAddRows="False"
+                                          CanUserDeleteRows="False"
+                                          ColumnWidth="Auto"
+                                          BeginningEdit="ProductionJournalGrid_BeginningEdit"
+                                          CellEditEnding="ProductionJournalGrid_CellEditEnding"
+                                          RowEditEnding="ProductionJournalGrid_RowEditEnding">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="Дата" Width="115">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Date, StringFormat=dd.MM.yyyy}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <DatePicker SelectedDate="{Binding Date, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Работа" Width="150">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding ActionName}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionActions}"
+                                                              Text="{Binding ActionName, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Что делали" Width="150">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding WorkName}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionTargets}"
+                                                              Text="{Binding WorkName, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Элементы и кол-во" Width="240">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding ElementsText}" TextWrapping="Wrap"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionElements}"
+                                                              Text="{Binding ElementsText, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Блок" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding BlocksText}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="False"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionBlockOptions}"
+                                                              Text="{Binding BlocksText, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Отметка" Width="140">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding MarksText}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="False"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionMarkOptions}"
+                                                              Text="{Binding MarksText, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Бригада" Width="170">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding BrigadeName}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"
+                                                              Text="{Binding BrigadeName, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Погода" Width="180">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Weather}" TextWrapping="Wrap"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionWeatherOptions}"
+                                                              Text="{Binding Weather, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Отклонения" Width="240">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Deviations}" TextWrapping="Wrap"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                <DataTemplate>
+                                                    <ComboBox IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"
+                                                              Text="{Binding Deviations, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridCheckBoxColumn Header="Скрытые работы" Binding="{Binding RequiresHiddenWorkAct, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
+                                        <DataGridTextColumn Header="Остаток по блоку/отметке" Binding="{Binding RemainingInfo}" Width="280" IsReadOnly="True"/>
+
+                                        <DataGridTemplateColumn Header="Акт" Width="80">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Акт" IsEnabled="False" ToolTip="Подготовим на следующем шаге"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </Grid>
                         </TabItem>
 

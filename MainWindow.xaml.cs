@@ -93,6 +93,15 @@ namespace ConstructionControl
         private string selectedTimesheetBrigade = "Все бригады";
         private TimesheetRowViewModel selectedTimesheetRow;
         private int selectedTimesheetDay = -1;
+        private readonly ObservableCollection<ProductionJournalEntry> productionJournalRows = new();
+        private readonly ObservableCollection<string> productionActions = new();
+        private readonly ObservableCollection<string> productionTargets = new();
+        private readonly ObservableCollection<string> productionElements = new();
+        private readonly ObservableCollection<string> productionBlockOptions = new();
+        private readonly ObservableCollection<string> productionMarkOptions = new();
+        private readonly ObservableCollection<string> productionWeatherOptions = new();
+        private readonly ObservableCollection<string> productionDeviationOptions = new();
+        private string productionRowSnapshotJson;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -321,6 +330,13 @@ namespace ConstructionControl
         public ObservableCollection<string> Specialties => specialties;
         public ObservableCollection<string> Professions => professions;
         public ObservableCollection<string> TimesheetAssignableBrigades => timesheetAssignableBrigades;
+        public ObservableCollection<string> ProductionActions => productionActions;
+        public ObservableCollection<string> ProductionTargets => productionTargets;
+        public ObservableCollection<string> ProductionElements => productionElements;
+        public ObservableCollection<string> ProductionBlockOptions => productionBlockOptions;
+        public ObservableCollection<string> ProductionMarkOptions => productionMarkOptions;
+        public ObservableCollection<string> ProductionWeatherOptions => productionWeatherOptions;
+        public ObservableCollection<string> ProductionDeviationOptions => productionDeviationOptions;
         public MainWindow()
         {
             InitializeComponent();
@@ -335,6 +351,7 @@ namespace ConstructionControl
             LoadState();
             InitializeOtJournal();
             InitializeTimesheet();
+            InitializeProductionJournal();
             ApplyAllFilters();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
@@ -393,6 +410,8 @@ namespace ConstructionControl
             view?.Refresh();
             if (item.Header?.ToString() == "Табель")
                 RebuildTimesheetView();
+            if (item.Header?.ToString() == "ПР")
+                RefreshProductionJournalState();
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -1730,6 +1749,449 @@ namespace ConstructionControl
             }
 
             return doc;
+        }
+
+        private void InitializeProductionJournal()
+        {
+            EnsureProductionJournalStorage();
+            RefreshProductionJournalState();
+        }
+
+        private void EnsureProductionJournalStorage()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
+            currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+        }
+
+        private void RefreshProductionJournalState()
+        {
+            EnsureProductionJournalStorage();
+            productionJournalRows.Clear();
+
+            if (currentObject?.ProductionJournal != null)
+            {
+                foreach (var row in currentObject.ProductionJournal)
+                    productionJournalRows.Add(row);
+            }
+
+            if (ProductionJournalGrid != null)
+                ProductionJournalGrid.ItemsSource = productionJournalRows;
+
+            RefreshProductionJournalLookups();
+            RebuildMountedDemandFromProductionJournal();
+            RefreshProductionRemainingInfo();
+        }
+
+        private void RefreshProductionJournalLookups()
+        {
+            FillLookupCollection(productionActions,
+                currentObject?.ProductionJournal?.Select(x => x.ActionName));
+            FillLookupCollection(productionTargets,
+                currentObject?.ProductionJournal?.Select(x => x.WorkName));
+            FillLookupCollection(productionElements,
+                (currentObject?.ProductionJournal?.Select(x => x.ElementsText) ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.MaterialCatalog?.Select(x => x.MaterialName) ?? Enumerable.Empty<string>()));
+            FillLookupCollection(productionWeatherOptions,
+                currentObject?.ProductionJournal?.Select(x => x.Weather));
+            FillLookupCollection(productionDeviationOptions,
+                currentObject?.ProductionJournal?.Select(x => x.Deviations));
+
+            productionBlockOptions.Clear();
+            if (currentObject != null)
+            {
+                for (var i = 1; i <= currentObject.BlocksCount; i++)
+                    productionBlockOptions.Add(i.ToString());
+            }
+
+            FillLookupCollection(productionMarkOptions,
+                (currentObject?.SummaryMarksByGroup?.Values.SelectMany(x => x) ?? Enumerable.Empty<string>())
+                .Concat(LevelMarkHelper.GetDefaultMarks(currentObject)));
+        }
+
+        private static void FillLookupCollection(ObservableCollection<string> target, IEnumerable<string> values)
+        {
+            target.Clear();
+            foreach (var value in (values ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x))
+            {
+                target.Add(value);
+            }
+        }
+
+        private void AddProductionRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureProductionJournalStorage();
+            var row = new ProductionJournalEntry
+            {
+                Date = DateTime.Today,
+                BlocksText = productionBlockOptions.FirstOrDefault() ?? "1",
+                MarksText = productionMarkOptions.FirstOrDefault() ?? string.Empty,
+                BrigadeName = timesheetAssignableBrigades.FirstOrDefault() ?? string.Empty
+            };
+
+            currentObject.ProductionJournal.Add(row);
+            RefreshProductionJournalState();
+            ProductionJournalGrid.SelectedItem = row;
+            SaveState();
+        }
+
+        private void DeleteProductionRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (ProductionJournalGrid.SelectedItem is not ProductionJournalEntry row || currentObject?.ProductionJournal == null)
+            {
+                MessageBox.Show("Выберите запись в ПР.");
+                return;
+            }
+
+            currentObject.ProductionJournal.Remove(row);
+            RefreshProductionJournalState();
+            SaveState();
+            RefreshSummaryTable();
+        }
+
+        private void ProductionJournalGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
+        {
+            if (e.Row.Item is ProductionJournalEntry row)
+                productionRowSnapshotJson = JsonSerializer.Serialize(row);
+        }
+
+        private void ProductionJournalGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.Row.Item is not ProductionJournalEntry row)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() => ApplyProductionRowChanges(row)));
+        }
+
+        private void ProductionJournalGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        {
+            if (e.Row.Item is not ProductionJournalEntry row)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() => ApplyProductionRowChanges(row)));
+        }
+
+        private void ApplyProductionRowChanges(ProductionJournalEntry row)
+        {
+            if (row == null || currentObject?.ProductionJournal == null)
+                return;
+
+            ApplyProductionDefaults(row);
+
+            if (!ValidateProductionRow(row, out var message))
+            {
+                RestoreProductionRowSnapshot(row);
+                MessageBox.Show(message, "Проверка ПР", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            RefreshProductionJournalLookups();
+            RebuildMountedDemandFromProductionJournal();
+            RefreshProductionRemainingInfo();
+            RefreshSummaryTable();
+            SaveState();
+        }
+
+        private void ApplyProductionDefaults(ProductionJournalEntry row)
+        {
+            if (row == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(row.Deviations))
+            {
+                var previousDeviation = currentObject?.ProductionJournal?
+                    .Where(x => !ReferenceEquals(x, row)
+                        && string.Equals(x.ActionName?.Trim(), row.ActionName?.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals(x.WorkName?.Trim(), row.WorkName?.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(x.Deviations))
+                    .OrderByDescending(x => x.Date)
+                    .Select(x => x.Deviations?.Trim())
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(previousDeviation))
+                    row.Deviations = previousDeviation;
+            }
+
+            if (!row.RequiresHiddenWorkAct && !string.IsNullOrWhiteSpace(row.ActionName))
+            {
+                var previousValue = currentObject?.ProductionJournal?
+                    .Where(x => !ReferenceEquals(x, row)
+                        && string.Equals(x.ActionName?.Trim(), row.ActionName?.Trim(), StringComparison.CurrentCultureIgnoreCase))
+                    .OrderByDescending(x => x.Date)
+                    .Select(x => x.RequiresHiddenWorkAct)
+                    .FirstOrDefault();
+
+                if (previousValue == true)
+                    row.RequiresHiddenWorkAct = true;
+            }
+        }
+
+        private void RestoreProductionRowSnapshot(ProductionJournalEntry row)
+        {
+            if (row == null || string.IsNullOrWhiteSpace(productionRowSnapshotJson))
+                return;
+
+            var snapshot = JsonSerializer.Deserialize<ProductionJournalEntry>(productionRowSnapshotJson);
+            if (snapshot == null)
+                return;
+
+            row.Date = snapshot.Date;
+            row.ActionName = snapshot.ActionName;
+            row.WorkName = snapshot.WorkName;
+            row.ElementsText = snapshot.ElementsText;
+            row.BlocksText = snapshot.BlocksText;
+            row.MarksText = snapshot.MarksText;
+            row.BrigadeName = snapshot.BrigadeName;
+            row.Weather = snapshot.Weather;
+            row.Deviations = snapshot.Deviations;
+            row.RequiresHiddenWorkAct = snapshot.RequiresHiddenWorkAct;
+            row.RemainingInfo = snapshot.RemainingInfo;
+        }
+
+        private bool ValidateProductionRow(ProductionJournalEntry row, out string message)
+        {
+            message = null;
+
+            var items = ParseProductionItems(row.ElementsText);
+            if (items.Count == 0)
+                return true;
+
+            var blocks = LevelMarkHelper.ParseBlocks(row.BlocksText);
+            if (blocks.Count == 0)
+            {
+                message = "Для записи ПР укажите хотя бы один блок.";
+                return false;
+            }
+
+            var marks = LevelMarkHelper.ParseMarks(row.MarksText);
+            if (marks.Count == 0)
+            {
+                message = "Для записи ПР укажите хотя бы одну отметку.";
+                return false;
+            }
+
+            foreach (var item in items)
+            {
+                var group = FindMaterialGroupByName(item.MaterialName);
+                if (string.IsNullOrWhiteSpace(group))
+                    continue;
+
+                var alreadyMounted = GetMountedQuantityFromProductionJournal(item.MaterialName, excludeRow: row);
+                var arrived = journal
+                    .Where(x => x.Category == "Основные"
+                        && string.Equals(x.MaterialGroup ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals(x.MaterialName ?? string.Empty, item.MaterialName, StringComparison.CurrentCultureIgnoreCase))
+                    .Sum(x => x.Quantity);
+
+                if (alreadyMounted + item.Quantity > arrived + 0.0001)
+                {
+                    message = $"Для \"{item.MaterialName}\" нельзя указать больше, чем пришло. Пришло: {FormatNumber(arrived)}, уже записано в ПР: {FormatNumber(alreadyMounted)}.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private sealed class ProductionItemQuantity
+        {
+            public string MaterialName { get; set; }
+            public double Quantity { get; set; }
+        }
+
+        private List<ProductionItemQuantity> ParseProductionItems(string text)
+        {
+            var result = new List<ProductionItemQuantity>();
+            foreach (var chunk in LevelMarkHelper.SplitText(text))
+            {
+                var match = Regex.Match(chunk, @"^(?<name>.*?)(?:\s*[-–]\s*|\s+)(?<qty>\d+(?:[.,]\d+)?)\s*(?:шт\.?|шт)?$", RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    result.Add(new ProductionItemQuantity
+                    {
+                        MaterialName = match.Groups["name"].Value.Trim(),
+                        Quantity = ParseNumber(match.Groups["qty"].Value)
+                    });
+                }
+                else
+                {
+                    result.Add(new ProductionItemQuantity
+                    {
+                        MaterialName = chunk.Trim(),
+                        Quantity = 1
+                    });
+                }
+            }
+
+            return result
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
+                .ToList();
+        }
+
+        private double GetMountedQuantityFromProductionJournal(string materialName, ProductionJournalEntry excludeRow = null)
+        {
+            if (currentObject?.ProductionJournal == null || string.IsNullOrWhiteSpace(materialName))
+                return 0;
+
+            return currentObject.ProductionJournal
+                .Where(x => !ReferenceEquals(x, excludeRow))
+                .SelectMany(x => ParseProductionItems(x.ElementsText))
+                .Where(x => string.Equals(x.MaterialName, materialName, StringComparison.CurrentCultureIgnoreCase))
+                .Sum(x => x.Quantity);
+        }
+
+        private string FindMaterialGroupByName(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+                return null;
+
+            var fromCatalog = currentObject?.MaterialCatalog?
+                .FirstOrDefault(x => string.Equals(x.MaterialName ?? string.Empty, materialName, StringComparison.CurrentCultureIgnoreCase))
+                ?.TypeName;
+
+            if (!string.IsNullOrWhiteSpace(fromCatalog))
+                return fromCatalog;
+
+            return journal
+                .Where(x => x.Category == "Основные"
+                    && string.Equals(x.MaterialName ?? string.Empty, materialName, StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialGroup)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        }
+
+        private void RebuildMountedDemandFromProductionJournal()
+        {
+            if (currentObject?.Demand == null)
+                return;
+
+            foreach (var demand in currentObject.Demand.Values)
+            {
+                demand.MountedLevels = new Dictionary<int, Dictionary<string, double>>();
+                demand.MountedFloors = new Dictionary<int, Dictionary<int, double>>();
+            }
+
+            if (currentObject.ProductionJournal == null)
+                return;
+
+            foreach (var row in currentObject.ProductionJournal)
+            {
+                var items = ParseProductionItems(row.ElementsText);
+                var blocks = LevelMarkHelper.ParseBlocks(row.BlocksText);
+                var marks = LevelMarkHelper.ParseMarks(row.MarksText);
+                if (items.Count == 0 || blocks.Count == 0 || marks.Count == 0)
+                    continue;
+
+                var divisior = blocks.Count * marks.Count;
+                if (divisior <= 0)
+                    continue;
+
+                foreach (var item in items)
+                {
+                    var group = FindMaterialGroupByName(item.MaterialName);
+                    if (string.IsNullOrWhiteSpace(group))
+                        continue;
+
+                    EnsureSummaryMarksForGroup(group, marks);
+                    var demandKey = BuildDemandKey(group, item.MaterialName);
+                    var demand = GetOrCreateDemand(demandKey, GetUnitForMaterial(group, item.MaterialName));
+                    var perCell = item.Quantity / divisior;
+
+                    foreach (var block in blocks)
+                    {
+                        if (!demand.MountedLevels.ContainsKey(block))
+                            demand.MountedLevels[block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
+
+                        foreach (var mark in marks)
+                        {
+                            var normalizedMark = mark.Trim();
+                            if (!demand.MountedLevels[block].ContainsKey(normalizedMark))
+                                demand.MountedLevels[block][normalizedMark] = 0;
+
+                            demand.MountedLevels[block][normalizedMark] += perCell;
+                        }
+                    }
+                }
+            }
+        }
+
+        private string GetUnitForMaterial(string group, string materialName)
+        {
+            return journal
+                .Where(x => x.Category == "Основные"
+                    && string.Equals(x.MaterialGroup ?? string.Empty, group ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(x.MaterialName ?? string.Empty, materialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.Unit)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "шт";
+        }
+
+        private void EnsureSummaryMarksForGroup(string group, IEnumerable<string> marks)
+        {
+            if (currentObject == null || string.IsNullOrWhiteSpace(group))
+                return;
+
+            currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+            if (!currentObject.SummaryMarksByGroup.TryGetValue(group, out var existing) || existing == null)
+            {
+                existing = LevelMarkHelper.GetMarksForGroup(currentObject, group);
+                currentObject.SummaryMarksByGroup[group] = existing;
+            }
+
+            foreach (var mark in marks.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()))
+            {
+                if (!existing.Contains(mark, StringComparer.CurrentCultureIgnoreCase))
+                    existing.Add(mark);
+            }
+        }
+
+        private void RefreshProductionRemainingInfo()
+        {
+            if (currentObject?.ProductionJournal == null)
+                return;
+
+            foreach (var row in currentObject.ProductionJournal)
+                row.RemainingInfo = BuildProductionRemainingInfo(row);
+        }
+
+        private string BuildProductionRemainingInfo(ProductionJournalEntry row)
+        {
+            var items = ParseProductionItems(row.ElementsText);
+            var blocks = LevelMarkHelper.ParseBlocks(row.BlocksText);
+            var marks = LevelMarkHelper.ParseMarks(row.MarksText);
+            if (items.Count == 0 || blocks.Count == 0 || marks.Count == 0)
+                return string.Empty;
+
+            var parts = new List<string>();
+            foreach (var item in items)
+            {
+                var group = FindMaterialGroupByName(item.MaterialName);
+                if (string.IsNullOrWhiteSpace(group))
+                    continue;
+
+                var demandKey = BuildDemandKey(group, item.MaterialName);
+                var demand = GetOrCreateDemand(demandKey, GetUnitForMaterial(group, item.MaterialName));
+                foreach (var block in blocks)
+                {
+                    foreach (var mark in marks)
+                    {
+                        var planned = GetDemandValue(demand, block, mark);
+                        var mounted = GetMountedValue(demand, block, mark);
+                        parts.Add($"{item.MaterialName}: Б{block} {mark} остаток {FormatNumber(Math.Max(0, planned - mounted))}");
+                    }
+                }
+            }
+
+            return string.Join("; ", parts.Take(8)) + (parts.Count > 8 ? "; ..." : string.Empty);
         }
 
 
@@ -3132,6 +3594,8 @@ namespace ConstructionControl
             BindOtJournal();
             RefreshBrigadierNames();
             RebuildTimesheetView();
+            EnsureProductionJournalStorage();
+            RefreshProductionJournalState();
             UpdateOtReminders();
             SaveState();
         }
@@ -3140,6 +3604,62 @@ namespace ConstructionControl
         {
             UndoButton.IsEnabled = undoStack.Count > 0;
             RedoButton.IsEnabled = redoStack.Count > 0;
+        }
+
+        private void MigrateDemandLevelsAndProductionJournal()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+            currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
+
+            if (currentObject.Demand == null)
+                return;
+
+            foreach (var pair in currentObject.Demand)
+            {
+                var group = pair.Key.Split(new[] { "::" }, StringSplitOptions.None).FirstOrDefault() ?? string.Empty;
+                var demand = pair.Value;
+                demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
+                demand.MountedLevels ??= new Dictionary<int, Dictionary<string, double>>();
+
+                if (demand.Levels.Count == 0 && demand.Floors != null)
+                {
+                    foreach (var block in demand.Floors)
+                    {
+                        demand.Levels[block.Key] = block.Value.ToDictionary(
+                            x => LevelMarkHelper.GetLegacyMarkLabel(x.Key),
+                            x => x.Value,
+                            StringComparer.CurrentCultureIgnoreCase);
+                    }
+                }
+
+                if (demand.MountedLevels.Count == 0 && demand.MountedFloors != null)
+                {
+                    foreach (var block in demand.MountedFloors)
+                    {
+                        demand.MountedLevels[block.Key] = block.Value.ToDictionary(
+                            x => LevelMarkHelper.GetLegacyMarkLabel(x.Key),
+                            x => x.Value,
+                            StringComparer.CurrentCultureIgnoreCase);
+                    }
+                }
+
+                if (!currentObject.SummaryMarksByGroup.TryGetValue(group, out var marks) || marks == null || marks.Count == 0)
+                {
+                    marks = demand.Levels.Values
+                        .SelectMany(x => x.Keys)
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();
+
+                    if (marks.Count == 0)
+                        marks = LevelMarkHelper.GetDefaultMarks(currentObject);
+
+                    currentObject.SummaryMarksByGroup[group] = marks;
+                }
+            }
         }
 
         private void LoadState()
@@ -3165,6 +3685,7 @@ namespace ConstructionControl
 
             currentObject = state?.CurrentObject;
             journal = state?.Journal ?? new();
+            MigrateDemandLevelsAndProductionJournal();
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
             {
@@ -3253,13 +3774,27 @@ namespace ConstructionControl
 
         }
 
+        private void CommitOpenEdits()
+        {
+            OtJournalGrid?.CommitEdit(DataGridEditingUnit.Cell, true);
+            OtJournalGrid?.CommitEdit(DataGridEditingUnit.Row, true);
+            TimesheetGrid?.CommitEdit(DataGridEditingUnit.Cell, true);
+            TimesheetGrid?.CommitEdit(DataGridEditingUnit.Row, true);
+            ProductionJournalGrid?.CommitEdit(DataGridEditingUnit.Cell, true);
+            ProductionJournalGrid?.CommitEdit(DataGridEditingUnit.Row, true);
+            Keyboard.ClearFocus();
+        }
+
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
             SaveState();
             MessageBox.Show("Данные сохранены");
         }
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
+            SaveState();
             LoadState();
             if (currentObject != null)
                 ArrivalPanel.SetObject(currentObject, journal);
@@ -3267,6 +3802,7 @@ namespace ConstructionControl
             RefreshSummaryTable();
             RefreshArrivalTypes();
             RefreshArrivalNames();
+            RefreshProductionJournalState();
             ApplyAllFilters();
         }
 
@@ -3557,7 +4093,7 @@ namespace ConstructionControl
 
         void RenderMaterialGroup(string group)
         {
-            summaryBlocks = BuildSummaryBlocks();
+            summaryBlocks = BuildSummaryBlocks(group);
             summaryColumns = new List<SummaryColumnInfo>();
 
             var headerBorder = new Border
@@ -3594,13 +4130,13 @@ namespace ConstructionControl
 
             foreach (var block in summaryBlocks)
             {
-                foreach (var floor in block.Floors)
+                foreach (var mark in block.Levels)
                 {
                     summaryColumns.Add(new SummaryColumnInfo
                     {
                         ColumnIndex = colIndex,
                         Block = block.Block,
-                        Floor = floor
+                        Level = mark
                     });
                     summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 42 });
                     colIndex++;
@@ -3632,14 +4168,14 @@ namespace ConstructionControl
             int blockStart = 2;
             foreach (var block in summaryBlocks)
             {
-                int blockColumns = block.Floors.Count + 1;
+                int blockColumns = block.Levels.Count + 1;
 
                 AddCell(summaryGrid, 0, blockStart, $"Блок {block.Block}", bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, colspan: blockColumns, noWrap: true);
 
                 int floorCol = blockStart;
-                foreach (var floor in block.Floors)
+                for (var levelIndex = 0; levelIndex < block.Levels.Count; levelIndex++)
                 {
-                    AddCell(summaryGrid, 1, floorCol, GetFloorLabel(floor), bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
+                    AddSummaryLevelHeaderCell(summaryGrid, 1, floorCol, group, levelIndex, block.Levels[levelIndex], headerBg);
                     floorCol++;
                 }
 
@@ -3675,11 +4211,11 @@ namespace ConstructionControl
             foreach (var block in summaryBlocks)
             {
                 double blockTotal = 0;
-                foreach (var floor in block.Floors)
+                foreach (var mark in block.Levels)
                 {
                     blockTotal += summaryMountedMode
-                        ? GetMountedValue(demand, block.Block, floor)
-                        : GetDemandValue(demand, block.Block, floor);
+                        ? GetMountedValue(demand, block.Block, mark)
+                        : GetDemandValue(demand, block.Block, mark);
                 }
 
                 blockTotals[block.Block] = blockTotal;  // теперь ок
@@ -3723,12 +4259,12 @@ namespace ConstructionControl
                     Brush cellBg = blockIsOverage ? warningHighlight : (blockComplete ? blockHighlight : null);
                     AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
-                else if (col.Floor.HasValue)
+                else if (!string.IsNullOrWhiteSpace(col.Level))
                 {
-                    double plan = GetDemandValue(demand, col.Block, col.Floor.Value);
-                    double mounted = GetMountedValue(demand, col.Block, col.Floor.Value);
+                    double plan = GetDemandValue(demand, col.Block, col.Level);
+                    double mounted = GetMountedValue(demand, col.Block, col.Level);
                     double arrived = allocations.TryGetValue(col.Block, out var blockDict)
-                        && blockDict.TryGetValue(col.Floor.Value, out var arr)
+                        && blockDict.TryGetValue(col.Level, out var arr)
                         ? arr
                         : 0;
 
@@ -3742,7 +4278,7 @@ namespace ConstructionControl
                     }
 
                     Brush cellBg = floorOverage ? warningHighlight : (floorFilled ? filledHighlight : null);
-                    AddDiagonalSummaryCell(summaryGrid, summaryRowIndex, col.ColumnIndex, summaryMountedMode ? mounted : plan, arrived, demandKey, col.Block, col.Floor.Value, unit, cellBg, 44, true, summaryMountedMode);
+                    AddDiagonalSummaryCell(summaryGrid, summaryRowIndex, col.ColumnIndex, summaryMountedMode ? mounted : plan, arrived, demandKey, col.Block, col.Level, unit, cellBg, 44, true, summaryMountedMode);
                 }
             }
 
@@ -4028,72 +4564,48 @@ namespace ConstructionControl
             TreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             TreeColumn.Width = show ? new GridLength(260) : new GridLength(0);
         }
-        private List<SummaryBlockInfo> BuildSummaryBlocks()
+        private List<SummaryBlockInfo> BuildSummaryBlocks(string group)
         {
             var blocks = new List<SummaryBlockInfo>();
 
             if (currentObject == null || currentObject.BlocksCount <= 0)
                 return blocks;
 
+            var marks = LevelMarkHelper.GetMarksForGroup(currentObject, group);
+
             for (int i = 1; i <= currentObject.BlocksCount; i++)
             {
-                int floors = currentObject.SameFloorsInBlocks
-                    ? currentObject.FloorsPerBlock
-                    : (currentObject.FloorsByBlock.TryGetValue(i, out var f) ? f : 0);
-
-                var floorList = new List<int>();
-
-                if (currentObject.HasBasement)
-                    floorList.Add(0);
-
-                for (int floor = 1; floor <= floors; floor++)
-                    floorList.Add(floor);
-
                 blocks.Add(new SummaryBlockInfo
                 {
                     Block = i,
-                    Floors = floorList
+                    Levels = marks.ToList()
                 });
             }
 
             return blocks;
         }
 
-        private Dictionary<int, Dictionary<int, double>> AllocateArrival(MaterialDemand demand, double totalArrival)
+        private Dictionary<int, Dictionary<string, double>> AllocateArrival(MaterialDemand demand, double totalArrival)
         {
-            var allocations = new Dictionary<int, Dictionary<int, double>>();
+            var allocations = new Dictionary<int, Dictionary<string, double>>();
 
             if (summaryBlocks == null || summaryBlocks.Count == 0)
                 return allocations;
 
-            var levels = new List<int>();
-
-            if (currentObject?.HasBasement == true)
-                levels.Add(0);
-
-            int maxFloor = summaryBlocks
-                .SelectMany(b => b.Floors)
-                .Where(f => f > 0)
-                .DefaultIfEmpty(0)
-                .Max();
-
-            for (int i = 1; i <= maxFloor; i++)
-                levels.Add(i);
-
             double remaining = totalArrival;
 
-            foreach (var level in levels)
+            foreach (var level in summaryBlocks.SelectMany(b => b.Levels).Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
                 foreach (var block in summaryBlocks)
                 {
-                    if (!block.Floors.Contains(level))
+                    if (!block.Levels.Contains(level))
                         continue;
 
                     double plan = GetDemandValue(demand, block.Block, level);
                     double filled = Math.Min(plan, remaining);
 
                     if (!allocations.ContainsKey(block.Block))
-                        allocations[block.Block] = new Dictionary<int, double>();
+                        allocations[block.Block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
 
                     allocations[block.Block][level] = filled;
                     remaining -= filled;
@@ -4115,6 +4627,8 @@ namespace ConstructionControl
                 demand = new MaterialDemand
                 {
                     Unit = unit,
+                    Levels = new Dictionary<int, Dictionary<string, double>>(),
+                    MountedLevels = new Dictionary<int, Dictionary<string, double>>(),
                     Floors = new Dictionary<int, Dictionary<int, double>>(),
                     MountedFloors = new Dictionary<int, Dictionary<int, double>>()
                 };
@@ -4124,45 +4638,44 @@ namespace ConstructionControl
 
             if (string.IsNullOrWhiteSpace(demand.Unit))
                 demand.Unit = unit;
+            demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
+            demand.MountedLevels ??= new Dictionary<int, Dictionary<string, double>>();
             demand.Floors ??= new Dictionary<int, Dictionary<int, double>>();
             demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
 
             return demand;
         }
 
-        private double GetDemandValue(MaterialDemand demand, int block, int floor)
+        private double GetDemandValue(MaterialDemand demand, int block, string level)
         {
-            if (demand.Floors.TryGetValue(block, out var floors)
-                && floors.TryGetValue(floor, out var value))
+            if (demand.Levels != null
+                && demand.Levels.TryGetValue(block, out var levels)
+                && levels.TryGetValue(level, out var value))
                 return value;
 
             return 0;
         }
-        private double GetMountedValue(MaterialDemand demand, int block, int floor)
+        private double GetMountedValue(MaterialDemand demand, int block, string level)
         {
-            if (demand.MountedFloors != null
-                && demand.MountedFloors.TryGetValue(block, out var floors)
-                && floors.TryGetValue(floor, out var value))
+            if (demand.MountedLevels != null
+                && demand.MountedLevels.TryGetValue(block, out var levels)
+                && levels.TryGetValue(level, out var value))
                 return value;
 
             return 0;
-        }
-        private string GetFloorLabel(int floor)
-        {
-            return floor == 0 ? "Подвал" : floor.ToString();
         }
 
         private class SummaryBlockInfo
         {
             public int Block { get; set; }
-            public List<int> Floors { get; set; } = new();
+            public List<string> Levels { get; set; } = new();
         }
 
         private class SummaryColumnInfo
         {
             public int ColumnIndex { get; set; }
             public int Block { get; set; }
-            public int? Floor { get; set; }
+            public string Level { get; set; }
             public bool IsBlockTotal { get; set; }
         }
 
@@ -4170,7 +4683,7 @@ namespace ConstructionControl
         {
             public string DemandKey { get; set; }
             public int Block { get; set; }
-            public int Floor { get; set; }
+            public string Level { get; set; }
             public string Unit { get; set; }
             public bool IsMountedMode { get; set; }
         }
@@ -4233,7 +4746,35 @@ namespace ConstructionControl
 
             g.Children.Add(border);
         }
-        void AddDiagonalSummaryCell(Grid g, int r, int c, double topValue, double arrived, string demandKey, int block, int floor, string unit, Brush bg, double minWidth, bool editableTop, bool isMountedMode)
+        void AddSummaryLevelHeaderCell(Grid g, int r, int c, string group, int levelIndex, string text, Brush bg)
+        {
+            var box = new TextBox
+            {
+                Text = text,
+                Margin = new Thickness(4, 2, 4, 2),
+                Padding = new Thickness(2),
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                FontWeight = FontWeights.SemiBold,
+                Tag = $"{group}|{levelIndex}"
+            };
+            box.LostFocus += SummaryLevelHeader_LostFocus;
+
+            var border = new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                Background = bg,
+                MinHeight = 30,
+                Child = box
+            };
+
+            Grid.SetRow(border, r);
+            Grid.SetColumn(border, c);
+            g.Children.Add(border);
+        }
+        void AddDiagonalSummaryCell(Grid g, int r, int c, double topValue, double arrived, string demandKey, int block, string level, string unit, Brush bg, double minWidth, bool editableTop, bool isMountedMode)
         {
             var container = new Grid
             {
@@ -4271,7 +4812,7 @@ namespace ConstructionControl
                 {
                     DemandKey = demandKey,
                     Block = block,
-                    Floor = floor,
+                    Level = level,
                     Unit = unit,
                     IsMountedMode = isMountedMode
                 }
@@ -4323,20 +4864,74 @@ namespace ConstructionControl
 
             var demand = GetOrCreateDemand(tag.DemandKey, tag.Unit);
 
-            var target = tag.IsMountedMode ? demand.MountedFloors : demand.Floors;
-            target ??= new Dictionary<int, Dictionary<int, double>>();
+            var target = tag.IsMountedMode ? demand.MountedLevels : demand.Levels;
+            target ??= new Dictionary<int, Dictionary<string, double>>();
 
             if (tag.IsMountedMode)
-                demand.MountedFloors = target;
+                demand.MountedLevels = target;
             else
-                demand.Floors = target;
+                demand.Levels = target;
 
             if (!target.ContainsKey(tag.Block))
-                target[tag.Block] = new Dictionary<int, double>();
+                target[tag.Block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
 
-            target[tag.Block][tag.Floor] = value;
+            target[tag.Block][tag.Level] = value;
 
             RefreshSummaryTable();
+        }
+
+        private void SummaryLevelHeader_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TextBox tb || currentObject == null || tb.Tag is not string tagText)
+                return;
+
+            var parts = tagText.Split('|');
+            if (parts.Length != 2 || !int.TryParse(parts[1], out var levelIndex))
+                return;
+
+            var group = parts[0];
+            var newValue = tb.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(newValue))
+                return;
+
+            var marks = LevelMarkHelper.GetMarksForGroup(currentObject, group);
+            if (levelIndex < 0 || levelIndex >= marks.Count)
+                return;
+
+            var oldValue = marks[levelIndex];
+            if (string.Equals(oldValue, newValue, StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            marks[levelIndex] = newValue;
+            currentObject.SummaryMarksByGroup[group] = marks;
+
+            foreach (var demandPair in currentObject.Demand.Where(x => x.Key.StartsWith(group + "::", StringComparison.CurrentCultureIgnoreCase)))
+            {
+                RenameDemandLevel(demandPair.Value.Levels, oldValue, newValue);
+                RenameDemandLevel(demandPair.Value.MountedLevels, oldValue, newValue);
+            }
+
+            RefreshProductionJournalLookups();
+            RefreshProductionRemainingInfo();
+            RefreshSummaryTable();
+            SaveState();
+        }
+
+        private static void RenameDemandLevel(Dictionary<int, Dictionary<string, double>> map, string oldValue, string newValue)
+        {
+            if (map == null)
+                return;
+
+            foreach (var block in map.Values)
+            {
+                if (!block.TryGetValue(oldValue, out var amount))
+                    continue;
+
+                block.Remove(oldValue);
+                if (!block.ContainsKey(newValue))
+                    block[newValue] = 0;
+                block[newValue] += amount;
+            }
         }
 
         private double ParseNumber(string text)
