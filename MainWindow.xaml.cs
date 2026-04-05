@@ -102,6 +102,7 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> productionWeatherOptions = new();
         private readonly ObservableCollection<string> productionDeviationOptions = new();
         private string productionRowSnapshotJson;
+        private ProductionJournalEntry selectedProductionRow;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -1783,6 +1784,11 @@ namespace ConstructionControl
             RefreshProductionJournalLookups();
             RebuildMountedDemandFromProductionJournal();
             RefreshProductionRemainingInfo();
+            if (ProductionJournalGrid != null)
+                ProductionJournalGrid.Items.Refresh();
+            if (selectedProductionRow != null && !productionJournalRows.Contains(selectedProductionRow))
+                selectedProductionRow = null;
+            UpdateProductionFormState();
         }
 
         private void RefreshProductionJournalLookups()
@@ -1824,7 +1830,9 @@ namespace ConstructionControl
             }
         }
 
-        private void AddProductionRow_Click(object sender, RoutedEventArgs e)
+        private void AddProductionRow_Click(object sender, RoutedEventArgs e) => SaveProductionForm_Click(sender, e);
+
+        private void SaveProductionForm_Click(object sender, RoutedEventArgs e)
         {
             if (currentObject == null)
             {
@@ -1833,54 +1841,115 @@ namespace ConstructionControl
             }
 
             EnsureProductionJournalStorage();
-            var row = new ProductionJournalEntry
-            {
-                Date = DateTime.Today,
-                BlocksText = productionBlockOptions.FirstOrDefault() ?? "1",
-                MarksText = productionMarkOptions.FirstOrDefault() ?? string.Empty,
-                BrigadeName = timesheetAssignableBrigades.FirstOrDefault() ?? string.Empty
-            };
+            var row = selectedProductionRow ?? new ProductionJournalEntry();
+            productionRowSnapshotJson = JsonSerializer.Serialize(row);
+            ReadProductionForm(row);
+            ApplyProductionRowChanges(row);
 
-            currentObject.ProductionJournal.Add(row);
+            if (selectedProductionRow == null)
+                currentObject.ProductionJournal.Add(row);
+
+            selectedProductionRow = row;
             RefreshProductionJournalState();
             ProductionJournalGrid.SelectedItem = row;
-            SaveState();
+            ProductionJournalGrid.ScrollIntoView(row);
         }
 
         private void DeleteProductionRow_Click(object sender, RoutedEventArgs e)
         {
-            if (ProductionJournalGrid.SelectedItem is not ProductionJournalEntry row || currentObject?.ProductionJournal == null)
+            var row = selectedProductionRow ?? ProductionJournalGrid.SelectedItem as ProductionJournalEntry;
+            if (row == null || currentObject?.ProductionJournal == null)
             {
                 MessageBox.Show("Выберите запись в ПР.");
                 return;
             }
 
             currentObject.ProductionJournal.Remove(row);
+            selectedProductionRow = null;
             RefreshProductionJournalState();
             SaveState();
             RefreshSummaryTable();
         }
 
-        private void ProductionJournalGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
+        private void ClearProductionForm_Click(object sender, RoutedEventArgs e)
         {
-            if (e.Row.Item is ProductionJournalEntry row)
-                productionRowSnapshotJson = JsonSerializer.Serialize(row);
+            selectedProductionRow = null;
+            UpdateProductionFormState(clearFields: true);
+            if (ProductionJournalGrid != null)
+                ProductionJournalGrid.SelectedItem = null;
         }
 
-        private void ProductionJournalGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        private void ProductionJournalGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (e.Row.Item is not ProductionJournalEntry row)
+            if (ProductionJournalGrid.SelectedItem is not ProductionJournalEntry row)
+            {
+                if (selectedProductionRow != null)
+                    UpdateProductionFormState(clearFields: false);
                 return;
+            }
 
-            Dispatcher.BeginInvoke(new Action(() => ApplyProductionRowChanges(row)));
+            selectedProductionRow = row;
+            FillProductionForm(row);
+            UpdateProductionFormState();
         }
 
-        private void ProductionJournalGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        private void UpdateProductionFormState(bool clearFields = false)
         {
-            if (e.Row.Item is not ProductionJournalEntry row)
+            if (clearFields)
+                ResetProductionFormInputs();
+            else if (selectedProductionRow == null && ProductionDatePicker != null && ProductionDatePicker.SelectedDate == null)
+                ResetProductionFormInputs();
+
+            if (ProductionSaveButton != null)
+                ProductionSaveButton.Content = selectedProductionRow == null ? "➕ Добавить" : "💾 Обновить";
+        }
+
+        private void ResetProductionFormInputs()
+        {
+            if (ProductionDatePicker == null)
                 return;
 
-            Dispatcher.BeginInvoke(new Action(() => ApplyProductionRowChanges(row)));
+            ProductionDatePicker.SelectedDate = DateTime.Today;
+            ProductionActionBox.Text = string.Empty;
+            ProductionWorkBox.Text = string.Empty;
+            ProductionElementsBox.Text = string.Empty;
+            ProductionBlocksBox.Text = productionBlockOptions.FirstOrDefault() ?? "1";
+            ProductionMarksBox.Text = productionMarkOptions.FirstOrDefault() ?? string.Empty;
+            ProductionBrigadeBox.Text = timesheetAssignableBrigades.FirstOrDefault() ?? string.Empty;
+            ProductionWeatherBox.Text = string.Empty;
+            ProductionDeviationBox.Text = string.Empty;
+            ProductionHiddenWorksCheckBox.IsChecked = false;
+        }
+
+        private void FillProductionForm(ProductionJournalEntry row)
+        {
+            if (row == null || ProductionDatePicker == null)
+                return;
+
+            ProductionDatePicker.SelectedDate = row.Date;
+            ProductionActionBox.Text = row.ActionName ?? string.Empty;
+            ProductionWorkBox.Text = row.WorkName ?? string.Empty;
+            ProductionElementsBox.Text = row.ElementsText ?? string.Empty;
+            ProductionBlocksBox.Text = row.BlocksText ?? string.Empty;
+            ProductionMarksBox.Text = row.MarksText ?? string.Empty;
+            ProductionBrigadeBox.Text = row.BrigadeName ?? string.Empty;
+            ProductionWeatherBox.Text = row.Weather ?? string.Empty;
+            ProductionDeviationBox.Text = row.Deviations ?? string.Empty;
+            ProductionHiddenWorksCheckBox.IsChecked = row.RequiresHiddenWorkAct;
+        }
+
+        private void ReadProductionForm(ProductionJournalEntry row)
+        {
+            row.Date = ProductionDatePicker.SelectedDate ?? DateTime.Today;
+            row.ActionName = ProductionActionBox.Text?.Trim();
+            row.WorkName = ProductionWorkBox.Text?.Trim();
+            row.ElementsText = ProductionElementsBox.Text?.Trim();
+            row.BlocksText = ProductionBlocksBox.Text?.Trim();
+            row.MarksText = ProductionMarksBox.Text?.Trim();
+            row.BrigadeName = ProductionBrigadeBox.Text?.Trim();
+            row.Weather = ProductionWeatherBox.Text?.Trim();
+            row.Deviations = ProductionDeviationBox.Text?.Trim();
+            row.RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox.IsChecked == true;
         }
 
         private void ApplyProductionRowChanges(ProductionJournalEntry row)

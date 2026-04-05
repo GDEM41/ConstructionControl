@@ -12,14 +12,9 @@
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
         <Style x:Key="PrimaryButton" TargetType="Button">
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="MinWidth" Value="110"/>
-            <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#2563EB"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="MinWidth" Value="118"/>
+            <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>
         <Style x:Key="ChipToggle" TargetType="ToggleButton">
@@ -201,25 +196,28 @@
 
         <!-- Кнопка вторичная -->
         <Style x:Key="SecondaryButton" TargetType="Button"
-               BasedOn="{StaticResource PrimaryButton}">
-            <Setter Property="Background" Value="#E5E7EB"/>
-            <Setter Property="Foreground" Value="#111827"/>
+               BasedOn="{StaticResource AppSecondaryButton}">
+            <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>
         <!-- Toolbar кнопка -->
         <Style x:Key="IconButton" TargetType="Button">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="MinWidth" Value="38"/>
+            <Setter Property="Background" Value="#EAF1F9"/>
+            <Setter Property="Foreground" Value="#102033"/>
+            <Setter Property="BorderBrush" Value="#D8E1EE"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
         </Style>
 
         <!-- Toolbar кнопка -->
         <Style x:Key="IconToggle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Background" Value="#EAF1F9"/>
+            <Setter Property="BorderBrush" Value="#D8E1EE"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
         </Style>
 
@@ -1055,20 +1053,134 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Button Style="{StaticResource PrimaryButton}" Click="AddProductionRow_Click">➕ Добавить запись ПР</Button>
-                                    <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="DeleteProductionRow_Click">🗑 Удалить выбранную</Button>
-                                </StackPanel>
+                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                <DataGrid x:Name="ProductionJournalGrid"
-                                          Grid.Row="1"
+                                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Дата" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <DatePicker x:Name="ProductionDatePicker"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                <TextBlock Text="Работа" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionActionBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionActions}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                                <TextBlock Text="Что делали" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionWorkBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionTargets}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="3">
+                                                <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionBrigadeBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Grid.Row="1" Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.7*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="1.3*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Элементы и количество" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionElementsBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionElements}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                <TextBlock Text="Блоки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionBlocksBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="False"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionBlockOptions}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                                <TextBlock Text="Отметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionMarksBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="False"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionMarkOptions}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="3">
+                                                <TextBlock Text="Погода" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionWeatherBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionWeatherOptions}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.8*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Отклонения" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionDeviationBox"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                                <CheckBox x:Name="ProductionHiddenWorksCheckBox" Content="Нужен акт скрытых работ" Margin="0,0,14,8"/>
+                                                <Button Content="Акт" IsEnabled="False" Style="{StaticResource SecondaryButton}" MinWidth="88" Margin="0,0,10,0"/>
+                                                <Button x:Name="ProductionSaveButton" Content="➕ Добавить" Click="SaveProductionForm_Click" MinWidth="132"/>
+                                                <Button Content="Очистить" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" MinWidth="110" Click="ClearProductionForm_Click"/>
+                                                <Button Content="🗑 Удалить" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" MinWidth="110" Click="DeleteProductionRow_Click"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+                                    <DataGrid x:Name="ProductionJournalGrid"
                                           AutoGenerateColumns="False"
                                           CanUserAddRows="False"
                                           CanUserDeleteRows="False"
+                                          IsReadOnly="True"
                                           ColumnWidth="Auto"
-                                          BeginningEdit="ProductionJournalGrid_BeginningEdit"
-                                          CellEditEnding="ProductionJournalGrid_CellEditEnding"
-                                          RowEditEnding="ProductionJournalGrid_RowEditEnding">
+                                          SelectionChanged="ProductionJournalGrid_SelectionChanged">
                                     <DataGrid.Columns>
                                         <DataGridTemplateColumn Header="Дата" Width="115">
                                             <DataGridTemplateColumn.CellTemplate>
@@ -1230,7 +1342,8 @@
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
-                                </DataGrid>
+                                    </DataGrid>
+                                </Border>
                             </Grid>
                         </TabItem>
 
