@@ -92,9 +92,26 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> timesheetAssignableBrigades = new();
         private DateTime timesheetMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
         private string selectedTimesheetBrigade = "Все бригады";
+        private TimesheetRowViewModel selectedTimesheetRow;
+        private int selectedTimesheetDay = -1;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
+            public sealed class PresenceAccessor
+            {
+                private readonly TimesheetRowViewModel owner;
+                public PresenceAccessor(TimesheetRowViewModel owner) => this.owner = owner;
+                public string this[int day]
+                {
+                    get => owner.GetPresenceMark(day);
+                    set
+                    {
+                        owner.SetPresenceMark(day, value);
+                        owner.OnPropertyChanged($"Presence[{day}]");
+                    }
+                }
+            }
+
             private readonly TimesheetPersonEntry source;
             private readonly string monthKey;
             private int number;
@@ -112,9 +129,11 @@ namespace ConstructionControl
                 BrigadeName = source.BrigadeName;
                 IsBrigadier = source.IsBrigadier;
                 PersonId = source.PersonId;
+                Presence = new PresenceAccessor(this);
             }
             public Guid PersonId { get; }
             public TimesheetPersonEntry Source => source;
+            public PresenceAccessor Presence { get; }
 
             public string FullName
             {
@@ -212,6 +231,14 @@ namespace ConstructionControl
             }
 
             public string GetDayValue(int day) => source.GetDayValue(monthKey, day);
+            public string GetDayComment(int day) => source.GetDayComment(monthKey, day);
+            public bool HasDayComment(int day) => source.HasDayComment(monthKey, day);
+            public bool IsNonHourCode(int day) => source.IsNonHourCode(monthKey, day);
+            public bool? IsDocumentAccepted(int day) => source.GetDocumentAccepted(monthKey, day);
+            public void SetComment(int day, string comment) => source.SetDayComment(monthKey, day, comment);
+            public void SetDocumentAccepted(int day, bool? accepted) => source.SetDocumentAccepted(monthKey, day, accepted);
+            public string GetPresenceMark(int day) => source.GetPresenceMark(monthKey, day);
+            public void SetPresenceMark(int day, string mark) => source.SetPresenceMark(monthKey, day, mark);
 
             public void SetDayValue(int day, string value)
             {
@@ -245,6 +272,18 @@ namespace ConstructionControl
                 }
                 MonthTotalHours = total;
             }
+            public Brush GetDayBackground(int day)
+            {
+                if (!IsNonHourCode(day))
+                    return Brushes.Transparent;
+
+                var docAccepted = IsDocumentAccepted(day);
+                if (docAccepted == true)
+                    return new SolidColorBrush(Color.FromRgb(209, 250, 229));
+
+                return new SolidColorBrush(Color.FromRgb(254, 226, 226));
+            }
+
 
             public event PropertyChangedEventHandler PropertyChanged;
             private void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -954,6 +993,7 @@ namespace ConstructionControl
             RefreshTimesheetBrigades();
             RefreshTimesheetRows();
             TimesheetMonthText.Text = timesheetMonth.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+            UpdateTimesheetMissingDocsNotification();
         }
 
         private void RefreshTimesheetBrigades()
@@ -1048,29 +1088,32 @@ namespace ConstructionControl
                 ItemsSource = timesheetAssignableBrigades,
                 Width = 180
             });
-
+            TimesheetGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Удалить",
+                Width = 82,
+                CellTemplate = BuildDeletePersonCellTemplate()
+            });
             var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
             for (var day = 1; day <= daysInMonth; day++)
             {
+                if (IsTodayColumnSlot(day))
+                    TimesheetGrid.Columns.Add(BuildTodayPresenceColumn(day));
+
                 var date = new DateTime(timesheetMonth.Year, timesheetMonth.Month, day);
                 var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-                var column = new DataGridTextColumn
+                var column = new DataGridTemplateColumn
                 {
                     Header = day.ToString(),
-                    Binding = new Binding($"[{day}]")
-                    {
-                        Mode = BindingMode.TwoWay,
-                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
-                    },
-                    Width = 38
+                    Width = 46,
+                    CellTemplate = BuildTimesheetDayCellTemplate(day),
+                    CellEditingTemplate = BuildTimesheetDayCellTemplate(day)
                 };
+                var style = new Style(typeof(DataGridCell));
                 if (isWeekend)
-                {
-                    column.CellStyle = new Style(typeof(DataGridCell))
-                    {
-                        Setters = { new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(236, 236, 236))) }
-                    };
-                }
+                    style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(245, 245, 245))));
+                style.Setters.Add(new Setter(DataGridCell.ToolTipProperty, new Binding { Converter = new TimesheetDayCommentToolTipConverter(day) }));
+                column.CellStyle = style;
                 TimesheetGrid.Columns.Add(column);
             }
 
@@ -1083,14 +1126,118 @@ namespace ConstructionControl
             });
         }
 
-        private sealed class TimesheetDayBindingConverter : IValueConverter
+        private bool IsTodayColumnSlot(int day)
+    => timesheetMonth.Year == DateTime.Today.Year
+       && timesheetMonth.Month == DateTime.Today.Month
+       && day == DateTime.Today.Day;
+
+        private DataTemplate BuildDeletePersonCellTemplate()
+        {
+            var button = new FrameworkElementFactory(typeof(Button));
+            button.SetValue(Button.ContentProperty, "🗑");
+            button.SetValue(Button.ToolTipProperty, "Удалить сотрудника из табеля");
+            button.SetValue(Button.PaddingProperty, new Thickness(4, 1, 4, 1));
+            button.SetValue(Button.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            button.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(DeletePersonButton_Click));
+            return new DataTemplate { VisualTree = button };
+        }
+
+        private DataGridTemplateColumn BuildTodayPresenceColumn(int day)
+        {
+            var comboFactory = new FrameworkElementFactory(typeof(ComboBox));
+            comboFactory.SetValue(ComboBox.ItemsSourceProperty, new[] { string.Empty, "✔", "✖" });
+            comboFactory.SetValue(ComboBox.WidthProperty, 52.0);
+            comboFactory.SetValue(ComboBox.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            comboFactory.SetValue(ComboBox.BackgroundProperty, new SolidColorBrush(Color.FromRgb(254, 249, 195)));
+            comboFactory.SetBinding(ComboBox.TextProperty, new Binding($"Presence[{day}]")
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            return new DataGridTemplateColumn
+            {
+                Header = "Сегодня ✔/✖",
+                Width = 72,
+                CellTemplate = new DataTemplate { VisualTree = comboFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = comboFactory },
+                CellStyle = new Style(typeof(DataGridCell))
+                {
+                    Setters =
+                    {
+                        new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(254, 249, 195)))
+                    }
+                }
+            };
+        }
+
+        private DataTemplate BuildTimesheetDayCellTemplate(int day)
+        {
+            var grid = new FrameworkElementFactory(typeof(Grid));
+
+            var editor = new FrameworkElementFactory(typeof(TextBox));
+            editor.SetValue(TextBox.BorderThicknessProperty, new Thickness(0));
+            editor.SetValue(TextBox.PaddingProperty, new Thickness(2, 0, 10, 0));
+            editor.SetBinding(TextBox.TextProperty, new Binding($"[{day}]")
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+            editor.SetBinding(TextBox.BackgroundProperty, new Binding { Converter = new TimesheetDayBackgroundConverter(day) });
+            grid.AppendChild(editor);
+
+            var marker = new FrameworkElementFactory(typeof(TextBlock));
+            marker.SetValue(TextBlock.TextProperty, "*");
+            marker.SetValue(TextBlock.ForegroundProperty, Brushes.DarkOrange);
+            marker.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+            marker.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+            marker.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Top);
+            marker.SetValue(TextBlock.MarginProperty, new Thickness(0, -1, 1, 0));
+            marker.SetBinding(TextBlock.VisibilityProperty, new Binding { Converter = new TimesheetDayCommentVisibilityConverter(day) });
+            marker.SetBinding(TextBlock.ToolTipProperty, new Binding { Converter = new TimesheetDayCommentToolTipConverter(day) });
+            grid.AppendChild(marker);
+
+            return new DataTemplate { VisualTree = grid };
+        }
+
+        private sealed class TimesheetDayBackgroundConverter : IValueConverter
         {
             private readonly int day;
-            public TimesheetDayBindingConverter(int day) => this.day = day;
+            public TimesheetDayBackgroundConverter(int day) => this.day = day;
             public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-                => value is TimesheetRowViewModel row ? row.GetDayValue(day) : string.Empty;
+                               => value is TimesheetRowViewModel row ? row.GetDayBackground(day) : Brushes.Transparent;
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-                => value?.ToString() ?? string.Empty;
+                               => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayCommentVisibilityConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayCommentVisibilityConverter(int day) => this.day = day;
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row && row.HasDayComment(day) ? Visibility.Visible : Visibility.Collapsed;
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayCommentToolTipConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayCommentToolTipConverter(int day) => this.day = day;
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                if (value is not TimesheetRowViewModel row)
+                    return string.Empty;
+
+                var comment = row.GetDayComment(day);
+                if (string.IsNullOrWhiteSpace(comment))
+                    return null;
+
+                return $"Комментарий: {comment}";
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
         }
 
         private void TimesheetGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
@@ -1128,6 +1275,7 @@ namespace ConstructionControl
 
             row.RecalculateTotal();
             SaveState();
+            UpdateTimesheetMissingDocsNotification();
 
             if (day == DateTime.Today.Day
                 && timesheetMonth.Year == DateTime.Today.Year
@@ -1158,6 +1306,7 @@ namespace ConstructionControl
                 RefreshTimesheetBrigades();
                 RefreshTimesheetRows();
                 SaveState();
+                UpdateTimesheetMissingDocsNotification();
             }));
         }
 
@@ -1175,6 +1324,102 @@ namespace ConstructionControl
         private void TimesheetGrid_AutoGeneratingColumn(object sender, DataGridAutoGeneratingColumnEventArgs e)
         {
             e.Cancel = true;
+        }
+        private void TimesheetGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
+        {
+            var cell = TimesheetGrid.SelectedCells.FirstOrDefault();
+            selectedTimesheetRow = cell.Item as TimesheetRowViewModel;
+            selectedTimesheetDay = ParseDayFromHeader(cell.Column?.Header);
+        }
+
+        private void TimesheetGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                DeleteSelectedTimesheetPerson();
+                e.Handled = true;
+            }
+        }
+
+        private void DeletePersonButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.DataContext is TimesheetRowViewModel row)
+                DeleteTimesheetPerson(row);
+        }
+
+        private void DeleteTimesheetPerson_Click(object sender, RoutedEventArgs e)
+            => DeleteSelectedTimesheetPerson();
+
+        private void DeleteSelectedTimesheetPerson()
+        {
+            if (selectedTimesheetRow == null)
+            {
+                MessageBox.Show("Выберите строку сотрудника в табеле.");
+                return;
+            }
+
+            DeleteTimesheetPerson(selectedTimesheetRow);
+        }
+
+        private void DeleteTimesheetPerson(TimesheetRowViewModel row)
+        {
+            if (row == null || currentObject?.TimesheetPeople == null)
+                return;
+
+            var name = row.FullName;
+            if (MessageBox.Show($"Удалить сотрудника \"{name}\" из табеля?", "Удаление", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            currentObject.TimesheetPeople.Remove(row.Source);
+            SaveState();
+            RebuildTimesheetView();
+        }
+
+        private void EditSelectedDayComment_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetSelectedDayEntry(out var row, out var day))
+                return;
+
+            var currentComment = row.GetDayComment(day);
+            var comment = PromptMultiline("Комментарий к дню", $"Введите комментарий ({day} число):", currentComment);
+            if (comment == null)
+                return;
+
+            row.SetComment(day, comment);
+            SaveState();
+            UpdateTimesheetMissingDocsNotification();
+            TimesheetGrid.Items.Refresh();
+        }
+
+        private void ToggleSelectedDayDocument_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetSelectedDayEntry(out var row, out var day))
+                return;
+
+            if (!row.IsNonHourCode(day))
+            {
+                MessageBox.Show("Документ закрытия нужен только для кодов (не числовых часов).");
+                return;
+            }
+
+            var current = row.IsDocumentAccepted(day);
+            row.SetDocumentAccepted(day, current == true ? false : true);
+            SaveState();
+            UpdateTimesheetMissingDocsNotification();
+            TimesheetGrid.Items.Refresh();
+        }
+
+        private bool TryGetSelectedDayEntry(out TimesheetRowViewModel row, out int day)
+        {
+            row = selectedTimesheetRow;
+            day = selectedTimesheetDay;
+            if (row == null || day <= 0)
+            {
+                MessageBox.Show("Сначала выберите ячейку конкретного дня.");
+                return false;
+            }
+
+            return true;
         }
 
         private void TimesheetPrevMonth_Click(object sender, RoutedEventArgs e)
@@ -1324,6 +1569,82 @@ namespace ConstructionControl
             doc.PageWidth = pd.PrintableAreaWidth;
             doc.ColumnWidth = pd.PrintableAreaWidth;
             pd.PrintDocument(((IDocumentPaginatorSource)doc).DocumentPaginator, "Табель");
+        }
+        private void UpdateTimesheetMissingDocsNotification()
+        {
+            if (currentObject?.TimesheetPeople == null)
+                return;
+
+            var monthKey = timesheetMonth.ToString("yyyy-MM");
+            var pending = new List<string>();
+            foreach (var person in currentObject.TimesheetPeople)
+            {
+                var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
+                for (var day = 1; day <= daysInMonth; day++)
+                {
+                    if (!person.IsNonHourCode(monthKey, day))
+                        continue;
+
+                    if (person.GetDocumentAccepted(monthKey, day) == true)
+                        continue;
+
+                    pending.Add($"{person.FullName} — {day:00}.{timesheetMonth.Month:00}.{timesheetMonth.Year}");
+                }
+            }
+
+            if (pending.Count == 0)
+            {
+                OtReminderPopup.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            OtReminderText.Text = $"Нет оправдательных документов: {Environment.NewLine}{string.Join(Environment.NewLine, pending.Take(8))}"
+                                + (pending.Count > 8 ? $"{Environment.NewLine}… и еще {pending.Count - 8}" : string.Empty);
+            OtReminderPopup.Visibility = Visibility.Visible;
+        }
+
+        private string PromptMultiline(string title, string question, string initialValue)
+        {
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 470,
+                Height = 260,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var root = new Grid { Margin = new Thickness(12) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var q = new TextBlock { Text = question, Margin = new Thickness(0, 0, 0, 8) };
+            Grid.SetRow(q, 0);
+            root.Children.Add(q);
+
+            var tb = new TextBox
+            {
+                Text = initialValue ?? string.Empty,
+                AcceptsReturn = true,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                TextWrapping = TextWrapping.Wrap
+            };
+            Grid.SetRow(tb, 1);
+            root.Children.Add(tb);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            var ok = new Button { Content = "Сохранить", MinWidth = 90, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
+            var cancel = new Button { Content = "Отмена", MinWidth = 90, IsCancel = true };
+            ok.Click += (_, _) => dialog.DialogResult = true;
+            buttons.Children.Add(ok);
+            buttons.Children.Add(cancel);
+            Grid.SetRow(buttons, 2);
+            root.Children.Add(buttons);
+
+            dialog.Content = root;
+            return dialog.ShowDialog() == true ? tb.Text?.Trim() ?? string.Empty : null;
         }
 
         private FlowDocument BuildTimesheetDocument(bool blank)

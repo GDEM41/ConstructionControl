@@ -1002,10 +1002,7 @@
                                           SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
                                     <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
                                     <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click">🖨 Печать пустого</Button>
-                                                                        <TextBlock Margin="12,0,0,0"
-                                               VerticalAlignment="Center"
-                                               Foreground="#4B5563"
-                                               Text="День: сначала П (приход), потом У (уход), затем часы"/>
+
                                 </WrapPanel>
 
                                 <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
@@ -1026,6 +1023,9 @@
                                                   ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
                                         <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Content="Бригадир" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить звено/человека</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="DeleteTimesheetPerson_Click">🗑 Удалить выбранного</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="EditSelectedDayComment_Click">💬 Комментарий к дню</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="ToggleSelectedDayDocument_Click">📄 Закрыть/снять документ</Button>
                                     </WrapPanel>
                                 </Border>
 
@@ -1040,7 +1040,11 @@
                                       CellEditEnding="TimesheetGrid_CellEditEnding"
                                       RowEditEnding="TimesheetGrid_RowEditEnding"
                                       LoadingRow="TimesheetGrid_LoadingRow"
-                                      AutoGeneratingColumn="TimesheetGrid_AutoGeneratingColumn"/>
+                                      AutoGeneratingColumn="TimesheetGrid_AutoGeneratingColumn"
+                                      SelectionUnit="Cell"
+                                      SelectionMode="Extended"
+                                      SelectedCellsChanged="TimesheetGrid_SelectedCellsChanged"
+                                      PreviewKeyDown="TimesheetGrid_PreviewKeyDown"/>
                             </Grid>
                         </TabItem>
 

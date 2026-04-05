@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Globalization;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace ConstructionControl
@@ -100,132 +101,121 @@ namespace ConstructionControl
 
         public string GetDayValue(string monthKey, int day)
         {
-            var month = Months.FirstOrDefault(x => x.MonthKey == monthKey);
-            if (month == null || day < 1 || day > 31)
-                return string.Empty;
-            if (month.DayEntries.TryGetValue(day, out var entry) && entry != null)
-            {
-                if (!string.IsNullOrWhiteSpace(entry.Hours))
-                    return entry.Hours;
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: false);
+            return entry?.Value?.Trim() ?? string.Empty;
+        }
 
-                if (entry.ArrivalMarked && entry.DepartureMarked)
-                    return "П/У";
+        public string GetDayComment(string monthKey, int day)
+          => GetOrCreateDayEntry(monthKey, day, createIfMissing: false)?.Comment?.Trim() ?? string.Empty;
 
-                if (entry.ArrivalMarked)
-                    return "П";
-            }
+        public bool HasDayComment(string monthKey, int day)
+            => !string.IsNullOrWhiteSpace(GetDayComment(monthKey, day));
+        public bool? GetDocumentAccepted(string monthKey, int day)
+              => GetOrCreateDayEntry(monthKey, day, createIfMissing: false)?.DocumentAccepted;
 
+        public void SetDayComment(string monthKey, int day, string comment)
+        {
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
+            if (entry == null)
+                return;
+            entry.Comment = string.IsNullOrWhiteSpace(comment) ? string.Empty : comment.Trim();
+            OnPropertyChanged(nameof(Months));
+        }
 
-            if (month.DayValues.TryGetValue(day, out var value))
-                return value ?? string.Empty;
+        public void SetDocumentAccepted(string monthKey, int day, bool? accepted)
+        {
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
+            if (entry == null)
 
-            return string.Empty;
+                entry.DocumentAccepted = accepted;
+            OnPropertyChanged(nameof(Months));
+        }
+
+        public string GetPresenceMark(string monthKey, int day)
+          => GetOrCreateDayEntry(monthKey, day, createIfMissing: false)?.PresenceMark ?? string.Empty;
+
+        public void SetPresenceMark(string monthKey, int day, string mark)
+        {
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
+            if (entry == null)
+                return;
+            entry.PresenceMark = mark is "✔" or "✖" ? mark : string.Empty;
+            OnPropertyChanged(nameof(Months));
         }
 
         public void SetDayValue(string monthKey, int day, string value)
         {
-            if (string.IsNullOrWhiteSpace(monthKey) || day < 1 || day > 31)
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
+            if (entry == null)
                 return;
 
-            var month = Months.FirstOrDefault(x => x.MonthKey == monthKey);
-            if (month == null)
-            {
-                month = new TimesheetMonthEntry { MonthKey = monthKey };
-                Months.Add(month);
-            }
-
-            if (string.IsNullOrWhiteSpace(value))
-                {
-                month.DayValues.Remove(day);
-                month.DayEntries.Remove(day);
-                 }
-            else
-            {
-                month.DayValues[day] = value.Trim();
-                month.DayEntries[day] = new TimesheetDayEntry
-                {
-                    ArrivalMarked = true,
-                    DepartureMarked = true,
-                    Hours = value.Trim()
-                };
-            }
-
+            entry.Value = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
             OnPropertyChanged(nameof(Months));
         }
+
+
         public bool TryApplyDayValue(string monthKey, int day, string value, out string errorMessage)
         {
             errorMessage = null;
             if (string.IsNullOrWhiteSpace(monthKey) || day < 1 || day > 31)
                 return false;
+            SetDayValue(monthKey, day, value);
+            return true;
+        }
+
+        public bool IsNonHourCode(string monthKey, int day)
+        {
+            var value = GetDayValue(monthKey, day);
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            return !(double.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out _)
+                     || double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out _));
+        }
+
+        private TimesheetDayEntry GetOrCreateDayEntry(string monthKey, int day, bool createIfMissing)
+        {
+            if (string.IsNullOrWhiteSpace(monthKey) || day < 1 || day > 31)
+                return null;
 
             var month = Months.FirstOrDefault(x => x.MonthKey == monthKey);
-            if (month == null)
+            if (month == null && createIfMissing)
             {
                 month = new TimesheetMonthEntry { MonthKey = monthKey };
                 Months.Add(month);
             }
 
-            var input = value?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                month.DayValues.Remove(day);
-                month.DayEntries.Remove(day);
-                OnPropertyChanged(nameof(Months));
-                return true;
-            }
-
+            if (month == null)
+                return null;
+            // миграция старых данных
             if (!month.DayEntries.TryGetValue(day, out var entry) || entry == null)
             {
-                entry = new TimesheetDayEntry();
-                month.DayEntries[day] = entry;
-            }
-
-            if (double.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out _)
-                || double.TryParse(input, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
-            {
-                entry.ArrivalMarked = true;
-                entry.DepartureMarked = true;
-
-                entry.Hours = input;
-                month.DayValues[day] = input;
-                OnPropertyChanged(nameof(Months));
-                return true;
-            }
-
-            if (input.Equals("П", StringComparison.CurrentCultureIgnoreCase)
-                || input.Equals("+", StringComparison.CurrentCultureIgnoreCase)
-                || input.Equals("ПРИШЕЛ", StringComparison.CurrentCultureIgnoreCase))
-            {
-                entry.ArrivalMarked = true;
-                entry.Hours = string.Empty;
-                month.DayValues[day] = "П";
-                OnPropertyChanged(nameof(Months));
-                return true;
-            }
-
-            if (input.Equals("У", StringComparison.CurrentCultureIgnoreCase)
-                || input.Equals("-", StringComparison.CurrentCultureIgnoreCase)
-                || input.Equals("УШЕЛ", StringComparison.CurrentCultureIgnoreCase)
-                || input.Equals("П/У", StringComparison.CurrentCultureIgnoreCase))
-            {
-                if (!entry.ArrivalMarked)
+                if (month.DayValues.TryGetValue(day, out var oldValue) && !string.IsNullOrWhiteSpace(oldValue))
                 {
-                    errorMessage = "Нельзя отметить уход, пока не отмечен приход (П).";
-                    return false;
+                    if (!entry.ArrivalMarked)
+                    {
+                        entry = new TimesheetDayEntry { Value = oldValue.Trim() };
+                        month.DayEntries[day] = entry;
+                    }
+                    else if (createIfMissing)
+                    {
+                        entry = new TimesheetDayEntry();
+                        month.DayEntries[day] = entry;
+                    }
+
+
                 }
 
-                entry.DepartureMarked = true;
-                entry.Hours = string.Empty;
-                month.DayValues[day] = "П/У";
-                OnPropertyChanged(nameof(Months));
-                return true;
+                if (entry != null)
+                    month.DayValues[day] = entry.Value ?? string.Empty;
+
+                return entry;
             }
+            if (entry != null)
+                month.DayValues[day] = entry.Value ?? string.Empty;
 
-            errorMessage = "Допустимые значения: П (приход), У (уход) или число часов.";
-            return false;
+            return entry;
         }
-
-
         private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
@@ -251,9 +241,11 @@ namespace ConstructionControl
 
     public class TimesheetDayEntry
     {
-        public bool ArrivalMarked { get; set; }
-        public bool DepartureMarked { get; set; }
-        public string Hours { get; set; }
+        public string Value { get; set; }
+        public string PresenceMark { get; set; }
+        public string Comment { get; set; }
+        public bool? DocumentAccepted { get; set; }
+        public bool ArrivalMarked { get; set; } // ← ДОБАВЬ ЭТО
     }
 
     public class OtJournalEntry : INotifyPropertyChanged
