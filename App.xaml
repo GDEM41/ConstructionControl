@@ -9,12 +9,13 @@
         <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F8FBFF"/>
         <SolidColorBrush x:Key="StrokeBrush" Color="#D8E1EE"/>
         <SolidColorBrush x:Key="TextBrush" Color="#102033"/>
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#0F6CBD"/>
-        <SolidColorBrush x:Key="PrimaryBrushHover" Color="#0B5DA5"/>
-        <SolidColorBrush x:Key="PrimaryBrushPressed" Color="#094B84"/>
-        <SolidColorBrush x:Key="SecondaryBrush" Color="#EAF1F9"/>
-        <SolidColorBrush x:Key="SecondaryBrushHover" Color="#DDE8F5"/>
-        <SolidColorBrush x:Key="SecondaryBrushPressed" Color="#CEDCED"/>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#1C7C54"/>
+        <SolidColorBrush x:Key="PrimaryBrushHover" Color="#176746"/>
+        <SolidColorBrush x:Key="PrimaryBrushPressed" Color="#125139"/>
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#EEF4F0"/>
+        <SolidColorBrush x:Key="SecondaryBrushHover" Color="#E1ECE5"/>
+        <SolidColorBrush x:Key="SecondaryBrushPressed" Color="#D2E1D8"/>
+        <DropShadowEffect x:Key="ComboShadow" Color="#183153" Opacity="0.12" BlurRadius="16" ShadowDepth="2"/>
         <DropShadowEffect x:Key="SoftShadowEffect" BlurRadius="22" Opacity="0.14" ShadowDepth="3" Color="#183153"/>
 
         <Style TargetType="Window">
@@ -35,6 +36,41 @@
             <Setter Property="Padding" Value="10,7"/>
             <Setter Property="MinHeight" Value="36"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <Grid>
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                                <TextBlock x:Name="Watermark"
+                                           Margin="{TemplateBinding Padding}"
+                                           Foreground="#8A98AA"
+                                           Text="{TemplateBinding Tag}"
+                                           IsHitTestVisible="False"
+                                           Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FBFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="ComboBox">
@@ -45,6 +81,155 @@
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="MinHeight" Value="36"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border x:Name="Bd"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10"/>
+
+                            <ContentPresenter x:Name="SelectionContent"
+                                              Grid.Column="0"
+                                              Margin="10,0,10,0"
+                                              VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              RecognizesAccessKey="True"/>
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Grid.Column="0"
+                                     Margin="6,2,2,2"
+                                     Padding="4,0"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Visibility="Hidden"
+                                     Focusable="True"
+                                     HorizontalContentAlignment="Left"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock x:Name="ComboWatermark"
+                                       Grid.Column="0"
+                                       Margin="10,0,10,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#8A98AA"
+                                       Text="{TemplateBinding Tag}"
+                                       IsHitTestVisible="False"
+                                       Visibility="Collapsed"/>
+
+                            <ToggleButton x:Name="PART_ToggleButton"
+                                          Width="32"
+                                          Height="32"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          Focusable="False"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,4,0"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ArrowBg" CornerRadius="8" Padding="6" Background="Transparent">
+                                            <Path x:Name="ArrowIcon"
+                                                  Width="12"
+                                                  Height="8"
+                                                  Fill="#64748B"
+                                                  Data="M 0 0 L 12 0 L 6 8 Z"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#EEF4F0"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="#102033"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#E1ECE5"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="#102033"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   PopupAnimation="Fade">
+                                <Border Margin="0,4,0,0"
+                                        Background="White"
+                                        BorderBrush="{StaticResource StrokeBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="4"
+                                        Effect="{StaticResource ComboShadow}">
+                                    <ScrollViewer CanContentScroll="True"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="SelectedIndex" Value="-1"/>
+                                    <Condition Property="Text" Value=""/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ComboWatermark" Property="Visibility" Value="Visible"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="SelectionContent" Property="Visibility" Value="Hidden"/>
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FBFF"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Padding" Value="10,6"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="ItemBd"
+                                            CornerRadius="8"
+                                            Background="Transparent"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background" Value="#EEF4F0"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemBd" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="DatePicker">

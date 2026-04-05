@@ -11,13 +11,13 @@
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
-        <Style x:Key="PrimaryButton" TargetType="Button">
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Height" Value="38"/>
             <Setter Property="MinWidth" Value="118"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>
-        <Style x:Key="ChipToggle" TargetType="ToggleButton">
+                        <Style x:Key="ChipToggle" TargetType="ToggleButton">
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Margin" Value="4,4,4,4"/>
             <Setter Property="FontSize" Value="13"/>
@@ -42,8 +42,8 @@
 
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="root" Property="Background" Value="#2563EB"/>
-                                <Setter TargetName="root" Property="BorderBrush" Value="#1E40AF"/>
+                                <Setter TargetName="root" Property="Background" Value="#1C7C54"/>
+                                <Setter TargetName="root" Property="BorderBrush" Value="#176746"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -93,8 +93,8 @@
                                 <Setter TargetName="ArrowBg" Property="Background" Value="#E5E7EB"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#93C5FD"/>
-                                <Setter TargetName="Bd" Property="Background" Value="#EFF6FF"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#EEF7F1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -120,8 +120,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1D4ED8"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#1C7C54"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#176746"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -136,8 +136,8 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="Background" Value="#1D4ED8"/>
-            <Setter Property="BorderBrush" Value="#1E40AF"/>
+            <Setter Property="Background" Value="#1C7C54"/>
+            <Setter Property="BorderBrush" Value="#176746"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -151,10 +151,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1E40AF"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#176746"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1E3A8A"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#125139"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -167,8 +167,8 @@
 
         <Style x:Key="ModernSummaryModeToggle" TargetType="CheckBox">
             <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Background" Value="#EEF2FF"/>
-            <Setter Property="BorderBrush" Value="#C7D2FE"/>
+            <Setter Property="Background" Value="#EEF7F1"/>
+            <Setter Property="BorderBrush" Value="#B9D8C6"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -180,8 +180,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1D4ED8"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#1C7C54"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#176746"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -603,6 +603,7 @@
                                 <TextBox x:Name="ArrivalSearchBox"
         Width="240"
         Height="32"
+        Tag="Поиск по наименованию или ТТН"
         VerticalContentAlignment="Center"
         FontSize="13"
         Margin="0,0,10,0"
@@ -829,20 +830,27 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Button Style="{StaticResource PrimaryButton}" Click="AddOtRow_Click">➕ Добавить запись</Button>
-                                <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedRepeatDone_Click">✅ Повторный пройден (выбранная строка)</Button>
-                                <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedPersonDismissed_Click">🚫 Нет на объекте</Button>
-                                <Button Style="{StaticResource SecondaryButton}" Click="DeleteSelectedOtRow_Click">🗑 Удалить выбранную строку</Button>
-                            </StackPanel>
+                            <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="Поиск по ФИО:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBox x:Name="OtSearchTextBox"
-                                         Width="320"
-                                         VerticalContentAlignment="Center"
-                                         TextChanged="OtSearchTextBox_TextChanged"/>
-                            </StackPanel>
+                                    <TextBox x:Name="OtSearchTextBox"
+                                             Grid.Row="0"
+                                             Width="360"
+                                             Tag="Поиск по ФИО, например: Иванов"
+                                             TextChanged="OtSearchTextBox_TextChanged"/>
+
+                                    <WrapPanel Grid.Row="1" Margin="0,12,0,0">
+                                        <Button Style="{StaticResource PrimaryButton}" Click="AddOtRow_Click">➕ Добавить запись</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedRepeatDone_Click" Margin="8,0,0,0">✅ Отметить повторный</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedPersonDismissed_Click" Margin="8,0,0,0">🚫 Снять с объекта</Button>
+                                        <Button Style="{StaticResource SecondaryButton}" Click="DeleteSelectedOtRow_Click" Margin="8,0,0,0">🗑 Удалить запись</Button>
+                                    </WrapPanel>
+                                </Grid>
+                            </Border>
 
                             <DataGrid x:Name="OtJournalGrid"
                                       Grid.Row="2"
@@ -877,7 +885,8 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                         <DataGridTemplateColumn.CellEditingTemplate>
                                             <DataTemplate>
-                                                <TextBox Text="{Binding FullName, UpdateSourceTrigger=PropertyChanged}"
+                                            <TextBox Text="{Binding FullName, UpdateSourceTrigger=PropertyChanged}"
+                                                         Tag="Фамилия Имя Отчество"
                                                         
                                                          TextWrapping="NoWrap"
                                                          VerticalContentAlignment="Center"/>
@@ -987,48 +996,77 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <WrapPanel Grid.Row="0" Margin="0,0,0,8" VerticalAlignment="Center">
-                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrevMonth_Click">◀ Предыдущий</Button>
-                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetCurrentMonth_Click">Сегодня</Button>
-                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetNextMonth_Click">Следующий ▶</Button>
-                                    <TextBlock x:Name="TimesheetMonthText" Margin="10,0,18,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                    <TextBlock Text="Бригада:" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <ComboBox x:Name="TimesheetBrigadeFilter"
-                                          Width="220"
-                                          Margin="0,0,10,0"
-                                          SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
-                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
-                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click">🖨 Печать пустого</Button>
+                                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
 
-                                </WrapPanel>
+                                            <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Click="TimesheetPrevMonth_Click">◀ Предыдущий</Button>
+                                            <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="TimesheetCurrentMonth_Click" Margin="8,0,0,0">Сегодня</Button>
+                                            <Button Grid.Column="2" Style="{StaticResource SecondaryButton}" Click="TimesheetNextMonth_Click" Margin="8,0,0,0">Следующий ▶</Button>
+                                            <TextBlock x:Name="TimesheetMonthText" Grid.Column="3" Margin="16,0,18,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="15"/>
+                                <ComboBox x:Name="TimesheetBrigadeFilter"
+                                                      Grid.Column="4"
+                                                      Width="210"
+                                                      Tag="Фильтр по бригаде"
+                                                      SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
+                                            <StackPanel Grid.Column="5" Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
+                                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click" Margin="8,0,0,0">🖨 Печать пустого</Button>
+                                            </StackPanel>
+                                        </Grid>
 
-                                <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
-                                    <WrapPanel VerticalAlignment="Center">
-                                        <TextBlock Text="ФИО" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="TimesheetFullNameTextBox" Width="220" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Специальность" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="TimesheetSpecialtyTextBox" Width="170" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Разряд" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="TimesheetRankTextBox" Width="70" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Бригада" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <ComboBox x:Name="TimesheetBrigadeComboBox"
-                                                  Width="170"
-                                                  Margin="0,0,8,0"
-                                                  IsEditable="True"
-                                                  IsTextSearchEnabled="True"
-                                                  StaysOpenOnEdit="True"
-                                                  ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
-                                        <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Content="Бригадир" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить звено/человека</Button>
-                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="DeleteTimesheetPerson_Click">🗑 Удалить выбранного</Button>
-                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="EditSelectedDayComment_Click">💬 Комментарий к дню</Button>
-                                        <Button Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="ToggleSelectedDayDocument_Click">📄 Закрыть/снять документ</Button>
-                                    </WrapPanel>
+                                        <Grid Grid.Row="1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="170"/>
+                                                <ColumnDefinition Width="80"/>
+                                                <ColumnDefinition Width="180"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBox x:Name="TimesheetFullNameTextBox" Grid.Column="0" Margin="0,0,10,0" Tag="ФИО сотрудника"/>
+                                            <TextBox x:Name="TimesheetSpecialtyTextBox" Grid.Column="1" Margin="0,0,10,0" Tag="Специальность"/>
+                                            <TextBox x:Name="TimesheetRankTextBox" Grid.Column="2" Margin="0,0,10,0" Tag="Разряд"/>
+                                            <ComboBox x:Name="TimesheetBrigadeComboBox"
+                                                      Grid.Column="3"
+                                                      Margin="0,0,10,0"
+                                                      Tag="Название бригады"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      StaysOpenOnEdit="True"
+                                                      ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
+                                            <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Grid.Column="4" Content="Бригадир" Margin="0,0,12,0"/>
+                                            <WrapPanel Grid.Column="5" HorizontalAlignment="Right">
+                                                <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить</Button>
+                                                <Button Style="{StaticResource SecondaryButton}" Click="DeleteTimesheetPerson_Click" Margin="8,0,0,0">🗑 Удалить</Button>
+                                                <Button Style="{StaticResource SecondaryButton}" Click="EditSelectedDayComment_Click" Margin="8,0,0,0">💬 Комментарий</Button>
+                                                <Button Style="{StaticResource SecondaryButton}" Click="ToggleSelectedDayDocument_Click" Margin="8,0,0,0">📄 Документ</Button>
+                                            </WrapPanel>
+                                        </Grid>
+                                    </Grid>
                                 </Border>
 
+                                <Grid Grid.Row="1">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
                                 <DataGrid x:Name="TimesheetGrid"
-                                      Grid.Row="2"
+                                      Grid.Row="0"
                                       AutoGenerateColumns="False"
                                       CanUserAddRows="False"
                                       CanUserDeleteRows="False"
@@ -1043,6 +1081,7 @@
                                       SelectionMode="Extended"
                                       SelectedCellsChanged="TimesheetGrid_SelectedCellsChanged"
                                       PreviewKeyDown="TimesheetGrid_PreviewKeyDown"/>
+                                </Grid>
                             </Grid>
                         </TabItem>
 
@@ -1077,6 +1116,7 @@
                                             <StackPanel Grid.Column="1" Margin="0,0,12,0">
                                                 <TextBlock Text="Работа" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionActionBox"
+                                                          Tag="Например: монтаж"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
@@ -1086,6 +1126,7 @@
                                             <StackPanel Grid.Column="2" Margin="0,0,12,0">
                                                 <TextBlock Text="Что делали" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionWorkBox"
+                                                          Tag="Например: ригелей"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
@@ -1095,6 +1136,7 @@
                                             <StackPanel Grid.Column="3">
                                                 <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionBrigadeBox"
+                                                          Tag="Какая бригада выполняла"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
@@ -1113,6 +1155,7 @@
                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                                 <TextBlock Text="Элементы и количество" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionElementsBox"
+                                                          Tag="Например: РОП 4.26-30 - 4 шт"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
@@ -1122,6 +1165,7 @@
                                             <StackPanel Grid.Column="1" Margin="0,0,12,0">
                                                 <TextBlock Text="Блоки" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionBlocksBox"
+                                                          Tag="Например: 1, 2"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="False"
                                                           StaysOpenOnEdit="True"
@@ -1131,6 +1175,7 @@
                                             <StackPanel Grid.Column="2" Margin="0,0,12,0">
                                                 <TextBlock Text="Отметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionMarksBox"
+                                                          Tag="Например: +0.080, +3.220"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="False"
                                                           StaysOpenOnEdit="True"
@@ -1140,6 +1185,7 @@
                                             <StackPanel Grid.Column="3">
                                                 <TextBlock Text="Погода" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionWeatherBox"
+                                                          Tag="Например: +15, ясно"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
@@ -1156,6 +1202,7 @@
                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                                 <TextBlock Text="Отклонения" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionDeviationBox"
+                                                          Tag="Например: отклонение от осей +3 мм"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
