@@ -982,6 +982,58 @@
                         </Grid>
                     </TabItem>
 
+                    <TabItem Header="Табель">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <WrapPanel Grid.Row="0" Margin="0,0,0,8" VerticalAlignment="Center">
+                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrevMonth_Click">◀ Предыдущий</Button>
+                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetCurrentMonth_Click">Сегодня</Button>
+                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetNextMonth_Click">Следующий ▶</Button>
+                                <TextBlock x:Name="TimesheetMonthText" Margin="10,0,18,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+
+                                <TextBlock Text="Бригада:" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="TimesheetBrigadeFilter"
+                                          Width="220"
+                                          Margin="0,0,10,0"
+                                          SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
+                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
+                                <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click">🖨 Печать пустого</Button>
+                            </WrapPanel>
+
+                            <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                <WrapPanel VerticalAlignment="Center">
+                                    <TextBlock Text="ФИО" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox x:Name="TimesheetFullNameTextBox" Width="220" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Специальность" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox x:Name="TimesheetSpecialtyTextBox" Width="170" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Разряд" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox x:Name="TimesheetRankTextBox" Width="70" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Бригада" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox x:Name="TimesheetBrigadeTextBox" Width="170" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Content="Бригадир" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить звено/человека</Button>
+                                </WrapPanel>
+                            </Border>
+
+                            <DataGrid x:Name="TimesheetGrid"
+                                      Grid.Row="2"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      ColumnWidth="Auto"
+                                      HeadersVisibility="Column"
+                                      BeginningEdit="TimesheetGrid_BeginningEdit"
+                                      CellEditEnding="TimesheetGrid_CellEditEnding"
+                                      LoadingRow="TimesheetGrid_LoadingRow"
+                                      AutoGeneratingColumn="TimesheetGrid_AutoGeneratingColumn"/>
+                        </Grid>
+                    </TabItem>
+
 
 
                 </TabControl>
