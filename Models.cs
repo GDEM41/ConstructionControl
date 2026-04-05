@@ -126,20 +126,34 @@ namespace ConstructionControl
         {
             var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
             if (entry == null)
+                return;
 
-                entry.DocumentAccepted = accepted;
+            entry.DocumentAccepted = accepted;
             OnPropertyChanged(nameof(Months));
         }
 
         public string GetPresenceMark(string monthKey, int day)
           => GetOrCreateDayEntry(monthKey, day, createIfMissing: false)?.PresenceMark ?? string.Empty;
 
+        public bool GetPresenceChecked(string monthKey, int day)
+            => string.Equals(GetPresenceMark(monthKey, day), "✔", StringComparison.Ordinal);
+
         public void SetPresenceMark(string monthKey, int day, string mark)
         {
             var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
             if (entry == null)
                 return;
-            entry.PresenceMark = mark is "✔" or "✖" ? mark : string.Empty;
+            entry.PresenceMark = mark == "✔" ? mark : string.Empty;
+            OnPropertyChanged(nameof(Months));
+        }
+
+        public void SetPresenceChecked(string monthKey, int day, bool isChecked)
+        {
+            var entry = GetOrCreateDayEntry(monthKey, day, createIfMissing: true);
+            if (entry == null)
+                return;
+
+            entry.PresenceMark = isChecked ? "✔" : string.Empty;
             OnPropertyChanged(nameof(Months));
         }
 
@@ -192,18 +206,13 @@ namespace ConstructionControl
             {
                 if (month.DayValues.TryGetValue(day, out var oldValue) && !string.IsNullOrWhiteSpace(oldValue))
                 {
-                    if (!entry.ArrivalMarked)
-                    {
-                        entry = new TimesheetDayEntry { Value = oldValue.Trim() };
-                        month.DayEntries[day] = entry;
-                    }
-                    else if (createIfMissing)
-                    {
-                        entry = new TimesheetDayEntry();
-                        month.DayEntries[day] = entry;
-                    }
-
-
+                    entry = new TimesheetDayEntry { Value = oldValue.Trim() };
+                    month.DayEntries[day] = entry;
+                }
+                else if (createIfMissing)
+                {
+                    entry = new TimesheetDayEntry();
+                    month.DayEntries[day] = entry;
                 }
 
                 if (entry != null)

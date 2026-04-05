@@ -4,7 +4,7 @@ namespace ConstructionControl
 {
     public class AppState
     {
-        public ProjectObject CurrentObject { get; set; }
+        public ProjectObject? CurrentObject { get; set; }
         public List<JournalRecord> Journal { get; set; } = new();
     }
 }

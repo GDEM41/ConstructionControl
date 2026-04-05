@@ -61,7 +61,10 @@ namespace ConstructionControl
             if (SheetsList.SelectedItem == null)
                 return;
 
-            string sheetName = SheetsList.SelectedItem.ToString();
+            var sheetName = SheetsList.SelectedItem.ToString();
+            if (string.IsNullOrWhiteSpace(sheetName))
+                return;
+
             LoadPreview(sheetName);
         }
         private void LoadPreview(string sheetName)
@@ -193,6 +196,13 @@ namespace ConstructionControl
                     return;
                 }
 
+                var selectedSheet = SheetsList.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selectedSheet))
+                {
+                    MessageBox.Show("Выберите лист для импорта.");
+                    return;
+                }
+
                 var tempTemplate = new ExcelImportTemplate
                 {
                     DateRow = _dateRow.Value,
@@ -207,7 +217,7 @@ namespace ConstructionControl
                     PassportRow = _passportRow
                 };
 
-                ImportSheet(wb, SheetsList.SelectedItem.ToString(), tempTemplate);
+                ImportSheet(wb, selectedSheet, tempTemplate);
             }
 
             MessageBox.Show($"Импортировано записей: {ImportedRecords.Count}");

@@ -74,11 +74,9 @@ namespace ConstructionControl
         private int summaryTotalColumn;
         private int summaryNotArrivedColumn;
         private int summaryArrivedColumn;
-        private bool summaryFilterInitialized;
         private bool summaryFilterUpdating;
         private List<string> summaryFilterGroups = new();
         private string summarySelectedSubType = string.Empty;
-        private bool summaryHasOverage;
         private bool summaryMountedMode;
         private TextBlock summaryOverageNote;
         private readonly ObservableCollection<string> brigadierNames = new();
@@ -90,6 +88,7 @@ namespace ConstructionControl
         private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
         private readonly ObservableCollection<string> timesheetBrigades = new();
         private readonly ObservableCollection<string> timesheetAssignableBrigades = new();
+        private readonly List<TimesheetPersonEntry> subscribedTimesheetPeople = new();
         private DateTime timesheetMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
         private string selectedTimesheetBrigade = "Все бригады";
         private TimesheetRowViewModel selectedTimesheetRow;
@@ -107,6 +106,22 @@ namespace ConstructionControl
                     set
                     {
                         owner.SetPresenceMark(day, value);
+                        owner.OnPropertyChanged($"Presence[{day}]");
+                    }
+                }
+            }
+
+            public sealed class PresenceCheckedAccessor
+            {
+                private readonly TimesheetRowViewModel owner;
+                public PresenceCheckedAccessor(TimesheetRowViewModel owner) => this.owner = owner;
+                public bool this[int day]
+                {
+                    get => owner.GetPresenceChecked(day);
+                    set
+                    {
+                        owner.SetPresenceChecked(day, value);
+                        owner.OnPropertyChanged($"PresenceChecked[{day}]");
                         owner.OnPropertyChanged($"Presence[{day}]");
                     }
                 }
@@ -130,10 +145,12 @@ namespace ConstructionControl
                 IsBrigadier = source.IsBrigadier;
                 PersonId = source.PersonId;
                 Presence = new PresenceAccessor(this);
+                PresenceChecked = new PresenceCheckedAccessor(this);
             }
             public Guid PersonId { get; }
             public TimesheetPersonEntry Source => source;
             public PresenceAccessor Presence { get; }
+            public PresenceCheckedAccessor PresenceChecked { get; }
 
             public string FullName
             {
@@ -239,6 +256,8 @@ namespace ConstructionControl
             public void SetDocumentAccepted(int day, bool? accepted) => source.SetDocumentAccepted(monthKey, day, accepted);
             public string GetPresenceMark(int day) => source.GetPresenceMark(monthKey, day);
             public void SetPresenceMark(int day, string mark) => source.SetPresenceMark(monthKey, day, mark);
+            public bool GetPresenceChecked(int day) => source.GetPresenceChecked(monthKey, day);
+            public void SetPresenceChecked(int day, bool isChecked) => source.SetPresenceChecked(monthKey, day, isChecked);
 
             public void SetDayValue(int day, string value)
             {
@@ -943,6 +962,35 @@ namespace ConstructionControl
                 return;
 
             currentObject.TimesheetPeople ??= new List<TimesheetPersonEntry>();
+            RefreshTimesheetPersonSubscriptions();
+        }
+
+        private void RefreshTimesheetPersonSubscriptions()
+        {
+            foreach (var person in subscribedTimesheetPeople)
+                person.PropertyChanged -= TimesheetPersonEntry_PropertyChanged;
+
+            subscribedTimesheetPeople.Clear();
+
+            if (currentObject?.TimesheetPeople == null)
+                return;
+
+            foreach (var person in currentObject.TimesheetPeople.Distinct())
+            {
+                if (person == null)
+                    continue;
+
+                person.PropertyChanged += TimesheetPersonEntry_PropertyChanged;
+                subscribedTimesheetPeople.Add(person);
+            }
+        }
+
+        private void TimesheetPersonEntry_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(TimesheetPersonEntry.Months))
+                return;
+
+            Dispatcher.BeginInvoke(new Action(UpdateTimesheetMissingDocsNotification));
         }
 
         private void SyncTimesheetPeopleWithOtJournal()
@@ -983,12 +1031,15 @@ namespace ConstructionControl
         {
             if (currentObject == null)
             {
+                RefreshTimesheetPersonSubscriptions();
                 TimesheetGrid.ItemsSource = null;
+                OtReminderPopup.Visibility = Visibility.Collapsed;
                 return;
             }
 
             EnsureTimesheetStorage();
             SyncTimesheetPeopleWithOtJournal();
+            RefreshTimesheetPersonSubscriptions();
             BuildTimesheetColumns();
             RefreshTimesheetBrigades();
             RefreshTimesheetRows();
@@ -1088,12 +1139,6 @@ namespace ConstructionControl
                 ItemsSource = timesheetAssignableBrigades,
                 Width = 180
             });
-            TimesheetGrid.Columns.Add(new DataGridTemplateColumn
-            {
-                Header = "Удалить",
-                Width = 82,
-                CellTemplate = BuildDeletePersonCellTemplate()
-            });
             var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
             for (var day = 1; day <= daysInMonth; day++)
             {
@@ -1131,36 +1176,26 @@ namespace ConstructionControl
        && timesheetMonth.Month == DateTime.Today.Month
        && day == DateTime.Today.Day;
 
-        private DataTemplate BuildDeletePersonCellTemplate()
-        {
-            var button = new FrameworkElementFactory(typeof(Button));
-            button.SetValue(Button.ContentProperty, "🗑");
-            button.SetValue(Button.ToolTipProperty, "Удалить сотрудника из табеля");
-            button.SetValue(Button.PaddingProperty, new Thickness(4, 1, 4, 1));
-            button.SetValue(Button.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            button.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(DeletePersonButton_Click));
-            return new DataTemplate { VisualTree = button };
-        }
-
         private DataGridTemplateColumn BuildTodayPresenceColumn(int day)
         {
-            var comboFactory = new FrameworkElementFactory(typeof(ComboBox));
-            comboFactory.SetValue(ComboBox.ItemsSourceProperty, new[] { string.Empty, "✔", "✖" });
-            comboFactory.SetValue(ComboBox.WidthProperty, 52.0);
-            comboFactory.SetValue(ComboBox.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            comboFactory.SetValue(ComboBox.BackgroundProperty, new SolidColorBrush(Color.FromRgb(254, 249, 195)));
-            comboFactory.SetBinding(ComboBox.TextProperty, new Binding($"Presence[{day}]")
+            var checkBoxFactory = new FrameworkElementFactory(typeof(CheckBox));
+            checkBoxFactory.SetValue(CheckBox.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            checkBoxFactory.SetValue(CheckBox.VerticalAlignmentProperty, VerticalAlignment.Center);
+            checkBoxFactory.SetValue(CheckBox.ForegroundProperty, new SolidColorBrush(Color.FromRgb(146, 64, 14)));
+            checkBoxFactory.SetBinding(ToggleButton.IsCheckedProperty, new Binding($"PresenceChecked[{day}]")
             {
                 Mode = BindingMode.TwoWay,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
             });
+            checkBoxFactory.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(TodayPresenceChanged));
+            checkBoxFactory.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler(TodayPresenceChanged));
 
             return new DataGridTemplateColumn
             {
-                Header = "Сегодня ✔/✖",
-                Width = 72,
-                CellTemplate = new DataTemplate { VisualTree = comboFactory },
-                CellEditingTemplate = new DataTemplate { VisualTree = comboFactory },
+                Header = "Сегодня",
+                Width = 64,
+                CellTemplate = new DataTemplate { VisualTree = checkBoxFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = checkBoxFactory },
                 CellStyle = new Style(typeof(DataGridCell))
                 {
                     Setters =
@@ -1169,6 +1204,11 @@ namespace ConstructionControl
                     }
                 }
             };
+        }
+
+        private void TodayPresenceChanged(object sender, RoutedEventArgs e)
+        {
+            SaveState();
         }
 
         private DataTemplate BuildTimesheetDayCellTemplate(int day)
@@ -1339,12 +1379,6 @@ namespace ConstructionControl
                 DeleteSelectedTimesheetPerson();
                 e.Handled = true;
             }
-        }
-
-        private void DeletePersonButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is FrameworkElement fe && fe.DataContext is TimesheetRowViewModel row)
-                DeleteTimesheetPerson(row);
         }
 
         private void DeleteTimesheetPerson_Click(object sender, RoutedEventArgs e)
@@ -1573,7 +1607,10 @@ namespace ConstructionControl
         private void UpdateTimesheetMissingDocsNotification()
         {
             if (currentObject?.TimesheetPeople == null)
+            {
+                OtReminderPopup.Visibility = Visibility.Collapsed;
                 return;
+            }
 
             var monthKey = timesheetMonth.ToString("yyyy-MM");
             var pending = new List<string>();
@@ -1710,7 +1747,6 @@ namespace ConstructionControl
                 };
 
                 journal.Clear();
-                summaryFilterInitialized = false;
                 EnsureOtJournalStorage();
                 BindOtJournal();
                 ArrivalPanel.SetObject(currentObject, journal);
@@ -3035,22 +3071,30 @@ namespace ConstructionControl
 
         private void SaveState()
         {
-            File.WriteAllText(
-                SaveFileName,
-                JsonSerializer.Serialize(new AppState
-                {
-                    CurrentObject = currentObject,
-                    Journal = journal
-                }));
+            var json = JsonSerializer.Serialize(new AppState
+            {
+                CurrentObject = currentObject,
+                Journal = journal
+            });
+
+            var tempFileName = $"{SaveFileName}.tmp";
+            File.WriteAllText(tempFileName, json);
+            File.Copy(tempFileName, SaveFileName, overwrite: true);
+            File.Delete(tempFileName);
         }
         private AppState CloneState()
         {
+            var currentObjectClone = currentObject == null
+                ? null
+                : JsonSerializer.Deserialize<ProjectObject>(JsonSerializer.Serialize(currentObject));
+
+            var journalClone = JsonSerializer.Deserialize<List<JournalRecord>>(
+                JsonSerializer.Serialize(journal)) ?? new List<JournalRecord>();
+
             return new AppState
             {
-                CurrentObject = JsonSerializer.Deserialize<ProjectObject>(
-            JsonSerializer.Serialize(currentObject)),
-                Journal = JsonSerializer.Deserialize<List<JournalRecord>>(
-            JsonSerializer.Serialize(journal))
+                CurrentObject = currentObjectClone,
+                Journal = journalClone
             };
         }
 
@@ -3077,7 +3121,6 @@ namespace ConstructionControl
         private void RestoreState(AppState state)
         {
             currentObject = state.CurrentObject;
-            summaryFilterInitialized = false;
             journal = state.Journal ?? new();
 
             ArrivalPanel.SetObject(currentObject, journal);
@@ -3087,6 +3130,9 @@ namespace ConstructionControl
             RefreshSummaryTable();
             EnsureOtJournalStorage();
             BindOtJournal();
+            RefreshBrigadierNames();
+            RebuildTimesheetView();
+            UpdateOtReminders();
             SaveState();
         }
 
@@ -3101,11 +3147,23 @@ namespace ConstructionControl
             if (!File.Exists(SaveFileName))
                 return;
 
-            var state = JsonSerializer.Deserialize<AppState>(
-                File.ReadAllText(SaveFileName));
+            AppState? state;
+            try
+            {
+                state = JsonSerializer.Deserialize<AppState>(
+                    File.ReadAllText(SaveFileName));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось загрузить сохранённые данные. Файл состояния повреждён или имеет неверный формат.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                    "Ошибка загрузки",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
 
             currentObject = state?.CurrentObject;
-            summaryFilterInitialized = false;
             journal = state?.Journal ?? new();
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
@@ -3449,7 +3507,6 @@ namespace ConstructionControl
                 ? new List<string>()
                 : groupOrder.Where(g => currentObject.SummaryVisibleGroups.Contains(g)).ToList();
 
-            summaryHasOverage = false;
             RenderSummaryHeader();
 
             foreach (var g in visibleGroups)
@@ -3648,7 +3705,6 @@ namespace ConstructionControl
 
             if (rowOverage || blockOverage.Values.Any())
             {
-                summaryHasOverage = true;
                 if (summaryOverageNote != null)
                     summaryOverageNote.Visibility = Visibility.Visible;
             }
@@ -3681,7 +3737,6 @@ namespace ConstructionControl
                     bool floorFilled = compareBase > 0 && Math.Abs(arrived - compareBase) < 0.0001;
                     if (floorOverage)
                     {
-                        summaryHasOverage = true;
                         if (summaryOverageNote != null)
                             summaryOverageNote.Visibility = Visibility.Visible;
                     }
@@ -3734,9 +3789,6 @@ namespace ConstructionControl
                 selectedGroups = new List<string> { groups[0] };
             else if (selectedGroups.Count > 1)
                 selectedGroups = selectedGroups.Take(1).ToList();
-
-            summaryFilterInitialized = true;
-
 
             currentObject.SummaryVisibleGroups = selectedGroups;
 

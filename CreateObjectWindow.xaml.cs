@@ -4,7 +4,7 @@ namespace ConstructionControl
 {
     public partial class CreateObjectWindow : Window
     {
-        public string ObjectName { get; private set; }
+        public string ObjectName { get; private set; } = string.Empty;
 
         public CreateObjectWindow()
         {
