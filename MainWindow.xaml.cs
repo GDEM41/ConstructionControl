@@ -89,6 +89,7 @@ namespace ConstructionControl
         private Point treeDragStart;
         private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
         private readonly ObservableCollection<string> timesheetBrigades = new();
+        private readonly ObservableCollection<string> timesheetAssignableBrigades = new();
         private DateTime timesheetMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
         private string selectedTimesheetBrigade = "Все бригады";
 
@@ -112,13 +113,79 @@ namespace ConstructionControl
                 IsBrigadier = source.IsBrigadier;
                 PersonId = source.PersonId;
             }
-
             public Guid PersonId { get; }
-            public string FullName { get; }
-            public string Specialty { get; }
-            public string Rank { get; }
-            public string BrigadeName { get; }
-            public bool IsBrigadier { get; }
+            public TimesheetPersonEntry Source => source;
+
+            public string FullName
+            {
+                get => source.FullName;
+                set
+                {
+                    var trimmed = value?.Trim();
+                    if (string.Equals(source.FullName, trimmed, StringComparison.CurrentCulture))
+                        return;
+                    source.FullName = trimmed;
+                    if (source.IsBrigadier)
+                        source.BrigadeName = trimmed;
+                    OnPropertyChanged(nameof(FullName));
+                    OnPropertyChanged(nameof(BrigadeName));
+                }
+            }
+
+            public string Specialty
+            {
+                get => source.Specialty;
+                set
+                {
+                    var trimmed = value?.Trim();
+                    if (string.Equals(source.Specialty, trimmed, StringComparison.CurrentCulture))
+                        return;
+                    source.Specialty = trimmed;
+                    OnPropertyChanged(nameof(Specialty));
+                }
+            }
+
+            public string Rank
+            {
+                get => source.Rank;
+                set
+                {
+                    var trimmed = value?.Trim();
+                    if (string.Equals(source.Rank, trimmed, StringComparison.CurrentCulture))
+                        return;
+                    source.Rank = trimmed;
+                    OnPropertyChanged(nameof(Rank));
+                }
+            }
+
+            public string BrigadeName
+            {
+                get => source.BrigadeName;
+                set
+                {
+                    var trimmed = value?.Trim();
+                    if (source.IsBrigadier)
+                        trimmed = source.FullName?.Trim();
+                    if (string.Equals(source.BrigadeName, trimmed, StringComparison.CurrentCulture))
+                        return;
+                    source.BrigadeName = trimmed;
+                    OnPropertyChanged(nameof(BrigadeName));
+                }
+            }
+
+            public bool IsBrigadier
+            {
+                get => source.IsBrigadier;
+                set
+                {
+                    if (source.IsBrigadier == value)
+                        return;
+                    source.IsBrigadier = value;
+                    source.BrigadeName = value ? source.FullName?.Trim() : source.BrigadeName?.Trim();
+                    OnPropertyChanged(nameof(IsBrigadier));
+                    OnPropertyChanged(nameof(BrigadeName));
+                }
+            }
 
             public int Number
             {
@@ -183,6 +250,7 @@ namespace ConstructionControl
         public ObservableCollection<string> BrigadierNames => brigadierNames;
         public ObservableCollection<string> Specialties => specialties;
         public ObservableCollection<string> Professions => professions;
+        public ObservableCollection<string> TimesheetAssignableBrigades => timesheetAssignableBrigades;
         public MainWindow()
         {
             InitializeComponent();
@@ -880,6 +948,7 @@ namespace ConstructionControl
         {
             timesheetBrigades.Clear();
             timesheetBrigades.Add("Все бригады");
+            timesheetAssignableBrigades.Clear();
 
             if (currentObject?.TimesheetPeople == null)
                 return;
@@ -890,6 +959,8 @@ namespace ConstructionControl
                          .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
             {
                 timesheetBrigades.Add(brigade);
+                if (!string.Equals(brigade, "Без бригады", StringComparison.CurrentCultureIgnoreCase))
+                    timesheetAssignableBrigades.Add(brigade);
             }
 
             TimesheetBrigadeFilter.ItemsSource = timesheetBrigades;
@@ -949,9 +1020,22 @@ namespace ConstructionControl
 
             TimesheetGrid.Columns.Clear();
             TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "№", Binding = new Binding(nameof(TimesheetRowViewModel.Number)), IsReadOnly = true, Width = 45 });
-            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "ФИО", Binding = new Binding(nameof(TimesheetRowViewModel.FullName)), IsReadOnly = true, Width = 220 });
-            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Специальность", Binding = new Binding(nameof(TimesheetRowViewModel.Specialty)), IsReadOnly = true, Width = 170 });
-            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Разряд", Binding = new Binding(nameof(TimesheetRowViewModel.Rank)), IsReadOnly = true, Width = 70 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "ФИО", Binding = new Binding(nameof(TimesheetRowViewModel.FullName)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 220 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Специальность", Binding = new Binding(nameof(TimesheetRowViewModel.Specialty)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 170 });
+            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Разряд", Binding = new Binding(nameof(TimesheetRowViewModel.Rank)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 70 });
+            TimesheetGrid.Columns.Add(new DataGridCheckBoxColumn
+            {
+                Header = "Бригадир",
+                Binding = new Binding(nameof(TimesheetRowViewModel.IsBrigadier)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
+                Width = 85
+            });
+            TimesheetGrid.Columns.Add(new DataGridComboBoxColumn
+            {
+                Header = "Бригада",
+                SelectedItemBinding = new Binding(nameof(TimesheetRowViewModel.BrigadeName)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
+                ItemsSource = timesheetAssignableBrigades,
+                Width = 180
+            });
 
             var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
             for (var day = 1; day <= daysInMonth; day++)
@@ -1002,19 +1086,24 @@ namespace ConstructionControl
         {
             if (e.Row.Item is not TimesheetRowViewModel)
                 return;
-
-            var day = ParseDayFromHeader(e.Column?.Header);
-            if (day <= 0)
-                e.Cancel = true;
         }
 
         private void TimesheetGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {
-            if (e.Row.Item is not TimesheetRowViewModel row || e.EditingElement is not TextBox tb)
+            if (e.Row.Item is not TimesheetRowViewModel row)
                 return;
 
             var day = ParseDayFromHeader(e.Column?.Header);
             if (day <= 0)
+            {
+                SyncTimesheetPersonToOt(row.Source);
+                RefreshTimesheetBrigades();
+                RefreshTimesheetRows();
+                SaveState();
+                return;
+            }
+
+            if (e.EditingElement is not TextBox tb)
                 return;
 
             var value = tb.Text?.Trim() ?? string.Empty;
@@ -1039,6 +1128,20 @@ namespace ConstructionControl
 
         private static int ParseDayFromHeader(object header)
             => int.TryParse(header?.ToString(), out var day) ? day : -1;
+        private void TimesheetGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        {
+            if (e.Row.Item is not TimesheetRowViewModel row)
+                return;
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                SyncTimesheetPersonToOt(row.Source);
+                RefreshTimesheetBrigades();
+                RefreshTimesheetRows();
+                SaveState();
+            }));
+        }
+
 
         private void TimesheetGrid_LoadingRow(object sender, DataGridRowEventArgs e)
         {
@@ -1102,7 +1205,7 @@ namespace ConstructionControl
                 Specialty = TimesheetSpecialtyTextBox.Text?.Trim(),
                 Rank = TimesheetRankTextBox.Text?.Trim(),
                 IsBrigadier = TimesheetIsBrigadierCheckBox.IsChecked == true,
-                BrigadeName = TimesheetBrigadeTextBox.Text?.Trim()
+                BrigadeName = TimesheetBrigadeComboBox.Text?.Trim()
             };
 
             if (person.IsBrigadier && string.IsNullOrWhiteSpace(person.BrigadeName))
@@ -1114,7 +1217,7 @@ namespace ConstructionControl
             TimesheetFullNameTextBox.Text = string.Empty;
             TimesheetSpecialtyTextBox.Text = string.Empty;
             TimesheetRankTextBox.Text = string.Empty;
-            TimesheetBrigadeTextBox.Text = string.Empty;
+            TimesheetBrigadeComboBox.Text = string.Empty;
             TimesheetIsBrigadierCheckBox.IsChecked = false;
 
             RefreshBrigadierNames();
@@ -1146,10 +1249,40 @@ namespace ConstructionControl
                 InstructionType = "Первичный на рабочем месте",
                 RepeatPeriodMonths = 3,
                 IsBrigadier = person.IsBrigadier,
-                BrigadierName = person.IsBrigadier ? null : person.BrigadeName
+                BrigadierName = person.IsBrigadier ? null : person.BrigadeName,
+                IsPendingRepeat = true,
+                IsRepeatCompleted = false
             };
             ot.PropertyChanged += OtJournalEntry_PropertyChanged;
             currentObject.OtJournal.Add(ot);
+            UpdateOtReminders();
+        }
+
+        private void SyncTimesheetPersonToOt(TimesheetPersonEntry person)
+        {
+            if (person == null || currentObject?.OtJournal == null)
+                return;
+
+            var matches = currentObject.OtJournal.Where(x =>
+                (person.PersonId != Guid.Empty && x.PersonId == person.PersonId)
+                || (!string.IsNullOrWhiteSpace(x.FullName) && string.Equals(x.FullName.Trim(), person.FullName?.Trim(), StringComparison.CurrentCultureIgnoreCase)))
+                .ToList();
+
+            foreach (var ot in matches)
+            {
+                ot.FullName = person.FullName;
+                ot.Specialty = person.Specialty;
+                ot.Rank = person.Rank;
+                ot.Profession = string.IsNullOrWhiteSpace(ot.Profession) ? person.Specialty : ot.Profession;
+                ot.IsBrigadier = person.IsBrigadier;
+                ot.BrigadierName = person.IsBrigadier ? null : person.BrigadeName;
+            }
+
+            if (matches.Count > 0)
+            {
+                SortOtJournal();
+                UpdateOtReminders();
+            }
         }
 
         private void TimesheetPrintFilled_Click(object sender, RoutedEventArgs e) => PrintTimesheet(blank: false);

@@ -1013,7 +1013,13 @@
                                         <TextBlock Text="Разряд" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <TextBox x:Name="TimesheetRankTextBox" Width="70" Margin="0,0,8,0"/>
                                         <TextBlock Text="Бригада" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="TimesheetBrigadeTextBox" Width="170" Margin="0,0,8,0"/>
+                                        <ComboBox x:Name="TimesheetBrigadeComboBox"
+                                                  Width="170"
+                                                  Margin="0,0,8,0"
+                                                  IsEditable="True"
+                                                  IsTextSearchEnabled="True"
+                                                  StaysOpenOnEdit="True"
+                                                  ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
                                         <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Content="Бригадир" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить звено/человека</Button>
                                     </WrapPanel>
@@ -1028,6 +1034,7 @@
                                       HeadersVisibility="Column"
                                       BeginningEdit="TimesheetGrid_BeginningEdit"
                                       CellEditEnding="TimesheetGrid_CellEditEnding"
+                                      RowEditEnding="TimesheetGrid_RowEditEnding"
                                       LoadingRow="TimesheetGrid_LoadingRow"
                                       AutoGeneratingColumn="TimesheetGrid_AutoGeneratingColumn"/>
                             </Grid>
