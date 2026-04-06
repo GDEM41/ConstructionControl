@@ -9,12 +9,12 @@
         <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F8FBFF"/>
         <SolidColorBrush x:Key="StrokeBrush" Color="#D8E1EE"/>
         <SolidColorBrush x:Key="TextBrush" Color="#102033"/>
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#1C7C54"/>
-        <SolidColorBrush x:Key="PrimaryBrushHover" Color="#176746"/>
-        <SolidColorBrush x:Key="PrimaryBrushPressed" Color="#125139"/>
-        <SolidColorBrush x:Key="SecondaryBrush" Color="#EEF4F0"/>
-        <SolidColorBrush x:Key="SecondaryBrushHover" Color="#E1ECE5"/>
-        <SolidColorBrush x:Key="SecondaryBrushPressed" Color="#D2E1D8"/>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#2F80ED"/>
+        <SolidColorBrush x:Key="PrimaryBrushHover" Color="#256FD0"/>
+        <SolidColorBrush x:Key="PrimaryBrushPressed" Color="#1E5CAD"/>
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#5AA9FF"/>
+        <SolidColorBrush x:Key="SecondaryBrushHover" Color="#439AFF"/>
+        <SolidColorBrush x:Key="SecondaryBrushPressed" Color="#3189F2"/>
         <DropShadowEffect x:Key="ComboShadow" Color="#183153" Opacity="0.12" BlurRadius="16" ShadowDepth="2"/>
         <DropShadowEffect x:Key="SoftShadowEffect" BlurRadius="22" Opacity="0.14" ShadowDepth="3" Color="#183153"/>
 
@@ -33,8 +33,8 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10,7"/>
-            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="MinHeight" Value="40"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -45,9 +45,13 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="10">
                             <Grid>
-                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              CanContentScroll="False"/>
                                 <TextBlock x:Name="Watermark"
                                            Margin="{TemplateBinding Padding}"
+                                           VerticalAlignment="Center"
                                            Foreground="#8A98AA"
                                            Text="{TemplateBinding Tag}"
                                            IsHitTestVisible="False"
@@ -59,7 +63,7 @@
                                 <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#8EBEF8"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#F8FBFF"/>
@@ -144,11 +148,11 @@
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="ArrowBg" Property="Background" Value="#EEF4F0"/>
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#E7F1FF"/>
                                                 <Setter TargetName="ArrowIcon" Property="Fill" Value="#102033"/>
                                             </Trigger>
                                             <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="ArrowBg" Property="Background" Value="#E1ECE5"/>
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="#D9EAFF"/>
                                                 <Setter TargetName="ArrowIcon" Property="Fill" Value="#102033"/>
                                             </Trigger>
                                         </ControlTemplate.Triggers>
@@ -192,7 +196,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#F8FBFF"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#8EBEF8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -288,8 +292,8 @@
 
         <Style x:Key="AppSecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{StaticResource SecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource SecondaryBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
         </Style>
 
         <Style TargetType="ToggleButton">
@@ -321,7 +325,7 @@
             <Setter Property="Background" Value="White"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="GridLinesVisibility" Value="All"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="RowBackground" Value="White"/>
             <Setter Property="AlternatingRowBackground" Value="{StaticResource SurfaceAltBrush}"/>
@@ -329,12 +333,13 @@
             <Setter Property="VerticalGridLinesBrush" Value="#E8EEF6"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
+            <Setter Property="local:DataGridSizingHelper.EnableSmartSizing" Value="True"/>
         </Style>
 
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>

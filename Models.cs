@@ -51,6 +51,7 @@ namespace ConstructionControl
         public List<OtJournalEntry> OtJournal { get; set; } = new();
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
+        public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
     }
 
     public class TimesheetPersonEntry : INotifyPropertyChanged
@@ -653,6 +654,91 @@ namespace ConstructionControl
 
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            return true;
+        }
+    }
+
+    public class InspectionJournalEntry : INotifyPropertyChanged
+    {
+        private string journalName;
+        private string inspectionName;
+        private DateTime reminderStartDate = DateTime.Today;
+        private int reminderPeriodDays = 7;
+        private DateTime? lastCompletedDate;
+        private string notes;
+
+        public string JournalName
+        {
+            get => journalName;
+            set => SetField(ref journalName, value);
+        }
+
+        public string InspectionName
+        {
+            get => inspectionName;
+            set => SetField(ref inspectionName, value);
+        }
+
+        public DateTime ReminderStartDate
+        {
+            get => reminderStartDate;
+            set => SetField(ref reminderStartDate, value);
+        }
+
+        public int ReminderPeriodDays
+        {
+            get => reminderPeriodDays;
+            set => SetField(ref reminderPeriodDays, value <= 0 ? 1 : value);
+        }
+
+        public DateTime? LastCompletedDate
+        {
+            get => lastCompletedDate;
+            set => SetField(ref lastCompletedDate, value);
+        }
+
+        public string Notes
+        {
+            get => notes;
+            set => SetField(ref notes, value);
+        }
+
+        public DateTime NextReminderDate
+        {
+            get
+            {
+                var period = ReminderPeriodDays <= 0 ? 1 : ReminderPeriodDays;
+                if (LastCompletedDate.HasValue)
+                {
+                    var fromLast = LastCompletedDate.Value.Date.AddDays(period);
+                    return fromLast > ReminderStartDate.Date ? fromLast : ReminderStartDate.Date;
+                }
+
+                return ReminderStartDate.Date;
+            }
+        }
+
+        public bool IsDue => DateTime.Today >= NextReminderDate.Date;
+
+        public string ReminderStatus => IsDue
+            ? $"Нужно провести с {NextReminderDate:dd.MM.yyyy}"
+            : $"Следующий: {NextReminderDate:dd.MM.yyyy}";
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            if (propertyName != nameof(ReminderStatus) && propertyName != nameof(NextReminderDate) && propertyName != nameof(IsDue))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextReminderDate)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDue)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatus)));
+            }
             return true;
         }
     }

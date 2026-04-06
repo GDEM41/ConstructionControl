@@ -250,7 +250,7 @@ namespace ConstructionControl
                 return;
 
             isAutoSaving = true;
-            Save_Click(this, new RoutedEventArgs());
+            SaveChanges(closeWindow: false);
         }
 
         private static int GetUsedSegmentCount(MaterialSplitRuleRow row)
@@ -662,6 +662,11 @@ namespace ConstructionControl
         }
         private void Save_Click(object sender, RoutedEventArgs e)
         {
+            SaveChanges(closeWindow: true);
+        }
+
+        private void SaveChanges(bool closeWindow)
+        {
             foreach (var row in rows)
             {
                 row.CategoryName = "Основные";
@@ -738,6 +743,9 @@ namespace ConstructionControl
                      .ThenBy(x => x.SubTypeName)
                      .ThenBy(x => x.MaterialName)
                      .ToList();
+
+            if (!closeWindow)
+                return;
 
             DialogResult = true;
             Close();

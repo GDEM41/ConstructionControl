@@ -101,8 +101,13 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> productionMarkOptions = new();
         private readonly ObservableCollection<string> productionWeatherOptions = new();
         private readonly ObservableCollection<string> productionDeviationOptions = new();
+        private readonly ObservableCollection<InspectionJournalEntry> inspectionJournalRows = new();
+        private readonly ObservableCollection<string> inspectionJournalNames = new();
+        private readonly ObservableCollection<string> inspectionNames = new();
         private string productionRowSnapshotJson;
         private ProductionJournalEntry selectedProductionRow;
+        private string inspectionRowSnapshotJson;
+        private InspectionJournalEntry selectedInspectionRow;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -338,6 +343,8 @@ namespace ConstructionControl
         public ObservableCollection<string> ProductionMarkOptions => productionMarkOptions;
         public ObservableCollection<string> ProductionWeatherOptions => productionWeatherOptions;
         public ObservableCollection<string> ProductionDeviationOptions => productionDeviationOptions;
+        public ObservableCollection<string> InspectionJournalNames => inspectionJournalNames;
+        public ObservableCollection<string> InspectionNames => inspectionNames;
         public MainWindow()
         {
             InitializeComponent();
@@ -353,6 +360,7 @@ namespace ConstructionControl
             InitializeOtJournal();
             InitializeTimesheet();
             InitializeProductionJournal();
+            InitializeInspectionJournal();
             ApplyAllFilters();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
@@ -413,6 +421,8 @@ namespace ConstructionControl
                 RebuildTimesheetView();
             if (item.Header?.ToString() == "ПР")
                 RefreshProductionJournalState();
+            if (item.Header?.ToString() == "Осмотры")
+                RefreshInspectionJournalState();
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -761,23 +771,41 @@ namespace ConstructionControl
         }
         private void UpdateOtReminders()
         {
-            if (currentObject?.OtJournal == null)
+            if (currentObject == null)
             {
                 OtReminderPopup.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            var dueRows = currentObject.OtJournal.Where(x => x.IsPendingRepeat && !x.IsDismissed).ToList();
+            var parts = new List<string>();
+
+            var dueRows = currentObject.OtJournal?
+                .Where(x => x.IsPendingRepeat && !x.IsDismissed)
+                .ToList() ?? new List<OtJournalEntry>();
             if (dueRows.Count > 0)
             {
-                OtReminderText.Text = $"Требуется повторный инструктаж: {dueRows.Count} чел.{Environment.NewLine}" +
-                        string.Join(Environment.NewLine, dueRows.Take(5).Select(x => $"• {x.LastName}"));
-                OtReminderPopup.Visibility = Visibility.Visible;
+                parts.Add($"ОТ: требуется повторный инструктаж для {dueRows.Count} чел.");
+                parts.AddRange(dueRows.Take(4).Select(x => $"• ОТ: {x.LastName}"));
             }
-            else
+
+            var dueInspections = currentObject.InspectionJournal?
+                .Where(x => x.IsDue)
+                .OrderBy(x => x.NextReminderDate)
+                .ToList() ?? new List<InspectionJournalEntry>();
+            if (dueInspections.Count > 0)
+            {
+                parts.Add($"Осмотры: нужно провести {dueInspections.Count} шт.");
+                parts.AddRange(dueInspections.Take(4).Select(x => $"• {x.JournalName}: {x.InspectionName}"));
+            }
+
+            if (parts.Count == 0)
             {
                 OtReminderPopup.Visibility = Visibility.Collapsed;
+                return;
             }
+
+            OtReminderText.Text = string.Join(Environment.NewLine, parts);
+            OtReminderPopup.Visibility = Visibility.Visible;
         }
 
         private void AddOtRow_Click(object sender, RoutedEventArgs e)
@@ -1830,6 +1858,232 @@ namespace ConstructionControl
             }
         }
 
+        private void InitializeInspectionJournal()
+        {
+            EnsureInspectionJournalStorage();
+            RefreshInspectionJournalState();
+        }
+
+        private void EnsureInspectionJournalStorage()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
+        }
+
+        private void RefreshInspectionJournalState()
+        {
+            EnsureInspectionJournalStorage();
+            inspectionJournalRows.Clear();
+
+            if (currentObject?.InspectionJournal != null)
+            {
+                foreach (var row in currentObject.InspectionJournal
+                    .OrderBy(x => x.NextReminderDate)
+                    .ThenBy(x => x.JournalName)
+                    .ThenBy(x => x.InspectionName))
+                {
+                    inspectionJournalRows.Add(row);
+                }
+            }
+
+            if (InspectionJournalGrid != null)
+                InspectionJournalGrid.ItemsSource = inspectionJournalRows;
+
+            RefreshInspectionLookups();
+            if (InspectionJournalGrid != null)
+                InspectionJournalGrid.Items.Refresh();
+
+            if (selectedInspectionRow != null && !inspectionJournalRows.Contains(selectedInspectionRow))
+                selectedInspectionRow = null;
+
+            UpdateInspectionFormState();
+            UpdateOtReminders();
+        }
+
+        private void RefreshInspectionLookups()
+        {
+            FillLookupCollection(inspectionJournalNames, currentObject?.InspectionJournal?.Select(x => x.JournalName));
+            FillLookupCollection(inspectionNames, currentObject?.InspectionJournal?.Select(x => x.InspectionName));
+        }
+
+        private void SaveInspectionForm_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureInspectionJournalStorage();
+            var row = selectedInspectionRow ?? new InspectionJournalEntry();
+            inspectionRowSnapshotJson = JsonSerializer.Serialize(row);
+            ReadInspectionForm(row);
+
+            if (!ValidateInspectionRow(row, out var message))
+            {
+                RestoreInspectionSnapshot(row);
+                MessageBox.Show(message, "Проверка осмотра", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (selectedInspectionRow == null)
+                currentObject.InspectionJournal.Add(row);
+
+            selectedInspectionRow = row;
+            RefreshInspectionJournalState();
+            InspectionJournalGrid.SelectedItem = row;
+            InspectionJournalGrid.ScrollIntoView(row);
+            SaveState();
+        }
+
+        private void DeleteInspectionRow_Click(object sender, RoutedEventArgs e)
+        {
+            var row = selectedInspectionRow ?? InspectionJournalGrid?.SelectedItem as InspectionJournalEntry;
+            if (row == null || currentObject?.InspectionJournal == null)
+            {
+                MessageBox.Show("Выберите запись в осмотрах.");
+                return;
+            }
+
+            currentObject.InspectionJournal.Remove(row);
+            selectedInspectionRow = null;
+            RefreshInspectionJournalState();
+            SaveState();
+        }
+
+        private void ClearInspectionForm_Click(object sender, RoutedEventArgs e)
+        {
+            selectedInspectionRow = null;
+            UpdateInspectionFormState(clearFields: true);
+            if (InspectionJournalGrid != null)
+                InspectionJournalGrid.SelectedItem = null;
+        }
+
+        private void InspectionJournalGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (InspectionJournalGrid?.SelectedItem is not InspectionJournalEntry row)
+            {
+                if (selectedInspectionRow != null)
+                    UpdateInspectionFormState(clearFields: false);
+                return;
+            }
+
+            selectedInspectionRow = row;
+            FillInspectionForm(row);
+            UpdateInspectionFormState();
+        }
+
+        private void UpdateInspectionFormState(bool clearFields = false)
+        {
+            if (clearFields)
+                ResetInspectionFormInputs();
+            else if (selectedInspectionRow == null && InspectionReminderStartDatePicker != null && InspectionReminderStartDatePicker.SelectedDate == null)
+                ResetInspectionFormInputs();
+
+            if (InspectionSaveButton != null)
+                InspectionSaveButton.Content = selectedInspectionRow == null ? "➕ Добавить" : "💾 Обновить";
+        }
+
+        private void ResetInspectionFormInputs()
+        {
+            if (InspectionReminderStartDatePicker == null)
+                return;
+
+            InspectionJournalNameBox.Text = string.Empty;
+            InspectionNameBox.Text = string.Empty;
+            InspectionReminderStartDatePicker.SelectedDate = DateTime.Today;
+            InspectionPeriodDaysTextBox.Text = "7";
+            InspectionLastCompletedDatePicker.SelectedDate = DateTime.Today;
+            InspectionNotesTextBox.Text = string.Empty;
+        }
+
+        private void FillInspectionForm(InspectionJournalEntry row)
+        {
+            if (row == null || InspectionReminderStartDatePicker == null)
+                return;
+
+            InspectionJournalNameBox.Text = row.JournalName ?? string.Empty;
+            InspectionNameBox.Text = row.InspectionName ?? string.Empty;
+            InspectionReminderStartDatePicker.SelectedDate = row.ReminderStartDate;
+            InspectionPeriodDaysTextBox.Text = row.ReminderPeriodDays.ToString();
+            InspectionLastCompletedDatePicker.SelectedDate = row.LastCompletedDate ?? row.ReminderStartDate;
+            InspectionNotesTextBox.Text = row.Notes ?? string.Empty;
+        }
+
+        private void ReadInspectionForm(InspectionJournalEntry row)
+        {
+            row.JournalName = InspectionJournalNameBox.Text?.Trim();
+            row.InspectionName = InspectionNameBox.Text?.Trim();
+            row.ReminderStartDate = InspectionReminderStartDatePicker.SelectedDate ?? DateTime.Today;
+            row.ReminderPeriodDays = int.TryParse(InspectionPeriodDaysTextBox.Text?.Trim(), out var days) && days > 0 ? days : 1;
+            row.LastCompletedDate = InspectionLastCompletedDatePicker.SelectedDate;
+            row.Notes = InspectionNotesTextBox.Text?.Trim();
+        }
+
+        private bool ValidateInspectionRow(InspectionJournalEntry row, out string message)
+        {
+            message = null;
+
+            if (string.IsNullOrWhiteSpace(row.JournalName))
+            {
+                message = "Укажите название журнала.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(row.InspectionName))
+            {
+                message = "Укажите, какой осмотр нужно проводить.";
+                return false;
+            }
+
+            if (row.ReminderPeriodDays <= 0)
+            {
+                message = "Периодичность должна быть больше нуля.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void RestoreInspectionSnapshot(InspectionJournalEntry row)
+        {
+            if (row == null || string.IsNullOrWhiteSpace(inspectionRowSnapshotJson))
+                return;
+
+            var snapshot = JsonSerializer.Deserialize<InspectionJournalEntry>(inspectionRowSnapshotJson);
+            if (snapshot == null)
+                return;
+
+            row.JournalName = snapshot.JournalName;
+            row.InspectionName = snapshot.InspectionName;
+            row.ReminderStartDate = snapshot.ReminderStartDate;
+            row.ReminderPeriodDays = snapshot.ReminderPeriodDays;
+            row.LastCompletedDate = snapshot.LastCompletedDate;
+            row.Notes = snapshot.Notes;
+        }
+
+        private void MarkInspectionCompleted_Click(object sender, RoutedEventArgs e)
+        {
+            var row = sender is FrameworkElement fe
+                ? fe.DataContext as InspectionJournalEntry
+                : selectedInspectionRow ?? InspectionJournalGrid?.SelectedItem as InspectionJournalEntry;
+
+            if (row == null)
+            {
+                MessageBox.Show("Выберите запись в осмотрах.");
+                return;
+            }
+
+            row.LastCompletedDate = DateTime.Today;
+            selectedInspectionRow = row;
+            RefreshInspectionJournalState();
+            if (InspectionJournalGrid != null)
+                InspectionJournalGrid.SelectedItem = row;
+            SaveState();
+        }
+
         private void AddProductionRow_Click(object sender, RoutedEventArgs e) => SaveProductionForm_Click(sender, e);
 
         private void SaveProductionForm_Click(object sender, RoutedEventArgs e)
@@ -2284,6 +2538,8 @@ namespace ConstructionControl
 
 
 
+                EnsureInspectionJournalStorage();
+                RefreshInspectionJournalState();
                 SaveState();
                 RefreshTreePreserveState();
               
@@ -3665,6 +3921,8 @@ namespace ConstructionControl
             RebuildTimesheetView();
             EnsureProductionJournalStorage();
             RefreshProductionJournalState();
+            EnsureInspectionJournalStorage();
+            RefreshInspectionJournalState();
             UpdateOtReminders();
             SaveState();
         }
@@ -3682,6 +3940,7 @@ namespace ConstructionControl
 
             currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
+            currentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
 
             if (currentObject.Demand == null)
                 return;
@@ -3872,7 +4131,9 @@ namespace ConstructionControl
             RefreshArrivalTypes();
             RefreshArrivalNames();
             RefreshProductionJournalState();
+            RefreshInspectionJournalState();
             ApplyAllFilters();
+            UpdateOtReminders();
         }
 
         private void ExportAllData_Click(object sender, RoutedEventArgs e)
@@ -3914,11 +4175,13 @@ namespace ConstructionControl
         }
         private void LockToggle_Checked(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
             LockButton_Checked(sender, e);
         }
 
         private void LockToggle_Unchecked(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
             LockButton_Unchecked(sender, e);
         }
 
@@ -4759,6 +5022,8 @@ namespace ConstructionControl
 
         private void Undo_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
+
             if (undoStack.Count == 0)
                 return;
 
@@ -4770,6 +5035,8 @@ namespace ConstructionControl
 
         private void Redo_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
+
             if (redoStack.Count == 0)
                 return;
 
@@ -4868,6 +5135,7 @@ namespace ConstructionControl
             var topBox = new TextBox
             {
                 Text = FormatNumber(topValue),
+                Style = null,
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Margin = new Thickness(2, 1, 2, 1),
