@@ -218,14 +218,36 @@ namespace ConstructionControl
             if (template == null)
                 yield break;
 
-            if (template.LoadContent() is not FrameworkElement element)
+            FrameworkElement element;
+            try
+            {
+                element = template.LoadContent() as FrameworkElement;
+            }
+            catch (InvalidOperationException)
+            {
+                yield break;
+            }
+            catch
+            {
+                yield break;
+            }
+
+            if (element == null)
                 yield break;
 
             element.DataContext = item;
-            ApplyTemplateRecursive(element);
-            element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            element.Arrange(new Rect(0, 0, element.DesiredSize.Width, element.DesiredSize.Height));
-            element.UpdateLayout();
+
+            try
+            {
+                ApplyTemplateRecursive(element);
+                element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                element.Arrange(new Rect(0, 0, element.DesiredSize.Width, element.DesiredSize.Height));
+                element.UpdateLayout();
+            }
+            catch
+            {
+                yield break;
+            }
 
             foreach (var text in ExtractTexts(element))
             {

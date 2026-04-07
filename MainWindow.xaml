@@ -370,6 +370,7 @@
             <MenuItem Header="Создать" Click="CreateObject_Click"/>
             <MenuItem Header="Архив" Click="OpenArchive_Click" />
 
+            <MenuItem Header="Сохранить как" Click="SaveAs_Click"/>
             <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
                 <MenuItem Header="База материалов" Click="TreeSettings_Click"/>
                 <MenuItem Header="Обмен данными">
@@ -377,6 +378,7 @@
                     <MenuItem Header="Экспорт всего" Click="ExportAllData_Click"/>
                     <MenuItem Header="Импорт всего" Click="ImportAllData_Click"/>
                 </MenuItem>
+                <MenuItem Header="Настройки" Click="AppSettings_Click"/>
                 <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>
 
@@ -436,7 +438,7 @@
         <Grid Margin="10">
 
             <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition x:Name="TreeHoverColumn" Width="14"/>
                     <ColumnDefinition x:Name="TreeColumn" Width="260"/>
                     <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -1235,7 +1237,7 @@
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Работа" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBlock Text="Вид работы" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionActionBox"
                                                           Tag="Например: монтаж"
                                                           IsEditable="True"
@@ -1245,7 +1247,7 @@
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                                <TextBlock Text="Что делали" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBlock Text="Чего" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionWorkBox"
                                                           Tag="Например: ригелей"
                                                           IsEditable="True"
@@ -1502,7 +1504,7 @@
                                         <DataGridCheckBoxColumn Header="Скрытые работы" Binding="{Binding RequiresHiddenWorkAct, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
                                         <DataGridTextColumn Header="Остаток по блоку/отметке" Binding="{Binding RemainingInfo}" Width="280" IsReadOnly="True"/>
 
-                                        <DataGridTemplateColumn Header="Акт" Width="80">
+                                        <DataGridTemplateColumn Header="Акт" Width="350">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <Button Content="Акт" IsEnabled="False" ToolTip="Подготовим на следующем шаге"/>

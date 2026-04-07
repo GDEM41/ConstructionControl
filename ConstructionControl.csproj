@@ -12,4 +12,17 @@
     <PackageReference Include="ClosedXML" Version="0.105.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="build_obj\**\*.cs" />
+    <Compile Remove="build_check\**\*.cs" />
+    <EmbeddedResource Remove="build_obj\**" />
+    <EmbeddedResource Remove="build_check\**" />
+    <None Remove="build_obj\**" />
+    <None Remove="build_check\**" />
+    <Page Remove="build_obj\**\*.xaml" />
+    <Page Remove="build_check\**\*.xaml" />
+    <Resource Remove="build_obj\**" />
+    <Resource Remove="build_check\**" />
+  </ItemGroup>
+
 </Project>

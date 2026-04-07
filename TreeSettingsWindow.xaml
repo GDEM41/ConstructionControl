@@ -25,6 +25,10 @@
                            Foreground="#475569"
                            Margin="0,6,0,0"
                            TextWrapping="Wrap"/>
+                <TextBlock Text="Для авторазбиения отметьте материал в колонке &quot;Авто&quot;. Например: ПК56.15-12 станет ПК / 56 / 15 / 12."
+                           Foreground="#64748B"
+                           Margin="0,6,0,0"
+                           TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
@@ -125,6 +129,7 @@
                 <DataGridTextColumn x:Name="CatalogLevel5Column" Header="Подподподтип" Binding="{Binding EditableLevel5Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Visible"/>
                 <DataGridTextColumn x:Name="CatalogLevel6Column" Header="Уровень 6" Binding="{Binding EditableLevel6Name, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" Visibility="Collapsed"/>
                 <DataGridTextColumn Header="Материал" Binding="{Binding EditableMaterialName, UpdateSourceTrigger=PropertyChanged}" Width="1.5*"/>
+                <DataGridCheckBoxColumn Header="Авто" Binding="{Binding IsAutoSplitEnabled, UpdateSourceTrigger=PropertyChanged}" Width="Auto"/>
                 <DataGridTextColumn Header="Уровень 1" Binding="{Binding Segment1, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                 <DataGridTextColumn Header="Уровень 2" Binding="{Binding Segment2, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                 <DataGridTextColumn Header="Уровень 3" Binding="{Binding Segment3, UpdateSourceTrigger=PropertyChanged}" Width="*"/>

@@ -54,7 +54,8 @@ namespace ConstructionControl
             return colorMap[group];
         }
 
-        private const string SaveFileName = "data.json";
+        private const string DefaultSaveFileName = "data.json";
+        private string currentSaveFileName = DefaultSaveFileName;
         // ===== ИСТОРИЯ ДЛЯ НАЗАД / ВПЕРЁД =====
         private readonly Stack<AppState> undoStack = new();
         private readonly Stack<AppState> redoStack = new();
@@ -374,7 +375,7 @@ namespace ConstructionControl
             RefreshArrivalNames();
 
             RefreshTreePreserveState();
-            UpdateTreePanelState(forceVisible: false);
+            ApplyProjectUiSettings();
 
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -772,6 +773,13 @@ namespace ConstructionControl
         private void UpdateOtReminders()
         {
             if (currentObject == null)
+            {
+                OtReminderPopup.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            EnsureProjectUiSettings();
+            if (currentObject.UiSettings?.ShowReminderPopup == false)
             {
                 OtReminderPopup.Visibility = Visibility.Collapsed;
                 return;
@@ -2542,6 +2550,7 @@ namespace ConstructionControl
                 RefreshInspectionJournalState();
                 SaveState();
                 RefreshTreePreserveState();
+                ApplyProjectUiSettings();
               
             }
         }
@@ -2565,6 +2574,115 @@ namespace ConstructionControl
                 RefreshTreePreserveState();
             }
         }
+
+        private void ApplyMaterialBindingChanges(IEnumerable<TreeSettingsWindow.MaterialBindingChange> changes)
+        {
+            if (changes == null || currentObject == null)
+                return;
+
+            foreach (var change in changes)
+            {
+                foreach (var rec in journal.Where(j =>
+                             string.Equals(j.MaterialName ?? string.Empty, change.OldMaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                      && string.Equals(j.Category ?? string.Empty, change.OldCategoryName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                      && string.Equals(j.MaterialGroup ?? string.Empty, change.OldTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                      && string.Equals(j.SubCategory ?? string.Empty, change.OldSubTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    rec.Category = change.NewCategoryName;
+                    rec.MaterialGroup = change.NewTypeName;
+                    rec.SubCategory = change.NewSubTypeName;
+                    rec.MaterialName = change.NewMaterialName;
+                }
+
+                MoveDemandBinding(change);
+            }
+
+            SyncLegacyMaterialsFromCatalog();
+            RebuildArchiveFromCurrentData();
+        }
+
+        private void MoveDemandBinding(TreeSettingsWindow.MaterialBindingChange change)
+        {
+            if (currentObject?.Demand == null)
+                return;
+
+            var oldKey = $"{change.OldTypeName}::{change.OldMaterialName}";
+            var newKey = $"{change.NewTypeName}::{change.NewMaterialName}";
+
+            if (string.Equals(oldKey, newKey, StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            if (!currentObject.Demand.TryGetValue(oldKey, out var sourceDemand) || sourceDemand == null)
+                return;
+
+            currentObject.Demand.Remove(oldKey);
+            if (!currentObject.Demand.TryGetValue(newKey, out var targetDemand) || targetDemand == null)
+            {
+                currentObject.Demand[newKey] = sourceDemand;
+                return;
+            }
+
+            MergeDemand(targetDemand, sourceDemand);
+        }
+
+        private static void MergeDemand(MaterialDemand target, MaterialDemand source)
+        {
+            if (target == null || source == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(target.Unit) && !string.IsNullOrWhiteSpace(source.Unit))
+                target.Unit = source.Unit;
+
+            MergeLevelMap(target.Levels, source.Levels);
+            MergeLevelMap(target.MountedLevels, source.MountedLevels);
+            MergeFloorMap(target.Floors, source.Floors);
+            MergeFloorMap(target.MountedFloors, source.MountedFloors);
+        }
+
+        private static void MergeLevelMap(Dictionary<int, Dictionary<string, double>> target, Dictionary<int, Dictionary<string, double>> source)
+        {
+            if (target == null || source == null)
+                return;
+
+            foreach (var blockPair in source)
+            {
+                if (!target.TryGetValue(blockPair.Key, out var targetMarks) || targetMarks == null)
+                {
+                    target[blockPair.Key] = new Dictionary<string, double>(blockPair.Value, StringComparer.CurrentCultureIgnoreCase);
+                    continue;
+                }
+
+                foreach (var markPair in blockPair.Value)
+                {
+                    if (!targetMarks.ContainsKey(markPair.Key))
+                        targetMarks[markPair.Key] = 0;
+                    targetMarks[markPair.Key] += markPair.Value;
+                }
+            }
+        }
+
+        private static void MergeFloorMap(Dictionary<int, Dictionary<int, double>> target, Dictionary<int, Dictionary<int, double>> source)
+        {
+            if (target == null || source == null)
+                return;
+
+            foreach (var blockPair in source)
+            {
+                if (!target.TryGetValue(blockPair.Key, out var targetFloors) || targetFloors == null)
+                {
+                    target[blockPair.Key] = new Dictionary<int, double>(blockPair.Value);
+                    continue;
+                }
+
+                foreach (var floorPair in blockPair.Value)
+                {
+                    if (!targetFloors.ContainsKey(floorPair.Key))
+                        targetFloors[floorPair.Key] = 0;
+                    targetFloors[floorPair.Key] += floorPair.Value;
+                }
+            }
+        }
+
         private void TreeSettings_Click(object sender, RoutedEventArgs e)
         {
             if (currentObject == null)
@@ -2600,7 +2718,10 @@ namespace ConstructionControl
                     }))
                 .ToList();
 
-            var w = new TreeSettingsWindow(materialNames, currentObject.MaterialTreeSplitRules ?? new())
+            var w = new TreeSettingsWindow(
+                materialNames,
+                currentObject.MaterialTreeSplitRules ?? new(),
+                currentObject.AutoSplitMaterialNames ?? new List<string>())
             {
                 Owner = this
             };
@@ -2609,6 +2730,7 @@ namespace ConstructionControl
                 return;
 
             currentObject.MaterialTreeSplitRules = w.ResultRules;
+            currentObject.AutoSplitMaterialNames = w.ResultAutoSplitMaterials ?? new List<string>();
             currentObject.MaterialCatalog = w.ResultCatalog ?? new List<MaterialCatalogItem>();
             var validMainMaterials = currentObject.MaterialCatalog
     .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
@@ -2628,21 +2750,7 @@ namespace ConstructionControl
             if (w.ResultBindingChanges?.Count > 0)
             {
                 PushUndo();
-                foreach (var change in w.ResultBindingChanges)
-                {
-                    foreach (var rec in journal.Where(j =>
-                                     string.Equals(j.MaterialName ?? string.Empty, change.OldMaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
-                              && string.Equals(j.Category ?? string.Empty, change.OldCategoryName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
-                              && string.Equals(j.MaterialGroup ?? string.Empty, change.OldTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
-                              && string.Equals(j.SubCategory ?? string.Empty, change.OldSubTypeName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
-                    {
-                        rec.Category = change.NewCategoryName;
-                        rec.MaterialGroup = change.NewTypeName;
-                        rec.SubCategory = change.NewSubTypeName;
-                        rec.MaterialName = change.NewMaterialName;
-                    }
-                }
-
+                ApplyMaterialBindingChanges(w.ResultBindingChanges);
                 CleanupMaterialsAfterDelete();
             }
             SyncLegacyMaterialsFromCatalog();
@@ -3417,6 +3525,19 @@ namespace ConstructionControl
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .ToList();
             }
+
+            if (currentObject?.AutoSplitMaterialNames != null
+                && currentObject.AutoSplitMaterialNames.Contains(materialName, StringComparer.CurrentCultureIgnoreCase))
+            {
+                var autoSegments = Regex.Matches(materialName, @"[A-Za-zА-Яа-яЁё]+|\d+")
+                    .Select(x => x.Value.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .ToList();
+
+                if (autoSegments.Count > 0)
+                    return autoSegments;
+            }
+
             return new List<string> { materialName };
         }
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -3521,8 +3642,30 @@ namespace ConstructionControl
                     foreach (var rec in journal.Where(j => j.MaterialName == sourceMeta.MaterialName && j.MaterialGroup == sourceMeta.GroupName))
                         rec.MaterialGroup = targetGroup;
 
+                    foreach (var item in currentObject.MaterialCatalog.Where(x =>
+                                 string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(x.TypeName ?? string.Empty, sourceMeta.GroupName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(x.MaterialName ?? string.Empty, sourceMeta.MaterialName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
+                    {
+                        item.TypeName = targetGroup;
+                    }
+
+                    MoveDemandBinding(new TreeSettingsWindow.MaterialBindingChange
+                    {
+                        OldCategoryName = "Основные",
+                        NewCategoryName = "Основные",
+                        OldTypeName = sourceMeta.GroupName,
+                        NewTypeName = targetGroup,
+                        OldSubTypeName = sourceMeta.SubCategory,
+                        NewSubTypeName = sourceMeta.SubCategory,
+                        OldMaterialName = sourceMeta.MaterialName,
+                        NewMaterialName = sourceMeta.MaterialName
+                    });
+
                     
                         CleanupMaterialsAfterDelete();
+                    SyncLegacyMaterialsFromCatalog();
+                    RebuildArchiveFromCurrentData();
                     SaveState();
                     RefreshTreePreserveState();
                     ApplyAllFilters();
@@ -3557,6 +3700,7 @@ namespace ConstructionControl
                     currentObject.MaterialTreeSplitRules ??= new Dictionary<string, string>();
                     currentObject.MaterialTreeSplitRules[sourceMeta.MaterialName] = newRule;
 
+                    SyncLegacyMaterialsFromCatalog();
                     SaveState();
                     RefreshTreePreserveState();
                     ApplyAllFilters();
@@ -3580,7 +3724,34 @@ namespace ConstructionControl
                     foreach (var rec in journal.Where(j => j.MaterialGroup == sourceName))
                         rec.MaterialGroup = targetName;
 
+                    foreach (var item in currentObject.MaterialCatalog.Where(x =>
+                                 string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                              && string.Equals(x.TypeName ?? string.Empty, sourceName ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)))
+                    {
+                        item.TypeName = targetName;
+                    }
+
+                    foreach (var key in currentObject.Demand.Keys
+                                 .Where(x => x.StartsWith(sourceName + "::", StringComparison.CurrentCultureIgnoreCase))
+                                 .ToList())
+                    {
+                        var materialName = key.Split(new[] { "::" }, StringSplitOptions.None).Skip(1).FirstOrDefault() ?? string.Empty;
+                        MoveDemandBinding(new TreeSettingsWindow.MaterialBindingChange
+                        {
+                            OldCategoryName = "Основные",
+                            NewCategoryName = "Основные",
+                            OldTypeName = sourceName,
+                            NewTypeName = targetName,
+                            OldSubTypeName = string.Empty,
+                            NewSubTypeName = string.Empty,
+                            OldMaterialName = materialName,
+                            NewMaterialName = materialName
+                        });
+                    }
+
                     CleanupMaterialsAfterDelete();
+                    SyncLegacyMaterialsFromCatalog();
+                    RebuildArchiveFromCurrentData();
                     SaveState();
                     RefreshTreePreserveState();
                     ApplyAllFilters();
@@ -3630,11 +3801,37 @@ namespace ConstructionControl
 
                 foreach (var j in journal.Where(x => x.MaterialGroup == oldName))
                     j.MaterialGroup = input;
+
+                foreach (var item in currentObject.MaterialCatalog.Where(x =>
+                             string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                          && string.Equals(x.TypeName ?? string.Empty, oldName, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    item.TypeName = input;
+                }
+
+                foreach (var key in currentObject.Demand.Keys
+                             .Where(x => x.StartsWith(oldName + "::", StringComparison.CurrentCultureIgnoreCase))
+                             .ToList())
+                {
+                    var materialName = key.Split(new[] { "::" }, StringSplitOptions.None).Skip(1).FirstOrDefault() ?? string.Empty;
+                    MoveDemandBinding(new TreeSettingsWindow.MaterialBindingChange
+                    {
+                        OldCategoryName = "Основные",
+                        NewCategoryName = "Основные",
+                        OldTypeName = oldName,
+                        NewTypeName = input,
+                        OldSubTypeName = string.Empty,
+                        NewSubTypeName = string.Empty,
+                        OldMaterialName = materialName,
+                        NewMaterialName = materialName
+                    });
+                }
             }
 
             if (GetNodeKind(node) == "Material")
             {
                 var oldMaterialName = node.Tag is TreeNodeMeta meta ? meta.MaterialName : oldName;
+                var wasAutoSplit = currentObject.AutoSplitMaterialNames.Any(x => string.Equals(x, oldMaterialName, StringComparison.CurrentCultureIgnoreCase));
                 foreach (var kv in currentObject.MaterialNamesByGroup)
                 {
                     var idx = kv.Value.IndexOf(oldMaterialName);
@@ -3644,13 +3841,49 @@ namespace ConstructionControl
 
                 foreach (var j in journal.Where(x => x.MaterialName == oldMaterialName))
                     j.MaterialName = input;
+
+                foreach (var item in currentObject.MaterialCatalog.Where(x =>
+                             string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                          && string.Equals(x.MaterialName ?? string.Empty, oldMaterialName, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    item.MaterialName = input;
+                }
+
                 if (currentObject.MaterialTreeSplitRules.TryGetValue(oldMaterialName, out var rule))
                 {
-                    currentObject.MaterialTreeSplitRules[input] = rule;
+                    if (!wasAutoSplit)
+                        currentObject.MaterialTreeSplitRules[input] = rule;
                     currentObject.MaterialTreeSplitRules.Remove(oldMaterialName);
+                }
+
+                if (currentObject.AutoSplitMaterialNames.RemoveAll(x => string.Equals(x, oldMaterialName, StringComparison.CurrentCultureIgnoreCase)) > 0
+                    && !currentObject.AutoSplitMaterialNames.Contains(input, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    currentObject.AutoSplitMaterialNames.Add(input);
+                }
+
+                foreach (var key in currentObject.Demand.Keys
+                             .Where(x => x.EndsWith("::" + oldMaterialName, StringComparison.CurrentCultureIgnoreCase))
+                             .ToList())
+                {
+                    var groupName = key.Split(new[] { "::" }, StringSplitOptions.None).FirstOrDefault() ?? string.Empty;
+                    MoveDemandBinding(new TreeSettingsWindow.MaterialBindingChange
+                    {
+                        OldCategoryName = "Основные",
+                        NewCategoryName = "Основные",
+                        OldTypeName = groupName,
+                        NewTypeName = groupName,
+                        OldSubTypeName = string.Empty,
+                        NewSubTypeName = string.Empty,
+                        OldMaterialName = oldMaterialName,
+                        NewMaterialName = input
+                    });
                 }
             }
 
+            CleanupMaterialsAfterDelete();
+            SyncLegacyMaterialsFromCatalog();
+            RebuildArchiveFromCurrentData();
             SaveState();
             RefreshTreePreserveState();
            
@@ -3682,6 +3915,16 @@ namespace ConstructionControl
                 currentObject.MaterialGroups.RemoveAll(g => g.Name == name);
                 currentObject.MaterialNamesByGroup.Remove(name);
                 journal.RemoveAll(j => j.MaterialGroup == name);
+                currentObject.MaterialCatalog.RemoveAll(x =>
+                    string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(x.TypeName ?? string.Empty, name, StringComparison.CurrentCultureIgnoreCase));
+
+                foreach (var key in currentObject.Demand.Keys
+                             .Where(x => x.StartsWith(name + "::", StringComparison.CurrentCultureIgnoreCase))
+                             .ToList())
+                {
+                    currentObject.Demand.Remove(key);
+                }
             }
 
             if (GetNodeKind(node) == "Material")
@@ -3692,8 +3935,21 @@ namespace ConstructionControl
 
                 journal.RemoveAll(j => j.MaterialName == materialName);
                 currentObject.MaterialTreeSplitRules.Remove(materialName);
+                currentObject.AutoSplitMaterialNames.RemoveAll(x => string.Equals(x, materialName, StringComparison.CurrentCultureIgnoreCase));
+                currentObject.MaterialCatalog.RemoveAll(x =>
+                    string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(x.MaterialName ?? string.Empty, materialName, StringComparison.CurrentCultureIgnoreCase));
+
+                foreach (var key in currentObject.Demand.Keys
+                             .Where(x => x.EndsWith("::" + materialName, StringComparison.CurrentCultureIgnoreCase))
+                             .ToList())
+                {
+                    currentObject.Demand.Remove(key);
+                }
             }
 
+            CleanupMaterialsAfterDelete();
+            RebuildArchiveFromCurrentData();
             SaveState();
             RefreshTreePreserveState();
           
@@ -3864,9 +4120,9 @@ namespace ConstructionControl
                 Journal = journal
             });
 
-            var tempFileName = $"{SaveFileName}.tmp";
+            var tempFileName = $"{currentSaveFileName}.tmp";
             File.WriteAllText(tempFileName, json);
-            File.Copy(tempFileName, SaveFileName, overwrite: true);
+            File.Copy(tempFileName, currentSaveFileName, overwrite: true);
             File.Delete(tempFileName);
         }
         private AppState CloneState()
@@ -3909,6 +4165,7 @@ namespace ConstructionControl
         {
             currentObject = state.CurrentObject;
             journal = state.Journal ?? new();
+            EnsureProjectUiSettings();
 
             ArrivalPanel.SetObject(currentObject, journal);
 
@@ -3923,7 +4180,7 @@ namespace ConstructionControl
             RefreshProductionJournalState();
             EnsureInspectionJournalStorage();
             RefreshInspectionJournalState();
-            UpdateOtReminders();
+            ApplyProjectUiSettings();
             SaveState();
         }
 
@@ -3941,6 +4198,8 @@ namespace ConstructionControl
             currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
             currentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
+            currentObject.AutoSplitMaterialNames ??= new List<string>();
+            currentObject.UiSettings ??= new ProjectUiSettings();
 
             if (currentObject.Demand == null)
                 return;
@@ -3992,14 +4251,14 @@ namespace ConstructionControl
 
         private void LoadState()
         {
-            if (!File.Exists(SaveFileName))
+            if (!File.Exists(currentSaveFileName))
                 return;
 
             AppState? state;
             try
             {
                 state = JsonSerializer.Deserialize<AppState>(
-                    File.ReadAllText(SaveFileName));
+                    File.ReadAllText(currentSaveFileName));
             }
             catch (Exception ex)
             {
@@ -4099,6 +4358,7 @@ namespace ConstructionControl
                 }
             }
             EnsureOtJournalStorage();
+            EnsureProjectUiSettings();
 
         }
 
@@ -4119,6 +4379,49 @@ namespace ConstructionControl
             SaveState();
             MessageBox.Show("Данные сохранены");
         }
+
+        private void SaveAs_Click(object sender, RoutedEventArgs e)
+        {
+            CommitOpenEdits();
+
+            var dlg = new SaveFileDialog
+            {
+                Filter = "Файл проекта ConstructionControl (*.json)|*.json",
+                FileName = System.IO.Path.GetFileName(currentSaveFileName)
+            };
+
+            if (dlg.ShowDialog() != true)
+                return;
+
+            currentSaveFileName = dlg.FileName;
+            SaveState();
+            MessageBox.Show("Проект сохранён в новый файл.");
+        }
+
+        private void AppSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            CommitOpenEdits();
+            EnsureProjectUiSettings();
+
+            var window = new SettingsWindow(currentObject.UiSettings)
+            {
+                Owner = this
+            };
+
+            if (window.ShowDialog() != true)
+                return;
+
+            currentObject.UiSettings = window.ResultSettings ?? new ProjectUiSettings();
+            ApplyProjectUiSettings();
+            SaveState();
+        }
+
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
@@ -4138,6 +4441,8 @@ namespace ConstructionControl
 
         private void ExportAllData_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
+
             var dlg = new SaveFileDialog
             {
                 Filter = "ConstructionControl backup (*.ccbak)|*.ccbak",
@@ -4153,6 +4458,8 @@ namespace ConstructionControl
 
         private void ImportAllData_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
+
             var dlg = new OpenFileDialog
             {
                 Filter = "ConstructionControl backup (*.ccbak)|*.ccbak|JSON (*.json)|*.json"
@@ -4189,6 +4496,7 @@ namespace ConstructionControl
 
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
+            CommitOpenEdits();
             SaveState();
             Close();
         }
@@ -4889,12 +5197,49 @@ namespace ConstructionControl
 
         private void UpdateTreePanelState(bool forceVisible)
         {
-            if (TreeColumn == null || TreePanelBorder == null)
+            if (TreeColumn == null || TreePanelBorder == null || TreeHoverColumn == null)
                 return;
+
+            EnsureProjectUiSettings();
+
+            if (currentObject?.UiSettings?.DisableTree == true)
+            {
+                TreePanelBorder.Visibility = Visibility.Collapsed;
+                TreeColumn.Width = new GridLength(0);
+                TreeHoverColumn.Width = new GridLength(0);
+                if (TreePinToggle != null)
+                    TreePinToggle.IsChecked = false;
+                return;
+            }
 
             bool show = isTreePinned || forceVisible;
             TreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TreeHoverColumn.Width = new GridLength(14);
             TreeColumn.Width = show ? new GridLength(260) : new GridLength(0);
+        }
+
+        private void EnsureProjectUiSettings()
+        {
+            if (currentObject != null)
+                currentObject.UiSettings ??= new ProjectUiSettings();
+        }
+
+        private void ApplyProjectUiSettings()
+        {
+            EnsureProjectUiSettings();
+
+            if (currentObject?.UiSettings == null)
+            {
+                UpdateTreePanelState(forceVisible: false);
+                return;
+            }
+
+            isTreePinned = currentObject.UiSettings.PinTreeByDefault && !currentObject.UiSettings.DisableTree;
+            if (TreePinToggle != null)
+                TreePinToggle.IsChecked = isTreePinned;
+
+            UpdateTreePanelState(forceVisible: isTreePinned);
+            UpdateOtReminders();
         }
         private List<SummaryBlockInfo> BuildSummaryBlocks(string group)
         {

@@ -1,0 +1,83 @@
+<Window x:Class="ConstructionControl.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки"
+        Width="520"
+        Height="340"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F6F7FB">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="White"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="18">
+            <StackPanel>
+                <TextBlock Text="Настройки интерфейса"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="#0F172A"/>
+                <TextBlock Text="Эти параметры сохраняются внутри объекта и будут перенесены при полном экспорте/импорте."
+                           Margin="0,8,0,0"
+                           Foreground="#64748B"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1"
+                Margin="0,12,0,0"
+                Background="White"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="18">
+            <StackPanel>
+                <CheckBox x:Name="DisableTreeCheckBox"
+                          Content="Отключить дерево"
+                          FontWeight="SemiBold"/>
+                <TextBlock Text="Полностью скрывает дерево материалов и зону его раскрытия."
+                           Margin="28,4,0,12"
+                           Foreground="#64748B"
+                           TextWrapping="Wrap"/>
+
+                <CheckBox x:Name="PinTreeCheckBox"
+                          Content="Держать дерево закреплённым по умолчанию"
+                          FontWeight="SemiBold"/>
+                <TextBlock Text="Если дерево не отключено, оно будет открыто сразу после запуска объекта."
+                           Margin="28,4,0,12"
+                           Foreground="#64748B"
+                           TextWrapping="Wrap"/>
+
+                <CheckBox x:Name="ReminderPopupCheckBox"
+                          Content="Показывать всплывающие напоминания"
+                          FontWeight="SemiBold"/>
+                <TextBlock Text="Напоминания по ОТ и осмотрам будут видны на любой вкладке."
+                           Margin="28,4,0,0"
+                           Foreground="#64748B"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Content="Отмена"
+                    Width="120"
+                    Margin="0,0,10,0"
+                    IsCancel="True"
+                    Style="{StaticResource SecondaryButton}"/>
+            <Button Content="Сохранить"
+                    Width="140"
+                    IsDefault="True"
+                    Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

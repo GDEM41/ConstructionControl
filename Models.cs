@@ -45,6 +45,7 @@ namespace ConstructionControl
         public List<MaterialGroup> MaterialGroups { get; set; } = new();
         public List<MaterialCatalogItem> MaterialCatalog { get; set; } = new();
         public Dictionary<string, string> MaterialTreeSplitRules { get; set; } = new();
+        public List<string> AutoSplitMaterialNames { get; set; } = new();
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
         public Dictionary<string, List<string>> SummaryMarksByGroup { get; set; } = new();
@@ -52,6 +53,14 @@ namespace ConstructionControl
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
         public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
+        public ProjectUiSettings UiSettings { get; set; } = new();
+    }
+
+    public class ProjectUiSettings
+    {
+        public bool DisableTree { get; set; }
+        public bool PinTreeByDefault { get; set; }
+        public bool ShowReminderPopup { get; set; } = true;
     }
 
     public class TimesheetPersonEntry : INotifyPropertyChanged

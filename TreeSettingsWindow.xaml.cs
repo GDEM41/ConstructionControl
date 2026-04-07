@@ -22,11 +22,13 @@ namespace ConstructionControl
             public string Level4Name { get; set; }
             public string Level5Name { get; set; }
             public string Level6Name { get; set; }
+            public bool IsAutoSplitEnabled { get; set; }
         }
 
         public class MaterialSplitRuleRow : INotifyPropertyChanged
         {
             private readonly string[] segments = new string[10];
+            private bool isAutoSplitEnabled;
             private string categoryName;
             private string typeName;
             private string subTypeName;
@@ -69,7 +71,11 @@ namespace ConstructionControl
             public string EditableMaterialName
             {
                 get => materialName;
-                set => SetField(ref materialName, value, nameof(EditableMaterialName));
+                set
+                {
+                    if (SetField(ref materialName, value, nameof(EditableMaterialName)) && IsAutoSplitEnabled)
+                        ApplyAutomaticSplit();
+                }
             }
             public string EditableLevel4Name
             {
@@ -98,6 +104,20 @@ namespace ConstructionControl
             public string Segment8 { get => segments[7]; set => SetSegment(7, value); }
             public string Segment9 { get => segments[8]; set => SetSegment(8, value); }
             public string Segment10 { get => segments[9]; set => SetSegment(9, value); }
+            public bool IsAutoSplitEnabled
+            {
+                get => isAutoSplitEnabled;
+                set
+                {
+                    if (isAutoSplitEnabled == value)
+                        return;
+
+                    isAutoSplitEnabled = value;
+                    OnPropertyChanged(nameof(IsAutoSplitEnabled));
+                    if (isAutoSplitEnabled)
+                        ApplyAutomaticSplit();
+                }
+            }
 
             public void SetRule(string rule)
             {
@@ -122,6 +142,11 @@ namespace ConstructionControl
                 OnPropertyChanged(nameof(Segment10));
             }
             public string GetRule() => NormalizeRule(string.Join("|", segments));
+
+            public void ApplyAutomaticSplit()
+            {
+                SetRule(BuildAutomaticRule(EditableMaterialName));
+            }
 
             private void SetSegment(int index, string value)
             {
@@ -173,12 +198,17 @@ namespace ConstructionControl
         private int visibleCatalogColumns = 5;
         private int visibleLevelColumns = 6;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
+        public List<string> ResultAutoSplitMaterials { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
         public List<MaterialCatalogItem> ResultCatalog { get; private set; } = new();
 
-        public TreeSettingsWindow(IEnumerable<MaterialSplitRuleSource> materials, Dictionary<string, string> existingRules)
+        public TreeSettingsWindow(IEnumerable<MaterialSplitRuleSource> materials, Dictionary<string, string> existingRules, IEnumerable<string> existingAutoSplitMaterials)
         {
             InitializeComponent();
+
+            var autoSplitSet = new HashSet<string>(
+                existingAutoSplitMaterials ?? Enumerable.Empty<string>(),
+                System.StringComparer.CurrentCultureIgnoreCase);
 
             rows = new ObservableCollection<MaterialSplitRuleRow>(
                       materials
@@ -225,11 +255,15 @@ namespace ConstructionControl
                 row.EditableLevel5Name = row.Level5Name;
                 row.EditableLevel6Name = row.Level6Name;
                 row.EditableMaterialName = row.MaterialName;
+                row.IsAutoSplitEnabled = autoSplitSet.Contains(row.MaterialName);
 
                 visibleCatalogColumns = rows.Any(x => !string.IsNullOrWhiteSpace(x.Level6Name)) ? 6 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level5Name)) ? 5 : rows.Any(x => !string.IsNullOrWhiteSpace(x.Level4Name)) ? 4 : 5;
-                row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
-                    ? rule
-                    : string.Empty);
+                if (row.IsAutoSplitEnabled)
+                    row.ApplyAutomaticSplit();
+                else
+                    row.SetRule(existingRules != null && existingRules.TryGetValue(row.MaterialName, out var rule)
+                        ? rule
+                        : string.Empty);
             }
 
             var cvs = new CollectionViewSource { Source = rows };
@@ -302,7 +336,8 @@ namespace ConstructionControl
                 OriginalMaterialName = string.Empty,
                 OriginalLevel4Name = string.Empty,
                 OriginalLevel5Name = string.Empty,
-                OriginalLevel6Name = string.Empty
+                OriginalLevel6Name = string.Empty,
+                IsAutoSplitEnabled = false
             };
 
             var index = selected != null ? rows.IndexOf(selected) + 1 : rows.Count;
@@ -685,10 +720,20 @@ namespace ConstructionControl
                     && string.Equals(NormalizeMetaValue(x.CategoryName), "Основные", System.StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
+            foreach (var row in validRows.Where(x => x.IsAutoSplitEnabled))
+                row.ApplyAutomaticSplit();
+
             ResultRules = validRows
                 .Select(x => new { x.MaterialName, Rule = x.GetRule() })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Rule))
                 .ToDictionary(x => x.MaterialName, x => x.Rule);
+            ResultAutoSplitMaterials = validRows
+                .Where(x => x.IsAutoSplitEnabled)
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(System.StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, System.StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
             ResultBindingChanges = validRows
                 .Where(x => !string.Equals(x.OriginalCategoryName, x.CategoryName, System.StringComparison.CurrentCulture)
                          || !string.Equals(x.OriginalTypeName, x.TypeName, System.StringComparison.CurrentCulture)
@@ -774,6 +819,19 @@ namespace ConstructionControl
                 .Where(x => !string.IsNullOrWhiteSpace(x));
 
             return string.Join("|", parts);
+        }
+
+        private static string BuildAutomaticRule(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+                return string.Empty;
+
+            var parts = Regex.Matches(materialName, @"[A-Za-zА-Яа-яЁё]+|\d+")
+                .Select(x => x.Value.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            return parts.Count == 0 ? string.Empty : string.Join("|", parts);
         }
 
         private static List<string> GetPatternTokens(string value)
