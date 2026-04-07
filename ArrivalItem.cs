@@ -8,6 +8,7 @@ namespace ConstructionControl
     public class ArrivalItem : INotifyPropertyChanged
     {
         private DateTime date;
+        private string materialGroup;
         private string materialName;
         private double quantity;
         private string unit;
@@ -32,6 +33,12 @@ namespace ConstructionControl
         {
             get => materialName;
             set { materialName = value; OnPropertyChanged(); }
+        }
+
+        public string MaterialGroup
+        {
+            get => materialGroup;
+            set { materialGroup = value; OnPropertyChanged(); }
         }
 
         public double Quantity
@@ -65,6 +72,9 @@ namespace ConstructionControl
         }
 
         public ObservableCollection<string> AvailableNames { get; set; }
+            = new ObservableCollection<string>();
+
+        public ObservableCollection<string> AvailableGroups { get; set; }
             = new ObservableCollection<string>();
 
         public ObservableCollection<string> AvailableUnits { get; set; }

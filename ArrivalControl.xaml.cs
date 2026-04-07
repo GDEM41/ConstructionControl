@@ -1,8 +1,8 @@
-﻿using System.Collections.ObjectModel;
+﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 
 namespace ConstructionControl
 {
@@ -10,304 +10,252 @@ namespace ConstructionControl
     {
         private ProjectObject currentObject;
         private List<JournalRecord> journal;
-        private ObservableCollection<ArrivalItem> items = new();
-   
+        private readonly ObservableCollection<ArrivalItem> items = new();
+
         public event System.Action<Arrival> ArrivalAdded;
 
         public ArrivalControl()
         {
             InitializeComponent();
             ItemsGrid.ItemsSource = items;
+            ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
+            ExtraTypeBox.SelectedIndex = 0;
         }
 
-        // ================= ХАК ДЛЯ ComboBox.Text =================
-
-        private void UserControl_Loaded(object sender, RoutedEventArgs e)
-        {
-            MaterialGroupBox.AddHandler(
-                TextBoxBase.TextChangedEvent,
-                new TextChangedEventHandler(MaterialGroupTextChanged));
-        }
-
-        // ================= ИНИЦИАЛИЗАЦИЯ =================
+        private bool IsExtraMode => ExtraRadio != null && ExtraRadio.IsChecked == true;
 
         private void ArrivalTypeChanged(object sender, RoutedEventArgs e)
         {
-            if (MaterialGroupPanel == null || ExtraTypeBox == null)
+            if (ExtraRadio == null || ExtraTypeBox == null)
                 return;
 
-            if (ExtraRadio.IsChecked == true)
-            {
-                // Допы
-                MaterialGroupPanel.Visibility = Visibility.Hidden;
+            ExtraTypeBox.Visibility = IsExtraMode ? Visibility.Visible : Visibility.Collapsed;
+            if (IsExtraMode && ExtraTypeBox.SelectedItem == null)
+                ExtraTypeBox.SelectedIndex = 0;
 
-                ExtraTypeBox.Visibility = Visibility.Visible;
-
-                if (ExtraTypeBox.ItemsSource == null)
-                {
-                    ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
-                    ExtraTypeBox.SelectedIndex = 0;
-                }
-            }
-            else
-            {
-                // Основные
-                MaterialGroupPanel.Visibility = Visibility.Visible;
-                ExtraTypeBox.Visibility = Visibility.Hidden;
-            }
+            RefreshAllRowLookups();
         }
-
-
-
-
-
 
         public void SetObject(ProjectObject obj, List<JournalRecord> journalRecords)
         {
             currentObject = obj;
             journal = journalRecords;
 
-            MaterialGroupBox.ItemsSource = currentObject.Archive.Groups
-                .OrderBy(x => x)
-                .ToList();
-
-
             items.Clear();
             AddRow();
-            foreach (var item in items)
-            {
-                item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
-            }
-
+            RefreshAllRowLookups();
         }
 
-
-
-        // ================= ТИП МАТЕРИАЛА =================
-
-        private void MaterialGroupTextChanged(object sender, TextChangedEventArgs e)
+        private void RefreshAllRowLookups()
         {
-            var group = MaterialGroupBox.Text?.Trim();
-            var existingNames = items
-               .Select(x => x.MaterialName)
-               .Where(x => !string.IsNullOrWhiteSpace(x))
-               .Distinct()
-               .ToList();
-
             foreach (var item in items)
             {
-                item.AvailableNames.Clear();
-
-                if (string.IsNullOrWhiteSpace(group))
-                    continue;
-
-                if (currentObject.Archive.Materials.TryGetValue(group, out var names))
-                {
-                    foreach (var n in names.OrderBy(x => x))
-                        item.AvailableNames.Add(n);
-                }
-                if (currentObject.MaterialCatalog != null)
-                {
-                    foreach (var n in currentObject.MaterialCatalog
-                        .Where(x => string.Equals(x.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
-                            && string.Equals(x.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase)
-                            && !string.IsNullOrWhiteSpace(x.MaterialName))
-                        .Select(x => x.MaterialName)
-                        .OrderBy(x => x)
-                        .Distinct())
-                    {
-                        if (!item.AvailableNames.Contains(n))
-                            item.AvailableNames.Add(n);
-                    }
-                }
-
-
+                item.AvailableUnits = new ObservableCollection<string>(currentObject?.Archive?.Units ?? new List<string>());
+                RefreshAvailableGroups(item);
+                RefreshAvailableNames(item);
             }
-            // сохраняем только введённые в текущем типе значения
-            foreach (var item in items)
+        }
+
+        private void RefreshAvailableGroups(ArrivalItem item)
+        {
+            item.AvailableGroups.Clear();
+            if (currentObject?.Archive?.Groups == null)
+                return;
+
+            foreach (var group in currentObject.Archive.Groups
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .OrderBy(x => x))
             {
-                foreach (var name in existingNames)
+                item.AvailableGroups.Add(group);
+            }
+        }
+
+        private void RefreshAvailableNames(ArrivalItem item)
+        {
+            if (item == null)
+                return;
+
+            item.AvailableNames.Clear();
+            var group = item.MaterialGroup?.Trim();
+            if (string.IsNullOrWhiteSpace(group))
+                return;
+
+            if (currentObject?.Archive?.Materials != null
+                && currentObject.Archive.Materials.TryGetValue(group, out var archiveNames))
+            {
+                foreach (var name in archiveNames
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct()
+                    .OrderBy(x => x))
                 {
                     if (!item.AvailableNames.Contains(name))
                         item.AvailableNames.Add(name);
                 }
-                var sorted = item.AvailableNames.OrderBy(x => x).ToList();
-                item.AvailableNames.Clear();
-                foreach (var n in sorted)
-                    item.AvailableNames.Add(n);
             }
 
+            if (currentObject?.MaterialCatalog != null)
+            {
+                var names = currentObject.MaterialCatalog
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                    .Where(x => IsMatchingCatalogEntry(x, group))
+                    .Select(x => x.MaterialName)
+                    .Distinct()
+                    .OrderBy(x => x);
 
+                foreach (var name in names)
+                {
+                    if (!item.AvailableNames.Contains(name))
+                        item.AvailableNames.Add(name);
+                }
+            }
         }
 
+        private bool IsMatchingCatalogEntry(MaterialCatalogItem entry, string group)
+        {
+            if (IsExtraMode)
+            {
+                return string.Equals(entry.CategoryName, "Допы", System.StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(entry.TypeName, ExtraTypeBox.SelectedItem?.ToString(), System.StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(entry.SubTypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
+            }
 
-
-        // ================= СТРОКИ =================
+            return string.Equals(entry.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(entry.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
+        }
 
         private void AddRow()
         {
+            var defaultGroup = items.LastOrDefault(x => !string.IsNullOrWhiteSpace(x.MaterialGroup))?.MaterialGroup
+                ?? items.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.MaterialGroup))?.MaterialGroup;
+
             var item = new ArrivalItem
             {
                 Date = System.DateTime.Today,
-                AvailableNames = new ObservableCollection<string>()
+                MaterialGroup = defaultGroup,
+                AvailableGroups = new ObservableCollection<string>(),
+                AvailableNames = new ObservableCollection<string>(),
+                AvailableUnits = new ObservableCollection<string>(currentObject?.Archive?.Units ?? new List<string>())
             };
-
-            // заполняем Units из архива
-            item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
 
             items.Add(item);
-            // КОПИРУЕМ СПИСОК МАТЕРИАЛОВ ИЗ ПЕРВОЙ СТРОКИ В НОВУЮ
-            if (items.Count > 1)
-            {
-                var first = items[0];
-                foreach (var n in first.AvailableNames)
-                    item.AvailableNames.Add(n);
-            }
+            RefreshAvailableGroups(item);
+            RefreshAvailableNames(item);
 
-
-            item.PropertyChanged += (s, e) =>
+            item.PropertyChanged += (_, e) =>
             {
+                if (e.PropertyName == nameof(ArrivalItem.MaterialGroup))
+                    RefreshAvailableNames(item);
+
                 if (e.PropertyName == nameof(ArrivalItem.MaterialName))
-                {
                     TryAutofillUnitAndStb(item);
-                }
             };
         }
 
-
-
-
-        private void AddRow_Click(object sender, RoutedEventArgs e)
-        
-        {
-            AddRow();
-        }
-
-        // ================= ДОБАВЛЕНИЕ ПРИХОДА =================
+        private void AddRow_Click(object sender, RoutedEventArgs e) => AddRow();
 
         private void AddArrival_Click(object sender, RoutedEventArgs e)
         {
-            // ===== ОБЯЗАТЕЛЬНАЯ ЗАЩИТА =====
             if (currentObject == null)
             {
                 MessageBox.Show("Сначала создайте объект");
                 return;
             }
 
-            var groupName = MaterialGroupBox.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(groupName))
+            var rows = items.Where(x =>
+                    !string.IsNullOrWhiteSpace(x.MaterialName)
+                    || !string.IsNullOrWhiteSpace(x.MaterialGroup)
+                    || x.Quantity > 0)
+                .ToList();
+
+            if (rows.Count == 0)
             {
-                MessageBox.Show("Укажите тип материала");
+                MessageBox.Show("Добавьте хотя бы одну заполненную строку.");
                 return;
             }
 
-            if (!currentObject.MaterialGroups.Any(g => g.Name == groupName))
-                currentObject.MaterialGroups.Add(new MaterialGroup { Name = groupName });
-
-            if (!currentObject.MaterialNamesByGroup.ContainsKey(groupName))
-                currentObject.MaterialNamesByGroup[groupName] = new();
-
-            foreach (var i in items)
+            foreach (var row in rows)
             {
-                if (!string.IsNullOrWhiteSpace(i.MaterialName) &&
-                    !currentObject.MaterialNamesByGroup[groupName].Contains(i.MaterialName))
+                if (string.IsNullOrWhiteSpace(row.MaterialGroup))
                 {
-                    currentObject.MaterialNamesByGroup[groupName].Add(i.MaterialName);
+                    MessageBox.Show("Укажите тип материала в каждой заполненной строке.");
+                    return;
                 }
 
-                // ===== ШАГ 6: ЗАПОМИНАЕМ ЕД. ИЗМ И СТБ =====
-                if (!string.IsNullOrWhiteSpace(i.MaterialName))
+                if (string.IsNullOrWhiteSpace(row.MaterialName))
                 {
-                  
+                    MessageBox.Show("Укажите наименование в каждой заполненной строке.");
+                    return;
                 }
             }
 
-            // === ПОПОЛНЕНИЕ АРХИВА ===
             var archive = currentObject.Archive;
-
-            if (!archive.Groups.Contains(groupName))
-                archive.Groups.Add(groupName);
-
-            if (!archive.Materials.ContainsKey(groupName))
-                archive.Materials[groupName] = new();
-
-            foreach (var i in items)
+            foreach (var row in rows)
             {
-                if (!string.IsNullOrWhiteSpace(i.MaterialName) && !archive.Materials[groupName].Contains(i.MaterialName))
-                    archive.Materials[groupName].Add(i.MaterialName);
+                var groupName = row.MaterialGroup.Trim();
 
-                if (!string.IsNullOrWhiteSpace(i.Unit) && !archive.Units.Contains(i.Unit))
-                    archive.Units.Add(i.Unit);
+                if (!currentObject.MaterialGroups.Any(g => g.Name == groupName))
+                    currentObject.MaterialGroups.Add(new MaterialGroup { Name = groupName });
 
-                if (!string.IsNullOrWhiteSpace(i.Supplier) && !archive.Suppliers.Contains(i.Supplier))
-                    archive.Suppliers.Add(i.Supplier);
+                if (!currentObject.MaterialNamesByGroup.ContainsKey(groupName))
+                    currentObject.MaterialNamesByGroup[groupName] = new();
 
-                if (!string.IsNullOrWhiteSpace(i.Passport) && !archive.Passports.Contains(i.Passport))
-                    archive.Passports.Add(i.Passport);
+                if (!currentObject.MaterialNamesByGroup[groupName].Contains(row.MaterialName))
+                    currentObject.MaterialNamesByGroup[groupName].Add(row.MaterialName);
 
-                if (!string.IsNullOrWhiteSpace(i.Stb) && !archive.Stb.Contains(i.Stb))
-                    archive.Stb.Add(i.Stb);
+                if (!archive.Groups.Contains(groupName))
+                    archive.Groups.Add(groupName);
+
+                if (!archive.Materials.ContainsKey(groupName))
+                    archive.Materials[groupName] = new List<string>();
+
+                if (!archive.Materials[groupName].Contains(row.MaterialName))
+                    archive.Materials[groupName].Add(row.MaterialName);
+
+                if (!string.IsNullOrWhiteSpace(row.Unit) && !archive.Units.Contains(row.Unit))
+                    archive.Units.Add(row.Unit);
+
+                if (!string.IsNullOrWhiteSpace(row.Supplier) && !archive.Suppliers.Contains(row.Supplier))
+                    archive.Suppliers.Add(row.Supplier);
+
+                if (!string.IsNullOrWhiteSpace(row.Passport) && !archive.Passports.Contains(row.Passport))
+                    archive.Passports.Add(row.Passport);
+
+                if (!string.IsNullOrWhiteSpace(row.Stb) && !archive.Stb.Contains(row.Stb))
+                    archive.Stb.Add(row.Stb);
             }
-
-
-            // === ПОПОЛНЕНИЕ АРХИВА ===
-
-            foreach (var item in items)
-            {
-                item.AvailableUnits = new ObservableCollection<string>(archive.Units);
-            }
-
 
             ArrivalAdded?.Invoke(new Arrival
             {
                 Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
-                SubCategory = ExtraRadio.IsChecked == true
-                    ? ExtraTypeBox.SelectedItem?.ToString()
-                    : null,
-
-                MaterialGroup = MainRadio.IsChecked == true ? groupName : null,
-                TtnNumber = TtnBox.Text,
-                Items = items.ToList()
+                SubCategory = IsExtraMode ? ExtraTypeBox.SelectedItem?.ToString() : null,
+                TtnNumber = TtnBox.Text?.Trim(),
+                Items = rows.ToList()
             });
-
 
             TtnBox.Clear();
             items.Clear();
             AddRow();
-            MaterialGroupTextChanged(null, null);
-
+            RefreshAllRowLookups();
         }
+
         private void TryAutofillUnitAndStb(ArrivalItem item)
         {
-            if (item == null)
+            if (item == null || currentObject?.Archive == null)
                 return;
 
-            // очищаем при смене материала
             item.Unit = null;
             item.Stb = null;
             item.Supplier = null;
-            var archive = currentObject.Archive;
+            item.AvailableUnits = new ObservableCollection<string>(currentObject.Archive.Units);
 
-            // если в архиве единица одна — ставим автоматом
-            if (archive.Units.Count == 1)
-            {
-                item.Unit = archive.Units[0];
-                return;
-            }
-
-            // если несколько — формируем список выбора
-            item.AvailableUnits = new ObservableCollection<string>(archive.Units);
-
-
-            if (string.IsNullOrWhiteSpace(item.MaterialName))
-                return;
-
-            if (journal == null || journal.Count == 0)
+            if (string.IsNullOrWhiteSpace(item.MaterialName) || journal == null || journal.Count == 0)
                 return;
 
             var last = journal
-                    .Where(j => string.Equals(j.Category, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals(j.MaterialName, item.MaterialName, System.StringComparison.CurrentCultureIgnoreCase))
+                .Where(j => string.Equals(j.MaterialName, item.MaterialName, System.StringComparison.CurrentCultureIgnoreCase))
+                .Where(j => string.IsNullOrWhiteSpace(item.MaterialGroup)
+                    || string.Equals(j.MaterialGroup, item.MaterialGroup, System.StringComparison.CurrentCultureIgnoreCase))
                 .OrderByDescending(j => j.Date)
                 .FirstOrDefault();
 
@@ -319,41 +267,16 @@ namespace ConstructionControl
             item.Supplier = last.Supplier;
         }
 
-
-        private void SyncArchiveWithMaterialCatalog()
+        private void MaterialGroup_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (currentObject?.MaterialCatalog == null)
-                return;
-
-            foreach (var entry in currentObject.MaterialCatalog
-                .Where(x => string.Equals(x.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
-                    && !string.IsNullOrWhiteSpace(x.TypeName)
-                    && !string.IsNullOrWhiteSpace(x.MaterialName)))
-            {
-                if (!currentObject.Archive.Groups.Contains(entry.TypeName))
-                    currentObject.Archive.Groups.Add(entry.TypeName);
-
-                if (!currentObject.Archive.Materials.ContainsKey(entry.TypeName))
-                    currentObject.Archive.Materials[entry.TypeName] = new();
-
-                if (!currentObject.Archive.Materials[entry.TypeName].Contains(entry.MaterialName))
-                    currentObject.Archive.Materials[entry.TypeName].Add(entry.MaterialName);
-            }
+            if (sender is ComboBox combo && combo.DataContext is ArrivalItem item)
+                RefreshAvailableNames(item);
         }
-
-
-
-
 
         private void Material_LostFocus(object sender, RoutedEventArgs e)
         {
             if (sender is ComboBox cb && cb.DataContext is ArrivalItem item)
-            {
                 TryAutofillUnitAndStb(item);
-            }
         }
-
-
-
     }
 }

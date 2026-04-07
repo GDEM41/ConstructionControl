@@ -741,6 +741,20 @@
         Margin="0,0,10,0"
         Click="ArrivalFilterButton_Click"/>
 
+                                <Button x:Name="ArrivalLegacyViewButton"
+        Content="Таблица"
+        Width="120"
+        Height="34"
+        Margin="0,0,10,0"
+        Click="ArrivalLegacyViewButton_Click"/>
+
+                                <Button x:Name="ArrivalMatrixViewButton"
+        Content="Матрица"
+        Width="120"
+        Height="34"
+        Margin="0,0,10,0"
+        Click="ArrivalMatrixViewButton_Click"/>
+
                                 <Button Style="{StaticResource PrimaryButton}"
         Margin="0,0,10,0"
         Click="ExportArrival_Click">
@@ -758,27 +772,72 @@
 
 
 
-                            <!-- ====== ТАБЛИЦА ПРИХОДОВ ====== -->
-                            <DataGrid x:Name="ArrivalLiveTable"
-                                   Margin="0,50,0,0"
-                                   AutoGenerateColumns="False"
-                                    CanUserAddRows="False"
-                                    ColumnWidth="*"
-                                   MinColumnWidth="90"
-                                   CanUserResizeColumns="True"
-                                   Grid.ColumnSpan="2">
+                            <Border Grid.ColumnSpan="2"
+                                    Margin="0,50,0,0"
+                                    Background="White"
+                                    BorderBrush="#D6DEE8"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10">
+                                <Grid>
+                                    <ScrollViewer x:Name="ArrivalMatrixScrollViewer"
+                                                  HorizontalScrollBarVisibility="Auto"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <Grid x:Name="ArrivalMatrixHost"/>
+                                    </ScrollViewer>
 
-                                <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM.yyyy}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Тип" Binding="{Binding MaterialGroup}" Width="Auto"/>
-
-                                        <DataGridTextColumn Header="Наименование" Binding="{Binding MaterialName}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Ед." Binding="{Binding Unit}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity}" Width="Auto"/>
-                                        <DataGridTextColumn Header="ТТН" Binding="{Binding Ttn}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Поставщик" Binding="{Binding Supplier}" Width="Auto"/>
-                                    </DataGrid.Columns>
-                            </DataGrid>
+                                    <DataGrid x:Name="ArrivalLegacyGrid"
+                                              Visibility="Collapsed"
+                                              AutoGenerateColumns="False"
+                                              CanUserAddRows="False"
+                                              GridLinesVisibility="All"
+                                              HeadersVisibility="Column"
+                                              RowHeaderWidth="0"
+                                              BorderThickness="0"
+                                              RowBackground="White"
+                                              AlternatingRowBackground="#F8FAFC"
+                                              VerticalGridLinesBrush="#D4DCE8"
+                                              HorizontalGridLinesBrush="#D4DCE8"
+                                              CellEditEnding="ArrivalLegacyGrid_CellEditEnding"
+                                              RowEditEnding="ArrivalLegacyGrid_RowEditEnding">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Дата"
+                                                                Binding="{Binding Date, StringFormat=dd.MM.yyyy}"
+                                                                Width="95"/>
+                                            <DataGridTextColumn Header="Категория"
+                                                                Binding="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="110"/>
+                                            <DataGridTextColumn Header="Подтип"
+                                                                Binding="{Binding SubCategory, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="110"/>
+                                            <DataGridTextColumn Header="Тип"
+                                                                Binding="{Binding MaterialGroup, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="150"/>
+                                            <DataGridTextColumn Header="Наименование"
+                                                                Binding="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="240"/>
+                                            <DataGridTextColumn Header="Количество"
+                                                                Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="95"/>
+                                            <DataGridTextColumn Header="Ед."
+                                                                Binding="{Binding Unit, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="70"/>
+                                            <DataGridTextColumn Header="Паспорт"
+                                                                Binding="{Binding Passport, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="130"/>
+                                            <DataGridTextColumn Header="СТБ"
+                                                                Binding="{Binding Stb, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="90"/>
+                                            <DataGridTextColumn Header="Поставщик"
+                                                                Binding="{Binding Supplier, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="170"/>
+                                            <DataGridTextColumn Header="ТТН"
+                                                                Binding="{Binding Ttn, UpdateSourceTrigger=PropertyChanged}"
+                                                                Width="140"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Border>
 
                             <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
                             <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
@@ -841,7 +900,7 @@
                           Checked="ArrivalFilters_Changed"
                           Unchecked="ArrivalFilters_Changed"/>
 
-                                            <StackPanel Margin="20,6,0,0">
+                                            <StackPanel x:Name="ArrivalExtraSubtypeFiltersPanel" Margin="20,6,0,0">
                                                 <CheckBox x:Name="ArrivalLowCostCheck"
                               Content="Малоценка"
                               IsChecked="True"

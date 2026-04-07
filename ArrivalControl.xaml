@@ -2,8 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Margin="10"
-          Loaded="UserControl_Loaded">
+    <Grid Margin="10">
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -21,50 +20,27 @@
         <Grid Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="220"/>
-                <ColumnDefinition Width="20"/>
-
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="160"/>
-                <ColumnDefinition Width="30"/>
-
+                <ColumnDefinition Width="180"/>
+                <ColumnDefinition Width="24"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="160"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ТИП -->
-            <StackPanel x:Name="MaterialGroupPanel"
-            Grid.Column="0"
-            Grid.ColumnSpan="2"
-            Orientation="Horizontal"
-            VerticalAlignment="Center">
-
-                <TextBlock Text="Тип материала:"
-               VerticalAlignment="Center"
-               Margin="0,0,6,0"/>
-
-                <ComboBox x:Name="MaterialGroupBox"
-              Width="200"
-              IsEditable="True"
-              IsTextSearchEnabled="False"
-              Height="26"/>
-            </StackPanel>
-
 
             <!-- ТТН -->
-            <TextBlock Grid.Column="3"
+            <TextBlock Grid.Column="0"
                Text="ТТН:"
                VerticalAlignment="Center"
                Margin="0,0,6,0"/>
 
-            <TextBox Grid.Column="4"
+            <TextBox Grid.Column="1"
              x:Name="TtnBox"
              Height="26"/>
 
             <!-- ОСНОВНЫЕ / ДОПЫ -->
-            <StackPanel Grid.Column="6"
+            <StackPanel Grid.Column="3"
                 Orientation="Horizontal"
                 VerticalAlignment="Center">
 
@@ -80,7 +56,7 @@
             </StackPanel>
 
             <!-- ПОДТИП ДОПОВ -->
-            <ComboBox Grid.Column="9"
+            <ComboBox Grid.Column="6"
           x:Name="ExtraTypeBox"
           Visibility="Collapsed"
           Height="26"
@@ -94,15 +70,15 @@
                   Grid.Row="1"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
-                  GridLinesVisibility="Horizontal"
+                  GridLinesVisibility="All"
                   RowBackground="White"
                   AlternatingRowBackground="#F8FAFC"
                   BorderBrush="#CBD5E1"
                   BorderThickness="1"
                   RowHeaderWidth="0"
                   HeadersVisibility="Column"
-                  VerticalGridLinesBrush="#E2E8F0"
-                  HorizontalGridLinesBrush="#E2E8F0"
+                  VerticalGridLinesBrush="#D4DCE8"
+                  HorizontalGridLinesBrush="#D4DCE8"
                   FontSize="13">
 
             <DataGrid.Columns>
@@ -110,6 +86,23 @@
                 <DataGridTextColumn Header="Дата"
                                     Binding="{Binding Date, StringFormat=dd.MM.yyyy}"
                                     Width="90"/>
+
+                <DataGridTemplateColumn Header="Тип" Width="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding MaterialGroup}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <ComboBox IsEditable="True"
+                                      IsTextSearchEnabled="False"
+                                      Text="{Binding MaterialGroup, UpdateSourceTrigger=PropertyChanged}"
+                                      ItemsSource="{Binding AvailableGroups}"
+                                      LostFocus="MaterialGroup_LostFocus"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
 
                 <DataGridTemplateColumn Header="Наименование" Width="220">
                     <DataGridTemplateColumn.CellTemplate>

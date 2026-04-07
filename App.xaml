@@ -295,6 +295,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource SecondaryBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource AppSecondaryButton}"/>
 
         <Style TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand"/>

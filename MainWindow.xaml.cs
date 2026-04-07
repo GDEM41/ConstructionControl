@@ -16,6 +16,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Documents;
+using System.Windows.Threading;
 using WpfPath = System.Windows.Shapes.Path;
 using System.Text.RegularExpressions;
 
@@ -109,6 +110,9 @@ namespace ConstructionControl
         private ProductionJournalEntry selectedProductionRow;
         private string inspectionRowSnapshotJson;
         private InspectionJournalEntry selectedInspectionRow;
+        private bool initialUiPrepared;
+        private bool arrivalMatrixMode;
+        private bool arrivalLegacyRefreshPending;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -349,11 +353,6 @@ namespace ConstructionControl
         public MainWindow()
         {
             InitializeComponent();
-            ArrivalLiveTable.IsReadOnly = true;
-            ArrivalLiveTable.CanUserAddRows = false;
-            ArrivalLiveTable.CanUserDeleteRows = false;
-
-
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
@@ -362,7 +361,7 @@ namespace ConstructionControl
             InitializeTimesheet();
             InitializeProductionJournal();
             InitializeInspectionJournal();
-            ApplyAllFilters();
+            filteredJournal = journal.ToList();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
 
@@ -373,6 +372,7 @@ namespace ConstructionControl
                 ArrivalPanel.SetObject(currentObject, journal);
             RefreshArrivalTypes();
             RefreshArrivalNames();
+            UpdateArrivalViewMode();
 
             RefreshTreePreserveState();
             ApplyProjectUiSettings();
@@ -380,8 +380,56 @@ namespace ConstructionControl
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // гарантированно после создания всех контролов
+            if (initialUiPrepared)
+                return;
 
+            initialUiPrepared = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ApplyAllFilters();
+                Activate();
+            }), DispatcherPriority.Background);
+        }
+
+        private void UpdateArrivalViewMode()
+        {
+            if (ArrivalLegacyGrid == null || ArrivalMatrixScrollViewer == null)
+                return;
+
+            ArrivalLegacyGrid.Visibility = arrivalMatrixMode ? Visibility.Collapsed : Visibility.Visible;
+            ArrivalMatrixScrollViewer.Visibility = arrivalMatrixMode ? Visibility.Visible : Visibility.Collapsed;
+
+            if (ArrivalLegacyViewButton != null)
+                ArrivalLegacyViewButton.Opacity = arrivalMatrixMode ? 0.72 : 1.0;
+
+            if (ArrivalMatrixViewButton != null)
+                ArrivalMatrixViewButton.Opacity = arrivalMatrixMode ? 1.0 : 0.72;
+
+            if (ArrivalExtraSubtypeFiltersPanel != null)
+                ArrivalExtraSubtypeFiltersPanel.Visibility = arrivalMatrixMode ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private void ArrivalLegacyViewButton_Click(object sender, RoutedEventArgs e)
+        {
+            arrivalMatrixMode = false;
+            UpdateArrivalViewMode();
+            ApplyAllFilters();
+        }
+
+        private void ArrivalMatrixViewButton_Click(object sender, RoutedEventArgs e)
+        {
+            arrivalMatrixMode = true;
+            if (selectedArrivalTypes.Count > 1)
+            {
+                var selected = selectedArrivalTypes.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).First();
+                selectedArrivalTypes.Clear();
+                selectedArrivalTypes.Add(selected);
+                RefreshArrivalTypes();
+                RefreshArrivalNames();
+            }
+
+            UpdateArrivalViewMode();
+            ApplyAllFilters();
         }
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -397,6 +445,15 @@ namespace ConstructionControl
                 ShowArrivalButton.Visibility = arrivalPanelVisible
                     ? Visibility.Collapsed
                     : Visibility.Visible;
+
+                UpdateArrivalViewMode();
+                if (initialUiPrepared)
+                {
+                    if (arrivalMatrixMode)
+                        RenderArrivalMatrix();
+                    else
+                        ArrivalLegacyGrid.ItemsSource = filteredJournal;
+                }
 
             }
             else
@@ -3086,12 +3143,6 @@ namespace ConstructionControl
         {
             isLocked = true;
 
-            if (ArrivalLiveTable != null)
-            {
-                ArrivalLiveTable.IsReadOnly = true;
-                ArrivalLiveTable.CanUserAddRows = false;
-                ArrivalLiveTable.CanUserDeleteRows = false;
-            }
             RefreshSummaryTable();
         }
 
@@ -3100,12 +3151,6 @@ namespace ConstructionControl
         {
             isLocked = false;
 
-            if (ArrivalLiveTable != null)
-            {
-                ArrivalLiveTable.IsReadOnly = false;
-                ArrivalLiveTable.CanUserAddRows = true;
-                ArrivalLiveTable.CanUserDeleteRows = true;
-            }
             RefreshSummaryTable();
         }
 
@@ -3127,32 +3172,20 @@ namespace ConstructionControl
             PushUndo(); // ⬅️ ВОТ ЭТОГО НЕ ХВАТАЛО
 
 
-
-            // ===== ТОЛЬКО ДЛЯ ОСНОВНЫХ =====
-            if (arrival.Category == "Основные")
-            {
-                if (!currentObject.MaterialGroups.Any(g => g.Name == arrival.MaterialGroup))
-                {
-                    currentObject.MaterialGroups.Add(new MaterialGroup
-                    {
-                        Name = arrival.MaterialGroup
-                    });
-
-                    currentObject.MaterialNamesByGroup[arrival.MaterialGroup] = new List<string>();
-                }
-            }
             currentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
 
             foreach (var i in arrival.Items)
             {
+                var rowGroup = i.MaterialGroup?.Trim() ?? string.Empty;
+
                 if (!string.IsNullOrWhiteSpace(i.MaterialName))
                 {
                     var categoryName = arrival.Category ?? string.Empty;
-                    var typeName = arrival.Category == "Основные" ? (arrival.MaterialGroup ?? string.Empty) : (arrival.SubCategory ?? string.Empty);
-                    var subTypeName = arrival.Category == "Основные" ? string.Empty : (arrival.MaterialGroup ?? string.Empty);
+                    var typeName = arrival.Category == "Основные" ? rowGroup : (arrival.SubCategory ?? string.Empty);
+                    var subTypeName = arrival.Category == "Основные" ? string.Empty : rowGroup;
 
-                    if (!currentObject.MaterialCatalog.Any(x =>
-                        string.Equals(x.CategoryName ?? string.Empty, categoryName, StringComparison.CurrentCultureIgnoreCase)
+                      if (!currentObject.MaterialCatalog.Any(x =>
+                          string.Equals(x.CategoryName ?? string.Empty, categoryName, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.TypeName ?? string.Empty, typeName, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.SubTypeName ?? string.Empty, subTypeName, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.MaterialName ?? string.Empty, i.MaterialName, StringComparison.CurrentCultureIgnoreCase)))
@@ -3167,38 +3200,47 @@ namespace ConstructionControl
                     }
                 }
 
-                if (arrival.Category == "Основные")
-                {
-                    // === список на дереве ===
-                    if (!currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
-                            .Contains(i.MaterialName))
-                    {
-                        currentObject.MaterialNamesByGroup[arrival.MaterialGroup]
-                            .Add(i.MaterialName);
-                    }
+                  if (arrival.Category == "Основные")
+                  {
+                      if (!currentObject.MaterialGroups.Any(g => g.Name == rowGroup))
+                          currentObject.MaterialGroups.Add(new MaterialGroup { Name = rowGroup });
 
-                    // === список для ComboBox ===
-                    var archive = currentObject.Archive;
+                      if (!currentObject.MaterialNamesByGroup.ContainsKey(rowGroup))
+                          currentObject.MaterialNamesByGroup[rowGroup] = new List<string>();
 
-                    if (!archive.Materials.ContainsKey(arrival.MaterialGroup))
-                        archive.Materials[arrival.MaterialGroup] = new();
+                      // === список на дереве ===
+                      if (!currentObject.MaterialNamesByGroup[rowGroup]
+                              .Contains(i.MaterialName))
+                      {
+                          currentObject.MaterialNamesByGroup[rowGroup]
+                              .Add(i.MaterialName);
+                      }
 
-                    if (!archive.Materials[arrival.MaterialGroup]
-                            .Contains(i.MaterialName))
-                    {
-                        archive.Materials[arrival.MaterialGroup].Add(i.MaterialName);
-                    }
-                }
+                      // === список для ComboBox ===
+                      var archive = currentObject.Archive;
+
+                      if (!archive.Groups.Contains(rowGroup))
+                          archive.Groups.Add(rowGroup);
+
+                      if (!archive.Materials.ContainsKey(rowGroup))
+                          archive.Materials[rowGroup] = new();
+
+                      if (!archive.Materials[rowGroup]
+                              .Contains(i.MaterialName))
+                      {
+                          archive.Materials[rowGroup].Add(i.MaterialName);
+                      }
+                  }
 
                 // === запись журнала ===
                 journal.Add(new JournalRecord
                 {
-                    Date = i.Date,
-                    ObjectName = currentObject.Name,
-                    Category = arrival.Category,
-                    SubCategory = arrival.SubCategory,
-                    MaterialGroup = arrival.MaterialGroup,
-                    MaterialName = i.MaterialName,
+                      Date = i.Date,
+                      ObjectName = currentObject.Name,
+                      Category = arrival.Category,
+                      SubCategory = arrival.SubCategory,
+                      MaterialGroup = rowGroup,
+                      MaterialName = i.MaterialName,
                     Unit = i.Unit,
                     Quantity = i.Quantity,
                     Passport = i.Passport,
@@ -3957,8 +3999,7 @@ namespace ConstructionControl
 
         private void ArrivalFilters_Changed(object sender, RoutedEventArgs e)
         {
-
-
+            ApplyAllFilters();
         }
 
 
@@ -4065,9 +4106,39 @@ namespace ConstructionControl
                     || (j.Supplier ?? string.Empty).Contains(arrivalSearch, StringComparison.CurrentCultureIgnoreCase));
             }
 
+            if (arrivalMatrixMode)
+            {
+                if (selectedArrivalTypes.Count == 0)
+                {
+                    filteredJournal = new List<JournalRecord>();
+                    RenderJvk();
+                    RenderArrivalMatrixPlaceholder("Откройте фильтры и выберите один тип материала.");
+                    if (ArrivalLegacyGrid != null)
+                        ArrivalLegacyGrid.ItemsSource = filteredJournal;
+                    RefreshSummaryTable();
+                    return;
+                }
 
+                var selectedArrivalType = selectedArrivalTypes
+                    .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                    .First();
 
+                if (selectedArrivalTypes.Count > 1)
+                {
+                    selectedArrivalTypes.Clear();
+                    selectedArrivalTypes.Add(selectedArrivalType);
+                    RefreshArrivalTypes();
+                    RefreshArrivalNames();
+                }
 
+                data = data.Where(j => string.Equals(j.MaterialGroup, selectedArrivalType, StringComparison.CurrentCultureIgnoreCase));
+            }
+
+            if (selectedArrivalTypes.Count > 0)
+                data = data.Where(j => selectedArrivalTypes.Contains(j.MaterialGroup));
+
+            if (selectedArrivalNames.Count > 0)
+                data = data.Where(j => selectedArrivalNames.Contains(j.MaterialName));
 
             // === ПРИХОД: СОРТ ПО УМОЛЧАНИЮ ===
             data = data.OrderByDescending(j => j.Date);
@@ -4077,14 +4148,14 @@ namespace ConstructionControl
 
 
             RenderJvk();
+            if (ArrivalLegacyGrid != null)
+                ArrivalLegacyGrid.ItemsSource = filteredJournal;
+
+            if (initialUiPrepared && IsArrivalTabActive() && arrivalMatrixMode)
+                RenderArrivalMatrix();
+            else
+                RenderArrivalMatrixPlaceholder();
             RefreshSummaryTable();
-
-            if (ArrivalLiveTable != null)
-                ArrivalLiveTable.ItemsSource = filteredJournal;
-
-
-
-
 
         }
         private void ArrivalClearFilters_Click(object sender, RoutedEventArgs e)
@@ -4107,6 +4178,272 @@ namespace ConstructionControl
             ApplyAllFilters();
 
             ArrivalFiltersOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void ArrivalLegacyGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            ScheduleArrivalLegacyRefresh();
+        }
+
+        private void ArrivalLegacyGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
+        {
+            ScheduleArrivalLegacyRefresh();
+        }
+
+        private void ScheduleArrivalLegacyRefresh()
+        {
+            if (arrivalLegacyRefreshPending)
+                return;
+
+            arrivalLegacyRefreshPending = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                arrivalLegacyRefreshPending = false;
+                RebuildArchiveFromCurrentData();
+                SaveState();
+                ArrivalPanel.SetObject(currentObject, journal);
+                RefreshArrivalTypes();
+                RefreshArrivalNames();
+                ApplyAllFilters();
+            }), DispatcherPriority.Background);
+        }
+
+        private sealed class ArrivalMatrixColumn
+        {
+            public DateTime Date { get; set; }
+            public string Ttn { get; set; }
+            public string Supplier { get; set; }
+            public string Passport { get; set; }
+        }
+
+        private bool IsArrivalTabActive()
+            => MainTabs?.SelectedItem is TabItem item
+               && string.Equals(item.Header?.ToString(), "Приход", StringComparison.CurrentCulture);
+
+        private void RenderArrivalMatrixPlaceholder(string text = "Откройте фильтры и выберите один тип материала.")
+        {
+            if (ArrivalMatrixHost == null)
+                return;
+
+            ArrivalMatrixHost.Children.Clear();
+            ArrivalMatrixHost.RowDefinitions.Clear();
+            ArrivalMatrixHost.ColumnDefinitions.Clear();
+            ArrivalMatrixHost.Children.Add(new TextBlock
+            {
+                Text = text,
+                Margin = new Thickness(12),
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        private void RenderArrivalMatrix()
+        {
+            if (ArrivalMatrixHost == null)
+                return;
+
+            ArrivalMatrixHost.SnapsToDevicePixels = true;
+            ArrivalMatrixHost.UseLayoutRounding = true;
+            ArrivalMatrixHost.Children.Clear();
+            ArrivalMatrixHost.RowDefinitions.Clear();
+            ArrivalMatrixHost.ColumnDefinitions.Clear();
+
+            var data = filteredJournal
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                .ToList();
+
+            if (data.Count == 0)
+            {
+                ArrivalMatrixHost.Children.Add(new TextBlock
+                {
+                    Text = "Нет данных по выбранным фильтрам.",
+                    Margin = new Thickness(12),
+                    Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139))
+                });
+                return;
+            }
+
+            var columns = data
+                .GroupBy(x => new
+                {
+                    Date = x.Date.Date,
+                    Ttn = (x.Ttn ?? string.Empty).Trim(),
+                    Supplier = (x.Supplier ?? string.Empty).Trim(),
+                    Passport = (x.Passport ?? string.Empty).Trim()
+                })
+                .Select(x => new ArrivalMatrixColumn
+                {
+                    Date = x.Key.Date,
+                    Ttn = x.Key.Ttn,
+                    Supplier = x.Key.Supplier,
+                    Passport = x.Key.Passport
+                })
+                .OrderBy(x => x.Date)
+                .ThenBy(x => x.Ttn, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var materials = data
+                .Select(x => x.MaterialName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var materialColumnWidth = Math.Max(280, Math.Min(420, materials.Max(x => (x?.Length ?? 0) * 9 + 50)));
+            ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(materialColumnWidth) });
+            ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
+            foreach (var _ in columns)
+                ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(108) });
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
+            foreach (var _ in materials)
+                ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });
+
+            AddArrivalMatrixCell(0, 0, string.Empty, "#FFFFFF", rowSpan: 2);
+            AddArrivalMatrixCell(2, 0, "Наименование", "#F8FAFC", rowSpan: 2, fontWeight: FontWeights.SemiBold, fontSize: 18, textAlignment: TextAlignment.Center);
+
+            AddArrivalMatrixSideLabel(0, "Дата");
+            AddArrivalMatrixSideLabel(1, "ТТН");
+            AddArrivalMatrixSideLabel(2, "Поставщик");
+            AddArrivalMatrixSideLabel(3, "Паспорта");
+
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+            {
+                var column = columns[columnIndex];
+                var gridColumn = columnIndex + 2;
+
+                AddArrivalMatrixHeaderCell(0, gridColumn, column.Date.ToString("dd.MM.yyyy"));
+                AddArrivalMatrixHeaderCell(1, gridColumn, string.IsNullOrWhiteSpace(column.Ttn) ? "—" : column.Ttn);
+                AddArrivalMatrixHeaderCell(2, gridColumn, string.IsNullOrWhiteSpace(column.Supplier) ? "—" : column.Supplier);
+                AddArrivalMatrixPassportCell(3, gridColumn, string.IsNullOrWhiteSpace(column.Passport) ? "—" : column.Passport);
+            }
+
+            for (var materialIndex = 0; materialIndex < materials.Count; materialIndex++)
+            {
+                var material = materials[materialIndex];
+                var rowIndex = materialIndex + 4;
+                var rowBackground = materialIndex % 2 == 0 ? "#FFFFFF" : "#FBFDFF";
+
+                AddArrivalMatrixCell(rowIndex, 0, material, rowBackground, textAlignment: TextAlignment.Left, padding: new Thickness(10, 6, 10, 6));
+                AddArrivalMatrixCell(rowIndex, 1, string.Empty, "#D6E9C4");
+
+                for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                {
+                    var column = columns[columnIndex];
+                    var quantity = data
+                        .Where(x => string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase)
+                                 && x.Date.Date == column.Date
+                                 && string.Equals((x.Ttn ?? string.Empty).Trim(), column.Ttn, StringComparison.CurrentCultureIgnoreCase)
+                                 && string.Equals((x.Supplier ?? string.Empty).Trim(), column.Supplier, StringComparison.CurrentCultureIgnoreCase)
+                                 && string.Equals((x.Passport ?? string.Empty).Trim(), column.Passport, StringComparison.CurrentCultureIgnoreCase))
+                        .Sum(x => x.Quantity);
+
+                    AddArrivalMatrixCell(rowIndex, columnIndex + 2, quantity > 0 ? FormatNumber(quantity) : string.Empty, rowBackground);
+                }
+            }
+        }
+
+        private void AddArrivalMatrixSideLabel(int row, string text)
+        {
+            var border = CreateArrivalMatrixBorder("#D6E9C4");
+            Grid.SetRow(border, row);
+            Grid.SetColumn(border, 1);
+
+            border.Child = new TextBlock
+            {
+                Text = text,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                LayoutTransform = new RotateTransform(90),
+                FontSize = 16
+            };
+
+            ArrivalMatrixHost.Children.Add(border);
+        }
+
+        private void AddArrivalMatrixHeaderCell(int row, int column, string text)
+        {
+            var border = CreateArrivalMatrixBorder("#FFFFFF");
+            Grid.SetRow(border, row);
+            Grid.SetColumn(border, column);
+
+            border.Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                LayoutTransform = new RotateTransform(90),
+                Margin = new Thickness(3)
+            };
+
+            ArrivalMatrixHost.Children.Add(border);
+        }
+
+        private void AddArrivalMatrixPassportCell(int row, int column, string text)
+        {
+            var border = CreateArrivalMatrixBorder("#FFFFFF");
+            Grid.SetRow(border, row);
+            Grid.SetColumn(border, column);
+
+            border.Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(4)
+            };
+
+            ArrivalMatrixHost.Children.Add(border);
+        }
+
+        private void AddArrivalMatrixCell(int row, int column, string text, string background, int rowSpan = 1, FontWeight? fontWeight = null, double fontSize = 14, TextAlignment textAlignment = TextAlignment.Center, Thickness? padding = null)
+        {
+            var border = CreateArrivalMatrixBorder(background);
+            Grid.SetRow(border, row);
+            Grid.SetColumn(border, column);
+            if (rowSpan > 1)
+                Grid.SetRowSpan(border, rowSpan);
+
+            var textBlock = new TextBlock
+            {
+                Text = text,
+                FontSize = fontSize,
+                TextAlignment = textAlignment,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = textAlignment == TextAlignment.Left ? HorizontalAlignment.Left : HorizontalAlignment.Center,
+                Margin = padding ?? new Thickness(6, 4, 6, 4)
+            };
+
+            if (fontWeight.HasValue)
+                textBlock.FontWeight = fontWeight.Value;
+
+            border.Child = textBlock;
+            ArrivalMatrixHost.Children.Add(border);
+        }
+
+        private static Border CreateArrivalMatrixBorder(string background)
+        {
+            return new Border
+            {
+                Background = (Brush)new BrushConverter().ConvertFromString(background),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(40, 40, 40)),
+                BorderThickness = new Thickness(0.6)
+            };
         }
 
 
@@ -6114,13 +6451,23 @@ namespace ConstructionControl
 
                 chip.Checked += (_, _) =>
                 {
+                    if (arrivalMatrixMode)
+                        selectedArrivalTypes.Clear();
                     selectedArrivalTypes.Add(g);
+                    if (arrivalMatrixMode)
+                    {
+                        selectedArrivalNames.Clear();
+                        RefreshArrivalTypes();
+                    }
                     RefreshArrivalNames();
                     ApplyAllFilters();
                 };
                 chip.Unchecked += (_, _) =>
                 {
-                    selectedArrivalTypes.Remove(g);
+                    if (selectedArrivalTypes.Contains(g))
+                        selectedArrivalTypes.Remove(g);
+                    if (arrivalMatrixMode)
+                        selectedArrivalNames.Clear();
                     RefreshArrivalNames();
                     ApplyAllFilters();
                 };
