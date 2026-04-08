@@ -268,11 +268,12 @@
 
         <Style x:Key="MainTabItemStyle" TargetType="TabItem">
             <Setter Property="Foreground" Value="#526173"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="Margin" Value="0,0,2,0"/>
-            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="MinWidth" Value="86"/>
+            <Setter Property="MinHeight" Value="34"/>
             <Setter Property="Background" Value="#F8FAFC"/>
             <Setter Property="BorderBrush" Value="#E3EAF2"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -284,6 +285,8 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14"
+                                MinWidth="{TemplateBinding MinWidth}"
+                                MinHeight="{TemplateBinding MinHeight}"
                                 SnapsToDevicePixels="True">
                             <Border.Effect>
                                 <DropShadowEffect x:Name="TabShadow" BlurRadius="6" Opacity="0.035" ShadowDepth="1" Color="#19324F"/>
@@ -292,17 +295,17 @@
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
                                               ContentSource="Header"
-                                              Margin="0"/>
+                                              Margin="{TemplateBinding Padding}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#F0F5F2"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#C8D7CE"/>
+                                <Setter TargetName="Root" Property="Background" Value="#EEF4FB"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#C7D8EC"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Foreground" Value="#184D36"/>
-                                <Setter TargetName="Root" Property="Background" Value="#BFE6D0"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#98D0B1"/>
+                                <Setter Property="Foreground" Value="#244263"/>
+                                <Setter TargetName="Root" Property="Background" Value="#E7F0FB"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#BED3EA"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -320,37 +323,65 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
-                        <Grid KeyboardNavigation.TabNavigation="Local">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
+                        <Border Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0">
+                            <ContentPresenter x:Name="PART_SelectedContentHost"
+                                              ContentSource="SelectedContent"
+                                              Margin="0"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                            <Border Grid.Row="0"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#E8EEF5"
-                                    BorderThickness="1"
-                                    CornerRadius="18"
-                                    Padding="4"
-                                    Margin="0,0,0,8">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="10" Opacity="0.06" ShadowDepth="2" Color="#19324F"/>
-                                </Border.Effect>
-                                <TabPanel x:Name="HeaderPanel"
-                                          IsItemsHost="True"
-                                          Margin="0"
-                                          Background="Transparent"/>
-                            </Border>
+        <Style x:Key="PinnedRightTabButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#526173"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#E3EAF2"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#EEF4FB"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#C7D8EC"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#DCEBFA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                            <Border Grid.Row="1"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    Padding="0">
-                                <ContentPresenter x:Name="PART_SelectedContentHost"
-                                                  ContentSource="SelectedContent"
-                                                  Margin="0"/>
-                            </Border>
-                        </Grid>
+        <Style x:Key="HiddenPinnedTabItemStyle" TargetType="TabItem">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Width" Value="0"/>
+            <Setter Property="Height" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Grid Width="0" Height="0"/>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -438,13 +469,31 @@
         <Grid Margin="10">
 
             <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="TreeHoverColumn" Width="14"/>
+                    <ColumnDefinition x:Name="TreeHoverColumn" Width="28"/>
                     <ColumnDefinition x:Name="TreeColumn" Width="260"/>
                     <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-                <Border Grid.Column="0"
-                    Background="Transparent"
-                    MouseEnter="TreeHoverZone_MouseEnter"/>
+                <Border x:Name="TreeHoverStrip"
+                    Grid.Column="0"
+                    Background="#EEF4FB"
+                    BorderBrush="#D6E2F0"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Margin="0,0,4,0"
+                    MouseEnter="TreeHoverZone_MouseEnter">
+                    <Grid>
+                        <TextBlock Text="Дерево материалов"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="#526173"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center">
+                            <TextBlock.LayoutTransform>
+                                <RotateTransform Angle="-90"/>
+                            </TextBlock.LayoutTransform>
+                        </TextBlock>
+                    </Grid>
+                </Border>
 
                 <!-- ===== ДЕРЕВО ===== -->
                 <Border x:Name="TreePanelBorder"
@@ -503,15 +552,86 @@
                     BorderBrush="#E5E7EB"
                     BorderThickness="1"
                     MouseEnter="ContentPanel_MouseEnter">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
+                    <Border Grid.Row="0"
+                            Background="#FFFFFF"
+                            BorderBrush="#E8EEF5"
+                            BorderThickness="1"
+                            CornerRadius="18"
+                            Padding="4"
+                            Margin="0,0,0,8">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="10" Opacity="0.06" ShadowDepth="2" Color="#19324F"/>
+                        </Border.Effect>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                <TabControl x:Name="MainTabs"
-            BorderThickness="0"
-            SelectionChanged="TabControl_SelectionChanged">
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button x:Name="SummaryTabButton"
+                                        Content="Сводка"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="SummaryTabButton_Click"/>
+                                <Button x:Name="JvkTabButton"
+                                        Content="ЖВК"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="JvkTabButton_Click"/>
+                                <Button x:Name="ArrivalTabButton"
+                                        Content="Приход"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="ArrivalTabButton_Click"/>
+                                <Button x:Name="OtTabButton"
+                                        Content="ОТ"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="OtTabButton_Click"/>
+                                <Button x:Name="TimesheetTabButton"
+                                        Content="Табель"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="TimesheetTabButton_Click"/>
+                                <Button x:Name="ProductionTabButton"
+                                        Content="ПР"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="ProductionTabButton_Click"/>
+                                <Button x:Name="InspectionTabButton"
+                                        Content="Осмотры"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="InspectionTabButton_Click"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button x:Name="PdfPinnedTabButton"
+                                        Content="ПДФ"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="PdfPinnedTabButton_Click"/>
+                                <Button x:Name="EstimatePinnedTabButton"
+                                        Content="Сметы"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Margin="0"
+                                        Click="EstimatePinnedTabButton_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TabControl x:Name="MainTabs"
+             Grid.Row="1"
+             BorderThickness="0"
+             Style="{StaticResource MainTabControlStyle}"
+             ItemContainerStyle="{StaticResource HiddenPinnedTabItemStyle}"
+             SelectionChanged="TabControl_SelectionChanged">
 
 
                     <!-- ===== СВОДНАЯ ===== -->
-                        <TabItem Header="Сводка">
+                        <TabItem x:Name="SummaryTab" Header="Сводка">
                             <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="0,0,0,8">
@@ -588,7 +708,7 @@
 
                     </TabItem>
 
-                    <TabItem Header="ЖВК">
+                    <TabItem x:Name="JvkTab" Header="ЖВК">
                         <Grid>
                             <Grid.RowDefinitions>
                                
@@ -708,7 +828,7 @@
 
 
 
-                    <TabItem Header="Приход">
+                    <TabItem x:Name="ArrivalTab" Header="Приход">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="170*"/>
@@ -1004,7 +1124,7 @@
 
                         </Grid>
                     </TabItem>
-                    <TabItem Header="ОТ">
+                        <TabItem x:Name="OtTab" Header="ОТ">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -1170,7 +1290,7 @@
                            
                         </Grid>
                     </TabItem>
-                        <TabItem Header="Табель">
+                        <TabItem x:Name="TimesheetTab" Header="Табель">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -1267,7 +1387,7 @@
                             </Grid>
                         </TabItem>
 
-                        <TabItem Header="ПР">
+                        <TabItem x:Name="ProductionTab" Header="ПР">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -1576,7 +1696,7 @@
                             </Grid>
                         </TabItem>
 
-                        <TabItem Header="Осмотры">
+                        <TabItem x:Name="InspectionTab" Header="Осмотры">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -1690,10 +1810,341 @@
                             </Grid>
                         </TabItem>
 
+                        <TabItem x:Name="PdfTab" Header="ПДФ" Style="{StaticResource HiddenPinnedTabItemStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+                                    <WrapPanel>
+                                        <Button Content="Выбрать PDF"
+                                                Click="AddPdfFiles_Click"/>
+                                        <Button Content="Новая папка"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="AddPdfFolder_Click"/>
+                                        <Button Content="Переименовать"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="RenamePdfNode_Click"/>
+                                        <Button Content="Удалить"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="DeletePdfNode_Click"/>
+                                        <Button Content="Вверх"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="MovePdfNodeUp_Click"/>
+                                        <Button Content="Вниз"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="MovePdfNodeDown_Click"/>
+                                        <Button Content="Открыть"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="OpenPdfNode_Click"/>
+                                    </WrapPanel>
+                                </Border>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition x:Name="PdfTreeHoverColumn" Width="28"/>
+                                        <ColumnDefinition x:Name="PdfTreeColumn" Width="320"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border x:Name="PdfTreeHoverStrip"
+                                            Grid.Column="0"
+                                            Background="#EEF4FB"
+                                            BorderBrush="#D6E2F0"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Margin="0,0,4,0"
+                                            MouseEnter="PdfTreeHoverZone_MouseEnter">
+                                        <Grid>
+                                            <TextBlock Text="Дерево PDF"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#526173"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.LayoutTransform>
+                                                    <RotateTransform Angle="-90"/>
+                                                </TextBlock.LayoutTransform>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="PdfTreePanelBorder"
+                                            Grid.Column="1"
+                                            Style="{StaticResource CardBorderStyle}"
+                                            Margin="0,0,12,0"
+                                            MouseEnter="PdfTreePanel_MouseEnter"
+                                            MouseLeave="PdfTreePanel_MouseLeave">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <ToggleButton x:Name="PdfTreePinToggle"
+                                                          Width="24"
+                                                          Height="24"
+                                                          HorizontalAlignment="Right"
+                                                          VerticalAlignment="Top"
+                                                          Margin="0,0,0,6"
+                                                          ToolTip="Закрепить дерево PDF"
+                                                          Checked="PdfTreePinToggle_Checked"
+                                                          Unchecked="PdfTreePinToggle_Unchecked">📎</ToggleButton>
+
+                                            <TreeView x:Name="PdfTreeView"
+                                                      Grid.Row="1"
+                                                      AllowDrop="True"
+                                                      SelectedItemChanged="PdfTreeView_SelectedItemChanged"
+                                                      PreviewMouseLeftButtonDown="PdfTreeView_PreviewMouseLeftButtonDown"
+                                                      MouseMove="PdfTreeView_MouseMove"
+                                                      Drop="PdfTreeView_Drop">
+                                                <TreeView.Resources>
+                                                    <HierarchicalDataTemplate DataType="{x:Type local:DocumentTreeNode}" ItemsSource="{Binding Children}">
+                                                        <TextBlock Text="{Binding Name}"/>
+                                                    </HierarchicalDataTemplate>
+                                                </TreeView.Resources>
+                                            </TreeView>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="2"
+                                            Padding="0"
+                                            Style="{StaticResource CardBorderStyle}"
+                                            MouseEnter="PdfPreviewArea_MouseEnter">
+                                        <Grid>
+                                            <StackPanel x:Name="PdfInfoPanel"
+                                                        Margin="14">
+                                                <TextBlock Text="ПДФ-документы" FontSize="20" FontWeight="SemiBold"/>
+                                                <TextBlock Text="Выберите один или несколько PDF-файлов, затем разложите их по своему дереву. Папки, названия и расположение узлов можно менять в любой момент."
+                                                           Margin="0,8,0,16"
+                                                           Foreground="#64748B"
+                                                           TextWrapping="Wrap"/>
+                                                <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="PdfSelectedNameText"
+                                                           Margin="0,6,0,10"
+                                                           FontSize="16"
+                                                           Text="Ничего не выбрано"/>
+                                                <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="PdfSelectedPathText"
+                                                           Margin="0,6,0,10"
+                                                           Foreground="#475569"
+                                                           TextWrapping="Wrap"
+                                                           Text="—"/>
+                                                <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="PdfSelectedTypeText"
+                                                           Margin="0,6,0,0"
+                                                           Foreground="#475569"
+                                                           Text="—"/>
+                                            </StackPanel>
+
+                                            <Border x:Name="PdfPreviewContainer"
+                                                    Background="#F8FAFC"
+                                                    BorderBrush="#E2E8F0"
+                                                    BorderThickness="1"
+                                                    CornerRadius="12"
+                                                    Padding="0"
+                                                    Margin="0"
+                                                    Visibility="Collapsed">
+                                                <Grid>
+                                                    <WebBrowser x:Name="PdfPreviewBrowser"
+                                                                Visibility="Collapsed"/>
+                                                    <Border x:Name="PdfPreviewPlaceholder"
+                                                            Background="Transparent">
+                                                        <StackPanel HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    MaxWidth="420">
+                                                            <TextBlock Text="Предпросмотр"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="18"
+                                                                       HorizontalAlignment="Center"/>
+                                                            <TextBlock x:Name="PdfPreviewStatusText"
+                                                                       Margin="0,10,0,0"
+                                                                       Foreground="#64748B"
+                                                                       TextAlignment="Center"
+                                                                       TextWrapping="Wrap"
+                                                                       Text="Выберите PDF-файл в дереве слева, и он откроется здесь."/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem x:Name="EstimateTab" Header="Сметы" Style="{StaticResource HiddenPinnedTabItemStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+                                    <WrapPanel>
+                                        <Button Content="Выбрать сметы"
+                                                Click="AddEstimateFiles_Click"/>
+                                        <Button Content="Новая папка"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="AddEstimateFolder_Click"/>
+                                        <Button Content="Переименовать"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="RenameEstimateNode_Click"/>
+                                        <Button Content="Удалить"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="DeleteEstimateNode_Click"/>
+                                        <Button Content="Вверх"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="MoveEstimateNodeUp_Click"/>
+                                        <Button Content="Вниз"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="MoveEstimateNodeDown_Click"/>
+                                        <Button Content="Открыть"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="OpenEstimateNode_Click"/>
+                                    </WrapPanel>
+                                </Border>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition x:Name="EstimateTreeHoverColumn" Width="28"/>
+                                        <ColumnDefinition x:Name="EstimateTreeColumn" Width="320"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border x:Name="EstimateTreeHoverStrip"
+                                            Grid.Column="0"
+                                            Background="#EEF4FB"
+                                            BorderBrush="#D6E2F0"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Margin="0,0,4,0"
+                                            MouseEnter="EstimateTreeHoverZone_MouseEnter">
+                                        <Grid>
+                                            <TextBlock Text="Дерево смет"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#526173"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.LayoutTransform>
+                                                    <RotateTransform Angle="-90"/>
+                                                </TextBlock.LayoutTransform>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border x:Name="EstimateTreePanelBorder"
+                                            Grid.Column="1"
+                                            Style="{StaticResource CardBorderStyle}"
+                                            Margin="0,0,12,0"
+                                            MouseEnter="EstimateTreePanel_MouseEnter"
+                                            MouseLeave="EstimateTreePanel_MouseLeave">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <ToggleButton x:Name="EstimateTreePinToggle"
+                                                          Width="24"
+                                                          Height="24"
+                                                          HorizontalAlignment="Right"
+                                                          VerticalAlignment="Top"
+                                                          Margin="0,0,0,6"
+                                                          ToolTip="Закрепить дерево смет"
+                                                          Checked="EstimateTreePinToggle_Checked"
+                                                          Unchecked="EstimateTreePinToggle_Unchecked">📎</ToggleButton>
+
+                                            <TreeView x:Name="EstimateTreeView"
+                                                      Grid.Row="1"
+                                                      AllowDrop="True"
+                                                      SelectedItemChanged="EstimateTreeView_SelectedItemChanged"
+                                                      PreviewMouseLeftButtonDown="EstimateTreeView_PreviewMouseLeftButtonDown"
+                                                      MouseMove="EstimateTreeView_MouseMove"
+                                                      Drop="EstimateTreeView_Drop">
+                                                <TreeView.Resources>
+                                                    <HierarchicalDataTemplate DataType="{x:Type local:DocumentTreeNode}" ItemsSource="{Binding Children}">
+                                                        <TextBlock Text="{Binding Name}"/>
+                                                    </HierarchicalDataTemplate>
+                                                </TreeView.Resources>
+                                            </TreeView>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="2"
+                                            Padding="0"
+                                            Style="{StaticResource CardBorderStyle}"
+                                            MouseEnter="EstimatePreviewArea_MouseEnter">
+                                        <Grid>
+                                            <StackPanel x:Name="EstimateInfoPanel"
+                                                        Margin="14">
+                                                <TextBlock Text="Сметы" FontSize="20" FontWeight="SemiBold"/>
+                                                <TextBlock Text="Выберите файлы смет и соберите для них свою структуру дерева. Можно создавать папки, переименовывать узлы и перемещать их мышкой."
+                                                           Margin="0,8,0,16"
+                                                           Foreground="#64748B"
+                                                           TextWrapping="Wrap"/>
+                                                <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="EstimateSelectedNameText"
+                                                           Margin="0,6,0,10"
+                                                           FontSize="16"
+                                                           Text="Ничего не выбрано"/>
+                                                <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="EstimateSelectedPathText"
+                                                           Margin="0,6,0,10"
+                                                           Foreground="#475569"
+                                                           TextWrapping="Wrap"
+                                                           Text="—"/>
+                                                <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="EstimateSelectedTypeText"
+                                                           Margin="0,6,0,0"
+                                                           Foreground="#475569"
+                                                           Text="—"/>
+                                            </StackPanel>
+
+                                            <Border x:Name="EstimatePreviewContainer"
+                                                    Background="#F8FAFC"
+                                                    BorderBrush="#E2E8F0"
+                                                    BorderThickness="1"
+                                                    CornerRadius="12"
+                                                    Padding="0"
+                                                    Margin="0"
+                                                    Visibility="Collapsed">
+                                                <Grid>
+                                                    <WebBrowser x:Name="EstimatePreviewBrowser"
+                                                                Visibility="Collapsed"/>
+                                                    <Border x:Name="EstimatePreviewPlaceholder"
+                                                            Background="Transparent">
+                                                        <StackPanel HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    MaxWidth="420">
+                                                            <TextBlock Text="Предпросмотр"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="18"
+                                                                       HorizontalAlignment="Center"/>
+                                                            <TextBlock x:Name="EstimatePreviewStatusText"
+                                                                       Margin="0,10,0,0"
+                                                                       Foreground="#64748B"
+                                                                       TextAlignment="Center"
+                                                                       TextWrapping="Wrap"
+                                                                       Text="Выберите файл сметы в дереве слева, и он откроется здесь."/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </TabItem>
+
 
 
                     </TabControl>
-            </Border>
+                </Grid>
+              </Border>
         </Grid>
         </DockPanel>
         

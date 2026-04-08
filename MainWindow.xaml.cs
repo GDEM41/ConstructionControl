@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -113,6 +114,14 @@ namespace ConstructionControl
         private bool initialUiPrepared;
         private bool arrivalMatrixMode;
         private bool arrivalLegacyRefreshPending;
+        private DocumentTreeNode selectedPdfNode;
+        private DocumentTreeNode selectedEstimateNode;
+        private Point pdfTreeDragStart;
+        private Point estimateTreeDragStart;
+        private DocumentTreeNode pdfDragNode;
+        private DocumentTreeNode estimateDragNode;
+        private bool isPdfTreePinned;
+        private bool isEstimateTreePinned;
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -372,6 +381,7 @@ namespace ConstructionControl
                 ArrivalPanel.SetObject(currentObject, journal);
             RefreshArrivalTypes();
             RefreshArrivalNames();
+            RefreshDocumentLibraries();
             UpdateArrivalViewMode();
 
             RefreshTreePreserveState();
@@ -389,6 +399,711 @@ namespace ConstructionControl
                 ApplyAllFilters();
                 Activate();
             }), DispatcherPriority.Background);
+        }
+
+        private void EnsureDocumentLibraries()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.PdfDocuments ??= new List<DocumentTreeNode>();
+            currentObject.EstimateDocuments ??= new List<DocumentTreeNode>();
+        }
+
+        private void RefreshDocumentLibraries()
+        {
+            EnsureDocumentLibraries();
+
+            if (PdfTreeView != null)
+            {
+                PdfTreeView.ItemsSource = null;
+                PdfTreeView.ItemsSource = currentObject?.PdfDocuments;
+            }
+
+            if (EstimateTreeView != null)
+            {
+                EstimateTreeView.ItemsSource = null;
+                EstimateTreeView.ItemsSource = currentObject?.EstimateDocuments;
+            }
+
+            if (!ContainsDocumentNode(currentObject?.PdfDocuments, selectedPdfNode))
+                selectedPdfNode = null;
+
+            if (!ContainsDocumentNode(currentObject?.EstimateDocuments, selectedEstimateNode))
+                selectedEstimateNode = null;
+
+            UpdatePdfSelectionInfo();
+            UpdateEstimateSelectionInfo();
+            UpdateTabButtons();
+            UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
+            UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
+        }
+
+        private static bool ContainsDocumentNode(IEnumerable<DocumentTreeNode> nodes, DocumentTreeNode target)
+        {
+            if (nodes == null || target == null)
+                return false;
+
+            foreach (var node in nodes)
+            {
+                if (ReferenceEquals(node, target))
+                    return true;
+
+                if (ContainsDocumentNode(node.Children, target))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static DocumentTreeNode FindDocumentParent(IEnumerable<DocumentTreeNode> nodes, DocumentTreeNode target)
+        {
+            if (nodes == null || target == null)
+                return null;
+
+            foreach (var node in nodes)
+            {
+                if (node.Children?.Contains(target) == true)
+                    return node;
+
+                var nested = FindDocumentParent(node.Children, target);
+                if (nested != null)
+                    return nested;
+            }
+
+            return null;
+        }
+
+        private static bool IsDocumentDescendant(DocumentTreeNode parent, DocumentTreeNode candidate)
+        {
+            if (parent?.Children == null || candidate == null)
+                return false;
+
+            foreach (var child in parent.Children)
+            {
+                if (ReferenceEquals(child, candidate))
+                    return true;
+
+                if (IsDocumentDescendant(child, candidate))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static List<DocumentTreeNode> GetOwningDocumentCollection(List<DocumentTreeNode> root, DocumentTreeNode node)
+        {
+            if (root == null || node == null)
+                return null;
+
+            if (root.Contains(node))
+                return root;
+
+            var parent = FindDocumentParent(root, node);
+            return parent?.Children;
+        }
+
+        private static List<DocumentTreeNode> GetDocumentInsertCollection(List<DocumentTreeNode> root, DocumentTreeNode anchor)
+        {
+            if (root == null)
+                return null;
+
+            if (anchor == null)
+                return root;
+
+            if (anchor.IsFolder)
+            {
+                anchor.Children ??= new List<DocumentTreeNode>();
+                return anchor.Children;
+            }
+
+            return GetOwningDocumentCollection(root, anchor) ?? root;
+        }
+
+        private static DocumentTreeNode GetDocumentNodeFromOriginalSource(object originalSource)
+        {
+            var current = originalSource as DependencyObject;
+            while (current != null)
+            {
+                if (current is FrameworkElement fe && fe.DataContext is DocumentTreeNode node)
+                    return node;
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
+        }
+
+        private void UpdateTabButtons()
+        {
+            SetTabButtonState(SummaryTabButton, ReferenceEquals(MainTabs?.SelectedItem, SummaryTab));
+            SetTabButtonState(JvkTabButton, ReferenceEquals(MainTabs?.SelectedItem, JvkTab));
+            SetTabButtonState(ArrivalTabButton, ReferenceEquals(MainTabs?.SelectedItem, ArrivalTab));
+            SetTabButtonState(OtTabButton, ReferenceEquals(MainTabs?.SelectedItem, OtTab));
+            SetTabButtonState(TimesheetTabButton, ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab));
+            SetTabButtonState(ProductionTabButton, ReferenceEquals(MainTabs?.SelectedItem, ProductionTab));
+            SetTabButtonState(InspectionTabButton, ReferenceEquals(MainTabs?.SelectedItem, InspectionTab));
+            SetTabButtonState(PdfPinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, PdfTab));
+            SetTabButtonState(EstimatePinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, EstimateTab));
+        }
+
+        private static void SetTabButtonState(Button button, bool isActive)
+        {
+            if (button == null)
+                return;
+
+            button.Background = (Brush)new BrushConverter().ConvertFromString(isActive ? "#E7F0FB" : "#F8FAFC");
+            button.BorderBrush = (Brush)new BrushConverter().ConvertFromString(isActive ? "#BED3EA" : "#E3EAF2");
+            button.Foreground = (Brush)new BrushConverter().ConvertFromString(isActive ? "#244263" : "#526173");
+        }
+
+        private void SelectMainTab(TabItem tab)
+        {
+            if (MainTabs == null || tab == null)
+                return;
+
+            MainTabs.SelectedItem = tab;
+            UpdateTabButtons();
+        }
+
+        private void SummaryTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(SummaryTab);
+        private void JvkTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(JvkTab);
+        private void ArrivalTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(ArrivalTab);
+        private void OtTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(OtTab);
+        private void TimesheetTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(TimesheetTab);
+        private void ProductionTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(ProductionTab);
+        private void InspectionTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(InspectionTab);
+        private void PdfPinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(PdfTab);
+        private void EstimatePinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(EstimateTab);
+
+        private void UpdatePdfSelectionInfo()
+        {
+            UpdateDocumentSelectionInfo(selectedPdfNode, PdfSelectedNameText, PdfSelectedPathText, PdfSelectedTypeText);
+            UpdateDocumentPreview(selectedPdfNode, PdfInfoPanel, PdfPreviewContainer, PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText);
+        }
+
+        private void UpdateEstimateSelectionInfo()
+        {
+            UpdateDocumentSelectionInfo(selectedEstimateNode, EstimateSelectedNameText, EstimateSelectedPathText, EstimateSelectedTypeText);
+            UpdateDocumentPreview(selectedEstimateNode, EstimateInfoPanel, EstimatePreviewContainer, EstimatePreviewBrowser, EstimatePreviewPlaceholder, EstimatePreviewStatusText);
+        }
+
+        private static void UpdateDocumentSelectionInfo(DocumentTreeNode node, TextBlock nameText, TextBlock pathText, TextBlock typeText)
+        {
+            if (nameText == null || pathText == null || typeText == null)
+                return;
+
+            if (node == null)
+            {
+                nameText.Text = "Ничего не выбрано";
+                pathText.Text = "—";
+                typeText.Text = "—";
+                return;
+            }
+
+            nameText.Text = string.IsNullOrWhiteSpace(node.Name) ? "Без названия" : node.Name;
+            pathText.Text = string.IsNullOrWhiteSpace(node.FilePath) ? "—" : node.FilePath;
+            typeText.Text = node.IsFolder ? "Папка" : "Файл";
+        }
+
+        private void UpdateDocumentPreview(DocumentTreeNode node, FrameworkElement infoPanel, Border previewContainer, WebBrowser browser, Border placeholder, TextBlock statusText)
+        {
+            if (infoPanel == null || previewContainer == null || browser == null || placeholder == null || statusText == null)
+                return;
+
+            if (node == null)
+            {
+                infoPanel.Visibility = Visibility.Visible;
+                previewContainer.Visibility = Visibility.Collapsed;
+                ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Выберите файл в дереве слева, и он откроется здесь.");
+                return;
+            }
+
+            if (node.IsFolder)
+            {
+                infoPanel.Visibility = Visibility.Visible;
+                previewContainer.Visibility = Visibility.Collapsed;
+                ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Для папки предпросмотр не показывается. Выберите конкретный файл.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(node.FilePath) || !File.Exists(node.FilePath))
+            {
+                infoPanel.Visibility = Visibility.Visible;
+                previewContainer.Visibility = Visibility.Collapsed;
+                ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Файл не найден по сохраненному пути.");
+                return;
+            }
+
+            infoPanel.Visibility = Visibility.Collapsed;
+            previewContainer.Visibility = Visibility.Visible;
+
+            var extension = System.IO.Path.GetExtension(node.FilePath)?.ToLowerInvariant() ?? string.Empty;
+
+            try
+            {
+                switch (extension)
+                {
+                    case ".pdf":
+                    case ".htm":
+                    case ".html":
+                    case ".png":
+                    case ".jpg":
+                    case ".jpeg":
+                    case ".bmp":
+                    case ".gif":
+                    case ".tif":
+                    case ".tiff":
+                    case ".xlsx":
+                    case ".xlsm":
+                    case ".xls":
+                    case ".docx":
+                    case ".doc":
+                        ShowDocumentPreviewUri(browser, placeholder, node.FilePath);
+                        break;
+                    case ".txt":
+                    case ".log":
+                    case ".json":
+                    case ".xml":
+                    case ".csv":
+                        ShowDocumentPreviewHtml(browser, placeholder, BuildTextPreviewHtml(node.FilePath));
+                        break;
+                    default:
+                        ShowDocumentPreviewPlaceholder(
+                            browser,
+                            placeholder,
+                            statusText,
+                            $"Для формата {extension} встроенный предпросмотр пока не сделан. Используйте кнопку \"Открыть\".");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, $"Не удалось открыть предпросмотр: {ex.Message}");
+            }
+        }
+
+        private static void ShowDocumentPreviewPlaceholder(WebBrowser browser, Border placeholder, TextBlock statusText, string message)
+        {
+            statusText.Text = message;
+            placeholder.Visibility = Visibility.Visible;
+            browser.Visibility = Visibility.Collapsed;
+
+            try
+            {
+                browser.NavigateToString("<html><body style='background:#F8FAFC;'></body></html>");
+            }
+            catch
+            {
+                // Ignore browser cleanup errors for unsupported embedded engines.
+            }
+        }
+
+        private static void ShowDocumentPreviewHtml(WebBrowser browser, Border placeholder, string html)
+        {
+            placeholder.Visibility = Visibility.Collapsed;
+            browser.Visibility = Visibility.Visible;
+            browser.NavigateToString(html);
+        }
+
+        private static void ShowDocumentPreviewUri(WebBrowser browser, Border placeholder, string filePath)
+        {
+            placeholder.Visibility = Visibility.Collapsed;
+            browser.Visibility = Visibility.Visible;
+            browser.Navigate(new Uri(filePath, UriKind.Absolute));
+        }
+
+        private static string BuildTextPreviewHtml(string filePath)
+        {
+            const int maxChars = 16000;
+            var text = File.ReadAllText(filePath);
+            if (text.Length > maxChars)
+                text = text[..maxChars] + Environment.NewLine + Environment.NewLine + "... предпросмотр обрезан ...";
+
+            var encoded = System.Net.WebUtility.HtmlEncode(text);
+            return WrapPreviewHtml(
+                System.IO.Path.GetFileName(filePath),
+                $"<pre style=\"white-space:pre-wrap;font-family:'Consolas','Segoe UI',monospace;font-size:13px;line-height:1.5;margin:0;\">{encoded}</pre>");
+        }
+
+        private static string BuildWorkbookPreviewHtml(string filePath)
+        {
+            using var workbook = new XLWorkbook(filePath);
+            var worksheet = workbook.Worksheets.FirstOrDefault();
+            if (worksheet == null)
+                return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), "<p>В книге нет листов для предпросмотра.</p>");
+
+            var range = worksheet.RangeUsed();
+            if (range == null)
+                return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), "<p>Лист пуст.</p>");
+
+            var startRow = range.RangeAddress.FirstAddress.RowNumber;
+            var endRow = Math.Min(range.RangeAddress.LastAddress.RowNumber, startRow + 39);
+            var startColumn = range.RangeAddress.FirstAddress.ColumnNumber;
+            var endColumn = Math.Min(range.RangeAddress.LastAddress.ColumnNumber, startColumn + 11);
+
+            var html = new System.Text.StringBuilder();
+            html.Append("<table style=\"border-collapse:collapse;width:100%;font-size:13px;\">");
+
+            for (var row = startRow; row <= endRow; row++)
+            {
+                html.Append("<tr>");
+                for (var column = startColumn; column <= endColumn; column++)
+                {
+                    var value = worksheet.Cell(row, column).GetFormattedString();
+                    html.Append("<td style=\"border:1px solid #D7E0EA;padding:6px 8px;vertical-align:top;\">");
+                    html.Append(System.Net.WebUtility.HtmlEncode(value));
+                    html.Append("</td>");
+                }
+                html.Append("</tr>");
+            }
+
+            html.Append("</table>");
+
+            if (range.RowCount() > 40 || range.ColumnCount() > 12)
+                html.Append("<p style=\"margin-top:12px;color:#64748B;\">Показана только часть листа для быстрого предпросмотра.</p>");
+
+            return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), html.ToString());
+        }
+
+        private static string BuildDocxPreviewHtml(string filePath)
+        {
+            using var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(filePath, false);
+            var body = doc.MainDocumentPart?.Document?.Body;
+            if (body == null)
+                return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), "<p>Документ пуст.</p>");
+
+            var paragraphs = body
+                .Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>()
+                .Select(p => p.InnerText?.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Take(80)
+                .ToList();
+
+            if (paragraphs.Count == 0)
+                return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), "<p>В документе нет текста для предпросмотра.</p>");
+
+            var html = new System.Text.StringBuilder();
+            foreach (var paragraph in paragraphs)
+            {
+                html.Append("<p style=\"margin:0 0 10px 0;line-height:1.55;\">");
+                html.Append(System.Net.WebUtility.HtmlEncode(paragraph));
+                html.Append("</p>");
+            }
+
+            html.Append("<p style=\"margin-top:12px;color:#64748B;\">Показан текстовый предпросмотр документа.</p>");
+            return WrapPreviewHtml(System.IO.Path.GetFileName(filePath), html.ToString());
+        }
+
+        private static string WrapPreviewHtml(string title, string body)
+        {
+            return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv=""X-UA-Compatible"" content=""IE=edge"" />
+    <meta charset=""utf-8"" />
+    <title>{System.Net.WebUtility.HtmlEncode(title)}</title>
+</head>
+<body style=""margin:0;padding:16px;background:#FFFFFF;color:#1E293B;font-family:'Segoe UI',sans-serif;"">
+    {body}
+</body>
+</html>";
+        }
+
+        private void PdfTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            selectedPdfNode = e.NewValue as DocumentTreeNode;
+            UpdatePdfSelectionInfo();
+        }
+
+        private void EstimateTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            selectedEstimateNode = e.NewValue as DocumentTreeNode;
+            UpdateEstimateSelectionInfo();
+        }
+
+        private void AddPdfFiles_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureDocumentLibraries();
+            AddDocumentFiles(currentObject?.PdfDocuments, selectedPdfNode, "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*", true);
+        }
+
+        private void AddEstimateFiles_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureDocumentLibraries();
+            AddDocumentFiles(currentObject?.EstimateDocuments, selectedEstimateNode, "Estimate files (*.pdf;*.xls;*.xlsx;*.doc;*.docx)|*.pdf;*.xls;*.xlsx;*.doc;*.docx|All files (*.*)|*.*", false);
+        }
+
+        private void AddDocumentFiles(List<DocumentTreeNode> root, DocumentTreeNode selectedNode, string filter, bool refreshPdf)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureDocumentLibraries();
+            var dialog = new OpenFileDialog
+            {
+                Filter = filter,
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() != true || dialog.FileNames.Length == 0)
+                return;
+
+            var targetCollection = GetDocumentInsertCollection(root, selectedNode);
+            foreach (var file in dialog.FileNames.Distinct(StringComparer.CurrentCultureIgnoreCase))
+            {
+                targetCollection.Add(new DocumentTreeNode
+                {
+                    Name = System.IO.Path.GetFileNameWithoutExtension(file),
+                    FilePath = file,
+                    IsFolder = false
+                });
+            }
+
+            if (refreshPdf)
+                selectedPdfNode = targetCollection.LastOrDefault();
+            else
+                selectedEstimateNode = targetCollection.LastOrDefault();
+
+            SaveState();
+            RefreshDocumentLibraries();
+        }
+
+        private void AddPdfFolder_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureDocumentLibraries();
+            AddDocumentFolder(currentObject?.PdfDocuments, selectedPdfNode);
+        }
+
+        private void AddEstimateFolder_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureDocumentLibraries();
+            AddDocumentFolder(currentObject?.EstimateDocuments, selectedEstimateNode);
+        }
+
+        private void AddDocumentFolder(List<DocumentTreeNode> root, DocumentTreeNode selectedNode)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            var folderName = Microsoft.VisualBasic.Interaction.InputBox("Название папки:", "Новая папка", "Новая папка");
+            if (string.IsNullOrWhiteSpace(folderName))
+                return;
+
+            var collection = GetDocumentInsertCollection(root, selectedNode);
+            collection.Add(new DocumentTreeNode
+            {
+                Name = folderName.Trim(),
+                IsFolder = true
+            });
+
+            SaveState();
+            RefreshDocumentLibraries();
+        }
+
+        private void RenamePdfNode_Click(object sender, RoutedEventArgs e)
+            => RenameDocumentNode(currentObject?.PdfDocuments, selectedPdfNode);
+
+        private void RenameEstimateNode_Click(object sender, RoutedEventArgs e)
+            => RenameDocumentNode(currentObject?.EstimateDocuments, selectedEstimateNode);
+
+        private void RenameDocumentNode(List<DocumentTreeNode> root, DocumentTreeNode selectedNode)
+        {
+            if (root == null || selectedNode == null)
+            {
+                MessageBox.Show("Выберите узел в дереве.");
+                return;
+            }
+
+            var input = Microsoft.VisualBasic.Interaction.InputBox("Новое название:", "Переименование", selectedNode.Name ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(input))
+                return;
+
+            selectedNode.Name = input.Trim();
+            SaveState();
+            RefreshDocumentLibraries();
+        }
+
+        private void DeletePdfNode_Click(object sender, RoutedEventArgs e)
+            => DeleteDocumentNode(currentObject?.PdfDocuments, selectedPdfNode, isPdf: true);
+
+        private void DeleteEstimateNode_Click(object sender, RoutedEventArgs e)
+            => DeleteDocumentNode(currentObject?.EstimateDocuments, selectedEstimateNode, isPdf: false);
+
+        private void DeleteDocumentNode(List<DocumentTreeNode> root, DocumentTreeNode selectedNode, bool isPdf)
+        {
+            if (root == null || selectedNode == null)
+            {
+                MessageBox.Show("Выберите узел в дереве.");
+                return;
+            }
+
+            if (MessageBox.Show($"Удалить \"{selectedNode.Name}\"?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            var collection = GetOwningDocumentCollection(root, selectedNode);
+            if (collection == null)
+                return;
+
+            collection.Remove(selectedNode);
+            if (isPdf)
+                selectedPdfNode = null;
+            else
+                selectedEstimateNode = null;
+
+            SaveState();
+            RefreshDocumentLibraries();
+        }
+
+        private void MovePdfNodeUp_Click(object sender, RoutedEventArgs e)
+            => MoveDocumentNodeInSiblings(currentObject?.PdfDocuments, selectedPdfNode, -1);
+
+        private void MovePdfNodeDown_Click(object sender, RoutedEventArgs e)
+            => MoveDocumentNodeInSiblings(currentObject?.PdfDocuments, selectedPdfNode, 1);
+
+        private void MoveEstimateNodeUp_Click(object sender, RoutedEventArgs e)
+            => MoveDocumentNodeInSiblings(currentObject?.EstimateDocuments, selectedEstimateNode, -1);
+
+        private void MoveEstimateNodeDown_Click(object sender, RoutedEventArgs e)
+            => MoveDocumentNodeInSiblings(currentObject?.EstimateDocuments, selectedEstimateNode, 1);
+
+        private void MoveDocumentNodeInSiblings(List<DocumentTreeNode> root, DocumentTreeNode selectedNode, int delta)
+        {
+            if (root == null || selectedNode == null)
+            {
+                MessageBox.Show("Выберите узел в дереве.");
+                return;
+            }
+
+            var collection = GetOwningDocumentCollection(root, selectedNode);
+            if (collection == null)
+                return;
+
+            var index = collection.IndexOf(selectedNode);
+            var newIndex = index + delta;
+            if (index < 0 || newIndex < 0 || newIndex >= collection.Count)
+                return;
+
+            collection.RemoveAt(index);
+            collection.Insert(newIndex, selectedNode);
+            SaveState();
+            RefreshDocumentLibraries();
+        }
+
+        private void OpenPdfNode_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentNode(selectedPdfNode);
+
+        private void OpenEstimateNode_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentNode(selectedEstimateNode);
+
+        private void OpenDocumentNode(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+            {
+                MessageBox.Show("Выберите файл, а не папку.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(node.FilePath) || !File.Exists(node.FilePath))
+            {
+                MessageBox.Show("Файл не найден по сохраненному пути.");
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = node.FilePath,
+                UseShellExecute = true
+            });
+        }
+
+        private void PdfTreeView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            pdfTreeDragStart = e.GetPosition(null);
+            pdfDragNode = GetDocumentNodeFromOriginalSource(e.OriginalSource);
+        }
+
+        private void PdfTreeView_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || pdfDragNode == null)
+                return;
+
+            var position = e.GetPosition(null);
+            if (Math.Abs(position.X - pdfTreeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(position.Y - pdfTreeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            DragDrop.DoDragDrop(PdfTreeView, pdfDragNode, DragDropEffects.Move);
+            pdfDragNode = null;
+        }
+
+        private void PdfTreeView_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode sourceNode)
+                return;
+
+            MoveDocumentNodeByDrop(currentObject?.PdfDocuments, sourceNode, GetDocumentNodeFromOriginalSource(e.OriginalSource));
+        }
+
+        private void EstimateTreeView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            estimateTreeDragStart = e.GetPosition(null);
+            estimateDragNode = GetDocumentNodeFromOriginalSource(e.OriginalSource);
+        }
+
+        private void EstimateTreeView_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || estimateDragNode == null)
+                return;
+
+            var position = e.GetPosition(null);
+            if (Math.Abs(position.X - estimateTreeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(position.Y - estimateTreeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            DragDrop.DoDragDrop(EstimateTreeView, estimateDragNode, DragDropEffects.Move);
+            estimateDragNode = null;
+        }
+
+        private void EstimateTreeView_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode sourceNode)
+                return;
+
+            MoveDocumentNodeByDrop(currentObject?.EstimateDocuments, sourceNode, GetDocumentNodeFromOriginalSource(e.OriginalSource));
+        }
+
+        private void MoveDocumentNodeByDrop(List<DocumentTreeNode> root, DocumentTreeNode sourceNode, DocumentTreeNode targetNode)
+        {
+            if (root == null || sourceNode == null || targetNode == null)
+                return;
+
+            if (!ContainsDocumentNode(root, sourceNode))
+                return;
+
+            if (ReferenceEquals(sourceNode, targetNode) || IsDocumentDescendant(sourceNode, targetNode))
+                return;
+
+            var sourceCollection = GetOwningDocumentCollection(root, sourceNode);
+            var targetCollection = GetDocumentInsertCollection(root, targetNode);
+            if (sourceCollection == null || targetCollection == null)
+                return;
+
+            sourceCollection.Remove(sourceNode);
+            targetCollection.Add(sourceNode);
+            SaveState();
+            RefreshDocumentLibraries();
         }
 
         private void UpdateArrivalViewMode()
@@ -435,6 +1150,11 @@ namespace ConstructionControl
         {
             if (e.Source is not TabControl tab || tab.SelectedItem is not TabItem item)
                 return;
+
+            UpdateTabButtons();
+            UpdateTreePanelState(forceVisible: isTreePinned);
+            UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
+            UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
 
             if (item.Header?.ToString() == "Приход")
             {
@@ -2605,6 +3325,7 @@ namespace ConstructionControl
 
                 EnsureInspectionJournalStorage();
                 RefreshInspectionJournalState();
+                RefreshDocumentLibraries();
                 SaveState();
                 RefreshTreePreserveState();
                 ApplyProjectUiSettings();
@@ -4503,6 +5224,7 @@ namespace ConstructionControl
             currentObject = state.CurrentObject;
             journal = state.Journal ?? new();
             EnsureProjectUiSettings();
+            EnsureDocumentLibraries();
 
             ArrivalPanel.SetObject(currentObject, journal);
 
@@ -4517,6 +5239,7 @@ namespace ConstructionControl
             RefreshProductionJournalState();
             EnsureInspectionJournalStorage();
             RefreshInspectionJournalState();
+            RefreshDocumentLibraries();
             ApplyProjectUiSettings();
             SaveState();
         }
@@ -4535,6 +5258,8 @@ namespace ConstructionControl
             currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
             currentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
+            currentObject.PdfDocuments ??= new List<DocumentTreeNode>();
+            currentObject.EstimateDocuments ??= new List<DocumentTreeNode>();
             currentObject.AutoSplitMaterialNames ??= new List<string>();
             currentObject.UiSettings ??= new ProjectUiSettings();
 
@@ -4696,6 +5421,8 @@ namespace ConstructionControl
             }
             EnsureOtJournalStorage();
             EnsureProjectUiSettings();
+            EnsureDocumentLibraries();
+            RefreshDocumentLibraries();
 
         }
 
@@ -4812,11 +5539,12 @@ namespace ConstructionControl
             RestoreState(state);
             RebuildArchiveFromCurrentData();
             SaveState();
-            RefreshTreePreserveState();
-            RefreshArrivalTypes();
-            RefreshArrivalNames();
-            ApplyAllFilters();
-        }
+              RefreshTreePreserveState();
+              RefreshArrivalTypes();
+              RefreshArrivalNames();
+              RefreshDocumentLibraries();
+              ApplyAllFilters();
+          }
         private void LockToggle_Checked(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
@@ -5532,9 +6260,12 @@ namespace ConstructionControl
                 UpdateTreePanelState(forceVisible: false);
         }
 
+        private bool IsDocumentLibraryTabSelected()
+            => ReferenceEquals(MainTabs?.SelectedItem, PdfTab) || ReferenceEquals(MainTabs?.SelectedItem, EstimateTab);
+
         private void UpdateTreePanelState(bool forceVisible)
         {
-            if (TreeColumn == null || TreePanelBorder == null || TreeHoverColumn == null)
+            if (TreeColumn == null || TreePanelBorder == null || TreeHoverColumn == null || TreeHoverStrip == null)
                 return;
 
             EnsureProjectUiSettings();
@@ -5542,6 +6273,7 @@ namespace ConstructionControl
             if (currentObject?.UiSettings?.DisableTree == true)
             {
                 TreePanelBorder.Visibility = Visibility.Collapsed;
+                TreeHoverStrip.Visibility = Visibility.Collapsed;
                 TreeColumn.Width = new GridLength(0);
                 TreeHoverColumn.Width = new GridLength(0);
                 if (TreePinToggle != null)
@@ -5549,10 +6281,136 @@ namespace ConstructionControl
                 return;
             }
 
+            if (IsDocumentLibraryTabSelected())
+            {
+                TreePanelBorder.Visibility = Visibility.Collapsed;
+                TreeHoverStrip.Visibility = Visibility.Collapsed;
+                TreeColumn.Width = new GridLength(0);
+                TreeHoverColumn.Width = new GridLength(0);
+                return;
+            }
+
             bool show = isTreePinned || forceVisible;
+            TreeHoverStrip.Visibility = Visibility.Visible;
             TreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            TreeHoverColumn.Width = new GridLength(14);
+            TreeHoverColumn.Width = new GridLength(28);
             TreeColumn.Width = show ? new GridLength(260) : new GridLength(0);
+        }
+
+        private void PdfTreePinToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            isPdfTreePinned = true;
+            UpdatePdfTreePanelState(forceVisible: true);
+        }
+
+        private void PdfTreePinToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            isPdfTreePinned = false;
+            UpdatePdfTreePanelState(forceVisible: false);
+        }
+
+        private void PdfTreeHoverZone_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isPdfTreePinned)
+                UpdatePdfTreePanelState(forceVisible: true);
+        }
+
+        private void PdfTreePanel_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isPdfTreePinned)
+                UpdatePdfTreePanelState(forceVisible: true);
+        }
+
+        private void PdfTreePanel_MouseLeave(object sender, MouseEventArgs e)
+        {
+            if (!isPdfTreePinned && !PdfTreePanelBorder.IsMouseOver)
+                UpdatePdfTreePanelState(forceVisible: false);
+        }
+
+        private void PdfPreviewArea_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isPdfTreePinned)
+                UpdatePdfTreePanelState(forceVisible: false);
+        }
+
+        private void UpdatePdfTreePanelState(bool forceVisible)
+        {
+            if (PdfTreeColumn == null || PdfTreePanelBorder == null || PdfTreeHoverColumn == null || PdfTreeHoverStrip == null)
+                return;
+
+            bool showStrip = ReferenceEquals(MainTabs?.SelectedItem, PdfTab);
+            if (!showStrip)
+            {
+                PdfTreePanelBorder.Visibility = Visibility.Collapsed;
+                PdfTreeHoverStrip.Visibility = Visibility.Collapsed;
+                PdfTreeColumn.Width = new GridLength(0);
+                PdfTreeHoverColumn.Width = new GridLength(0);
+                return;
+            }
+
+            bool show = isPdfTreePinned || forceVisible;
+            PdfTreeHoverStrip.Visibility = Visibility.Visible;
+            PdfTreeHoverColumn.Width = new GridLength(28);
+            PdfTreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            PdfTreeColumn.Width = show ? new GridLength(320) : new GridLength(0);
+        }
+
+        private void EstimateTreePinToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            isEstimateTreePinned = true;
+            UpdateEstimateTreePanelState(forceVisible: true);
+        }
+
+        private void EstimateTreePinToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            isEstimateTreePinned = false;
+            UpdateEstimateTreePanelState(forceVisible: false);
+        }
+
+        private void EstimateTreeHoverZone_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isEstimateTreePinned)
+                UpdateEstimateTreePanelState(forceVisible: true);
+        }
+
+        private void EstimateTreePanel_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isEstimateTreePinned)
+                UpdateEstimateTreePanelState(forceVisible: true);
+        }
+
+        private void EstimateTreePanel_MouseLeave(object sender, MouseEventArgs e)
+        {
+            if (!isEstimateTreePinned && !EstimateTreePanelBorder.IsMouseOver)
+                UpdateEstimateTreePanelState(forceVisible: false);
+        }
+
+        private void EstimatePreviewArea_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (!isEstimateTreePinned)
+                UpdateEstimateTreePanelState(forceVisible: false);
+        }
+
+        private void UpdateEstimateTreePanelState(bool forceVisible)
+        {
+            if (EstimateTreeColumn == null || EstimateTreePanelBorder == null || EstimateTreeHoverColumn == null || EstimateTreeHoverStrip == null)
+                return;
+
+            bool showStrip = ReferenceEquals(MainTabs?.SelectedItem, EstimateTab);
+            if (!showStrip)
+            {
+                EstimateTreePanelBorder.Visibility = Visibility.Collapsed;
+                EstimateTreeHoverStrip.Visibility = Visibility.Collapsed;
+                EstimateTreeColumn.Width = new GridLength(0);
+                EstimateTreeHoverColumn.Width = new GridLength(0);
+                return;
+            }
+
+            bool show = isEstimateTreePinned || forceVisible;
+            EstimateTreeHoverStrip.Visibility = Visibility.Visible;
+            EstimateTreeHoverColumn.Width = new GridLength(28);
+            EstimateTreePanelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            EstimateTreeColumn.Width = show ? new GridLength(320) : new GridLength(0);
         }
 
         private void EnsureProjectUiSettings()

@@ -53,6 +53,8 @@ namespace ConstructionControl
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
         public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
+        public List<DocumentTreeNode> PdfDocuments { get; set; } = new();
+        public List<DocumentTreeNode> EstimateDocuments { get; set; } = new();
         public ProjectUiSettings UiSettings { get; set; } = new();
     }
 
@@ -61,6 +63,45 @@ namespace ConstructionControl
         public bool DisableTree { get; set; }
         public bool PinTreeByDefault { get; set; }
         public bool ShowReminderPopup { get; set; } = true;
+    }
+
+    public class DocumentTreeNode : INotifyPropertyChanged
+    {
+        private string name;
+        private string filePath;
+        private bool isFolder;
+
+        public string Name
+        {
+            get => name;
+            set => SetField(ref name, value);
+        }
+
+        public string FilePath
+        {
+            get => filePath;
+            set => SetField(ref filePath, value);
+        }
+
+        public bool IsFolder
+        {
+            get => isFolder;
+            set => SetField(ref isFolder, value);
+        }
+
+        public List<DocumentTreeNode> Children { get; set; } = new();
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            return true;
+        }
     }
 
     public class TimesheetPersonEntry : INotifyPropertyChanged
