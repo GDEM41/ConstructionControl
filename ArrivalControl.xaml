@@ -71,14 +71,14 @@
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
                   GridLinesVisibility="All"
-                  RowBackground="White"
-                  AlternatingRowBackground="#F8FAFC"
-                  BorderBrush="#CBD5E1"
+                  RowBackground="{StaticResource SurfaceBrush}"
+                  AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
+                  BorderBrush="{StaticResource StrokeBrush}"
                   BorderThickness="1"
                   RowHeaderWidth="0"
                   HeadersVisibility="Column"
-                  VerticalGridLinesBrush="#D4DCE8"
-                  HorizontalGridLinesBrush="#D4DCE8"
+                  VerticalGridLinesBrush="{StaticResource DividerBrush}"
+                  HorizontalGridLinesBrush="{StaticResource DividerBrush}"
                   FontSize="13">
 
             <DataGrid.Columns>
@@ -176,9 +176,9 @@
                     MinWidth="180"
                     Padding="14,0"
                     FontSize="14"
-                    Background="#2F80ED"
-                    Foreground="White"
-                    BorderBrush="#2F80ED"
+                    Background="{StaticResource PrimaryBrush}"
+                    Foreground="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource PrimaryBrush}"
                     Click="AddArrival_Click"/>
         </StackPanel>
 

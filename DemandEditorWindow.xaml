@@ -5,7 +5,7 @@
         Height="700"
         Width="1250"
         WindowStartupLocation="CenterOwner"
-        Background="#F8FAFC">
+        Background="{StaticResource SurfaceAltBrush}">
     <Window.Resources>
         <Style x:Key="DemandDialogButton" TargetType="Button">
             <Setter Property="Height" Value="36"/>
@@ -49,14 +49,14 @@
 
         <!-- ===== Верхняя панель ===== -->
         <Border Grid.Row="0"
-                Background="White"
-                BorderBrush="#E2E8F0"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource StrokeBrush}"
                 BorderThickness="1"
                 CornerRadius="10"
                 Padding="12"
                 Margin="0,0,0,10">
             <TextBlock Text="Потребность по отметкам. Вкладка = тип. Навигация по ячейкам: стрелки клавиатуры."
-                       Foreground="#334155"/>
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
         </Border>
 
         <!-- ===== Вкладки (растягиваются) ===== -->
@@ -67,8 +67,8 @@
 
         <!-- ===== Нижняя фиксированная панель ===== -->
         <Border Grid.Row="2"
-                Background="White"
-                BorderBrush="#E2E8F0"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource StrokeBrush}"
                 BorderThickness="1"
                 CornerRadius="10"
                 Padding="10"
@@ -80,17 +80,17 @@
                 <Button Content="Отмена"
                         Style="{StaticResource DemandDialogButton}"
                         Margin="0,0,8,0"
-                                                Background="White"
-                        BorderBrush="#CBD5E1"
-                        Foreground="#0F172A"
+                                                Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource StrokeBrush}"
+                        Foreground="{StaticResource TextBrush}"
                         Click="Cancel_Click"/>
 
                 <Button Content="Сохранить"
                         Style="{StaticResource DemandDialogButton}"
                         MinWidth="140"
-                        Background="#2563EB"
-                        Foreground="White"
-                        BorderBrush="#1D4ED8"
+                        Background="{StaticResource PrimaryBrush}"
+                        Foreground="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource PrimaryBrushPressed}"
                         Click="Save_Click"/>
 
             </StackPanel>

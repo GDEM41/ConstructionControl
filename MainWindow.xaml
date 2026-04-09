@@ -7,8 +7,9 @@
         Title="Журнал входного контроля"
         Height="700"
         Width="1300"
-        Background="#F6F7FB"
+        Background="{StaticResource AppBgBrush}"
          Loaded="MainWindow_Loaded"
+        Closing="MainWindow_Closing"
         Closed="MainWindow_Closed">
 
     <!-- ================= СТИЛИ ================= -->
@@ -26,9 +27,9 @@
             <Setter Property="Margin" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="#2563EB"/>
-            <Setter Property="BorderBrush" Value="#1D4ED8"/>
+            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
@@ -49,10 +50,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#1D4ED8"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#1E40AF"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.55"/>
@@ -67,9 +68,9 @@
             <Setter Property="Margin" Value="4,4,4,4"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Background" Value="#F3F4F6"/>
-            <Setter Property="BorderBrush" Value="#D1D5DB"/>
-            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="HorizontalAlignment" Value="Left"/>
             <Setter Property="Cursor" Value="Hand"/>
 
@@ -87,9 +88,9 @@
 
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="root" Property="Background" Value="#1C7C54"/>
-                                <Setter TargetName="root" Property="BorderBrush" Value="#176746"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -98,8 +99,8 @@
         </Style>
         <Style x:Key="SummaryFilterToggle" TargetType="ToggleButton">
             <Setter Property="Padding" Value="12,10"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -122,24 +123,24 @@
                                         Width="28"
                                         Height="28"
                                         CornerRadius="6"
-                                        Background="#F3F4F6"
+                                        Background="{StaticResource SurfaceAltBrush}"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center">
                                     <TextBlock Text="▾"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Foreground="#6B7280"/>
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </Border>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F9FAFB"/>
-                                <Setter TargetName="ArrowBg" Property="Background" Value="#E5E7EB"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                                <Setter TargetName="ArrowBg" Property="Background" Value="{StaticResource StrokeBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#9CCBB3"/>
-                                <Setter TargetName="Bd" Property="Background" Value="#EEF7F1"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectedBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -156,8 +157,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="Bd"
-                                Background="#F3F4F6"
-                                BorderBrush="#D1D5DB"
+                                Background="{StaticResource SurfaceAltBrush}"
+                                BorderBrush="{StaticResource StrokeBrush}"
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Padding="10,6">
@@ -165,12 +166,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1C7C54"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#176746"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E5E7EB"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource StrokeBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -181,8 +182,8 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="Background" Value="#2F80ED"/>
-            <Setter Property="BorderBrush" Value="#256FD0"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrushHover}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -196,10 +197,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#256FD0"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrushHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1E5CAD"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -212,8 +213,8 @@
 
         <Style x:Key="ModernSummaryModeToggle" TargetType="CheckBox">
             <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Background" Value="#EEF7F1"/>
-            <Setter Property="BorderBrush" Value="#B9D8C6"/>
+            <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -225,9 +226,9 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1C7C54"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#176746"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -250,9 +251,9 @@
             <Setter Property="Height" Value="38"/>
             <Setter Property="MinWidth" Value="38"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="#5AA9FF"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#5AA9FF"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
         </Style>
@@ -260,9 +261,9 @@
         <Style x:Key="IconToggle" TargetType="ToggleButton">
             <Setter Property="Width" Value="38"/>
             <Setter Property="Height" Value="38"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="#5AA9FF"/>
-            <Setter Property="BorderBrush" Value="#5AA9FF"/>
+            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
             <Setter Property="Template">
@@ -273,23 +274,20 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="12" Opacity="0.14" ShadowDepth="2" Color="#1B365A"/>
-                            </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#439AFF"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#439AFF"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushHover}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrushHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#3189F2"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#3189F2"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="False">
-                                <Setter TargetName="Root" Property="Background" Value="#94C8FF"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#94C8FF"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource SelectedBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.55"/>
@@ -302,25 +300,41 @@
 
         <Style x:Key="OtDueRowStyle" TargetType="DataGridRow">
             <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDismissed}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsPendingRepeat}" Value="True">
-                    <Setter Property="Background" Value="#FFF7C2"/>
+                    <Setter Property="Background" Value="{StaticResource WarningSoftBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsRepeatCompleted}" Value="True">
-                    <Setter Property="Background" Value="#DCFCE7"/>
+                    <Setter Property="Background" Value="{StaticResource SuccessSoftBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsScheduledRepeat}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="InspectionRowStyle" TargetType="DataGridRow">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCompletionHistory}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SuccessSoftBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDue}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource WarningSoftBrush}"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="MainTabItemStyle" TargetType="TabItem">
-            <Setter Property="Foreground" Value="#526173"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="MinWidth" Value="86"/>
             <Setter Property="MinHeight" Value="34"/>
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="BorderBrush" Value="#E3EAF2"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -333,9 +347,6 @@
                                 MinWidth="{TemplateBinding MinWidth}"
                                 MinHeight="{TemplateBinding MinHeight}"
                                 SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect x:Name="TabShadow" BlurRadius="6" Opacity="0.035" ShadowDepth="1" Color="#19324F"/>
-                            </Border.Effect>
                             <ContentPresenter x:Name="ContentSite"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -344,13 +355,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#EEF4FB"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#C7D8EC"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Foreground" Value="#244263"/>
-                                <Setter TargetName="Root" Property="Background" Value="#E7F0FB"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#BED3EA"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -387,9 +398,9 @@
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#526173"/>
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="BorderBrush" Value="#E3EAF2"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -404,11 +415,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#EEF4FB"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#C7D8EC"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#DCEBFA"/>
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -441,13 +452,14 @@
 
             <!-- ================= МЕНЮ ================= -->
         <Menu DockPanel.Dock="Top"
-              Background="White"
+              Background="{StaticResource SurfaceBrush}"
               BorderThickness="0">
-            <MenuItem Header="Создать" Click="CreateObject_Click"/>
-            <MenuItem Header="Архив" Click="OpenArchive_Click" />
+            <MenuItem Header="Объект">
+                <MenuItem Header="Создать новый" Click="CreateObject_Click"/>
+                <MenuItem Header="Настроить текущий" Click="ObjectSettings_Click"/>
+            </MenuItem>
+            <MenuItem Header="Очистить объект" Click="ClearObject_Click" />
 
-            <MenuItem Header="Сохранить как" Click="SaveAs_Click"/>
-            <MenuItem Header="Настройки объекта" Click="ObjectSettings_Click"/>
                 <MenuItem Header="База материалов" Click="TreeSettings_Click"/>
                 <MenuItem Header="Обмен данными">
                     <MenuItem Header="Импорт Excel" Click="ImportExcel_Click"/>
@@ -455,13 +467,12 @@
                     <MenuItem Header="Импорт всего" Click="ImportAllData_Click"/>
                 </MenuItem>
                 <MenuItem Header="Настройки" Click="AppSettings_Click"/>
-                <MenuItem Header="Выход" Click="Exit_Click"/>
         </Menu>
 
         <!-- ================= TOOLBAR ================= -->
         <Border DockPanel.Dock="Top"
-                Background="White"
-                BorderBrush="#E5E7EB"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource StrokeBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="6">
 
@@ -471,6 +482,12 @@
                         ToolTip="Сохранить"
                         Click="SaveButton_Click">
                     💾
+                </Button>
+
+                <Button Style="{StaticResource IconButton}"
+                        ToolTip="Сохранить как"
+                        Click="SaveAs_Click">
+                    💾+
                 </Button>
 
                 <ToggleButton Style="{StaticResource IconToggle}"
@@ -520,8 +537,8 @@
             </Grid.ColumnDefinitions>
                 <Border x:Name="TreeHoverStrip"
                     Grid.Column="0"
-                    Background="#EEF4FB"
-                    BorderBrush="#D6E2F0"
+                    Background="{StaticResource SelectedBrush}"
+                    BorderBrush="{StaticResource StrokeBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
                     Margin="0,0,4,0"
@@ -530,7 +547,7 @@
                         <TextBlock Text="Дерево материалов"
                                    FontSize="11"
                                    FontWeight="SemiBold"
-                                   Foreground="#526173"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center">
                             <TextBlock.LayoutTransform>
@@ -543,10 +560,10 @@
                 <!-- ===== ДЕРЕВО ===== -->
                 <Border x:Name="TreePanelBorder"
                     Grid.Column="1"
-                    Background="White"
+                    Background="{StaticResource SurfaceBrush}"
                     CornerRadius="8"
                     Padding="6"
-                    BorderBrush="#E5E7EB"
+                    BorderBrush="{StaticResource StrokeBrush}"
                     BorderThickness="1"
                     MouseEnter="TreePanel_MouseEnter"
                     MouseLeave="TreePanel_MouseLeave">
@@ -590,11 +607,11 @@
 
             <!-- ===== КОНТЕНТ ===== -->
                 <Border Grid.Column="2"
-                    Background="White"
+                    Background="{StaticResource SurfaceBrush}"
                     CornerRadius="8"
                     Padding="8"
                     Margin="10,0,0,0"
-                    BorderBrush="#E5E7EB"
+                    BorderBrush="{StaticResource StrokeBrush}"
                     BorderThickness="1"
                     MouseEnter="ContentPanel_MouseEnter">
                 <Grid>
@@ -604,15 +621,12 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
-                            Background="#FFFFFF"
-                            BorderBrush="#E8EEF5"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource DividerBrush}"
                             BorderThickness="1"
                             CornerRadius="18"
                             Padding="4"
                             Margin="0,0,0,8">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="10" Opacity="0.06" ShadowDepth="2" Color="#19324F"/>
-                        </Border.Effect>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -686,29 +700,29 @@
                                                       Style="{StaticResource SummaryFilterToggle}"
                                                       HorizontalContentAlignment="Left">
                                                 <StackPanel>
-                                                    <TextBlock Text="Фильтр типов" FontWeight="SemiBold" Foreground="#111827"/>
-                                                    <TextBlock x:Name="SummaryFilterSubtitle" Text="Нет доступных типов" Foreground="#6B7280" FontSize="12"/>
+                                                    <TextBlock Text="Фильтр типов" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                                    <TextBlock x:Name="SummaryFilterSubtitle" Text="Нет доступных типов" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
 
                                                 </StackPanel>
                                             </ToggleButton>
                                             <Popup PlacementTarget="{Binding ElementName=SummaryFilterButton}" IsOpen="{Binding IsChecked, ElementName=SummaryFilterButton}" PopupAnimation="Fade" AllowsTransparency="True" StaysOpen="False">
-                                                <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="10" Padding="12" MinWidth="260">
+                                                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="12" MinWidth="260">
                                                     <Border.Effect>
                                                         <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18"/>
                                                     </Border.Effect>
                                                     <StackPanel>
-                                                        <TextBlock Text="Показывать в сводке" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,6"/>
+                                                        <TextBlock Text="Показывать в сводке" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"/>
                                                         <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                                                             <StackPanel x:Name="SummaryTypeFilterPanel"/>
                                                         </ScrollViewer>
                                                         <Separator Margin="0,8,0,8"/>
-                                                        <TextBlock Text="Подтип" FontWeight="SemiBold" Foreground="#111827" Margin="0,0,0,6"/>
+                                                        <TextBlock Text="Подтип" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"/>
                                                         <StackPanel x:Name="SummarySubTypeFilterPanel"/>
                                                     </StackPanel>
                                                 </Border>
                                             </Popup>
                                         </Grid>
-                                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
+                                        <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
                                             <StackPanel Orientation="Horizontal">
                                                 <Button Content="Потребность по отметкам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
                                                 <Button Content="Дозаказать" Style="{StaticResource ModernSummaryActionButton}" Margin="8,0,0,0" Click="OpenReorderWindow_Click"/>
@@ -787,8 +801,8 @@
 
                                 <Border x:Name="JvkHeaderBorder"
                                         Grid.Row="0"
-                                        Background="#F3F4F6"
-                                        BorderBrush="#E5E7EB"
+                                        Background="{StaticResource SurfaceAltBrush}"
+                                        BorderBrush="{StaticResource StrokeBrush}"
                                         BorderThickness="0,0,0,1"
                                         Padding="0"
                                         SizeChanged="JvkLayout_SizeChanged">
@@ -804,7 +818,7 @@
                                         </Grid.ColumnDefinitions>
 
                                         <Border Grid.Column="0"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="ттн"
@@ -812,7 +826,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="1"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="название"
@@ -820,7 +834,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="2"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="стб"
@@ -828,7 +842,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="3"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="ед.изм"
@@ -836,7 +850,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="4"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="кол-во"
@@ -844,7 +858,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="5"
-                                                BorderBrush="#E5E7EB"
+                                                BorderBrush="{StaticResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="поставщик"
@@ -941,8 +955,8 @@
 
                             <Border Grid.ColumnSpan="2"
                                     Margin="0,50,0,0"
-                                    Background="White"
-                                    BorderBrush="#D6DEE8"
+                                    Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource StrokeBrush}"
                                     BorderThickness="1"
                                     CornerRadius="12"
                                     Padding="10">
@@ -964,10 +978,10 @@
                                               HeadersVisibility="Column"
                                               RowHeaderWidth="0"
                                               BorderThickness="0"
-                                              RowBackground="White"
-                                              AlternatingRowBackground="#F8FAFC"
-                                              VerticalGridLinesBrush="#D4DCE8"
-                                              HorizontalGridLinesBrush="#D4DCE8"
+                                              RowBackground="{StaticResource SurfaceBrush}"
+                                              AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
+                                              VerticalGridLinesBrush="{StaticResource DividerBrush}"
+                                              HorizontalGridLinesBrush="{StaticResource DividerBrush}"
                                               CellEditEnding="ArrivalLegacyGrid_CellEditEnding"
                                               RowEditEnding="ArrivalLegacyGrid_RowEditEnding">
                                         <DataGrid.Columns>
@@ -1010,10 +1024,10 @@
                             <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
                             <Grid x:Name="ArrivalFiltersOverlay"
       Visibility="Collapsed"
-      Background="#80000000"
+      Background="{StaticResource OverlayBrush}"
       Panel.ZIndex="50" Grid.ColumnSpan="2">
 
-                                <Border Background="White"
+                                <Border Background="{StaticResource SurfaceBrush}"
             Padding="20"
             CornerRadius="10"
             Width="450"
@@ -1126,9 +1140,9 @@
             Width="160"
             Height="34"
             Padding="10,0"
-            Background="#EFEFF4"
-            BorderBrush="#D0D0D5"
-            Foreground="#444"
+            Background="{StaticResource SecondaryBrush}"
+            BorderBrush="{StaticResource StrokeBrush}"
+            Foreground="{StaticResource TextSecondaryBrush}"
             FontSize="13"
             FontWeight="SemiBold"
             Click="ArrivalClearFilters_Click"/>
@@ -1145,11 +1159,11 @@
 
                             <!-- ====== ПАНЕЛЬ ДОБАВЛЕНИЯ (ОКНО СВЕРХУ) ====== -->
                             <Border x:Name="ArrivalPopup"
-                Background="#AA000000"
+                Background="{StaticResource OverlayStrongBrush}"
                 Visibility="Collapsed"
                 Panel.ZIndex="10" Grid.ColumnSpan="2">
                                 <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                    <Border Background="White"
+                                    <Border Background="{StaticResource SurfaceBrush}"
                         CornerRadius="6"
                         Padding="10"
                         Width="800"
@@ -1201,11 +1215,28 @@
                                 </Grid>
                             </Border>
 
+                            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10">
+                                <WrapPanel>
+                                    <Border Background="{StaticResource WarningSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <TextBlock Text="Желтый: требуется повторный"/>
+                                    </Border>
+                                    <Border Background="{StaticResource SuccessSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <TextBlock Text="Зеленый: инструктаж пройден"/>
+                                    </Border>
+                                    <Border Background="{StaticResource SelectedBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <TextBlock Text="Синий: запланирован следующий повторный"/>
+                                    </Border>
+                                    <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                        <TextBlock Text="Серый: снят с объекта"/>
+                                    </Border>
+                                </WrapPanel>
+                            </Border>
+
                             <DataGrid x:Name="OtJournalGrid"
                                       Grid.Row="2"
                                       AutoGenerateColumns="False"
                                       ColumnWidth="Auto"
-                                       CanUserResizeColumns="False"
+                                        CanUserResizeColumns="False"
                                       CanUserAddRows="False"
                                       CanUserDeleteRows="True"
                                       RowStyle="{StaticResource OtDueRowStyle}"
@@ -1213,7 +1244,7 @@
                                       CellEditEnding="OtJournalGrid_CellEditEnding"
                                       PreviewKeyDown="OtJournalGrid_PreviewKeyDown">
                                 <DataGrid.Columns>
-                                        <DataGridTemplateColumn Header="Дата" Width="Auto">
+                                        <DataGridTemplateColumn Header="Дата" Width="115">
                                             <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding InstructionDate, StringFormat=dd.MM.yyyy}"/>
@@ -1226,10 +1257,10 @@
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="ФИО" Width="Auto">
+                                        <DataGridTemplateColumn Header="ФИО" Width="230">
                                             <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                    <TextBlock Text="{Binding FullNameDisplay}" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding FullNameDisplay}" TextWrapping="NoWrap"/>
                                                 </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                         <DataGridTemplateColumn.CellEditingTemplate>
@@ -1243,7 +1274,7 @@
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Специальность" Width="Auto">
+                                        <DataGridTemplateColumn Header="Специальность" Width="180">
                                             <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding Specialty}"/>
@@ -1251,16 +1282,15 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                         <DataGridTemplateColumn.CellEditingTemplate>
                                             <DataTemplate>
-                                                <ComboBox IsEditable="True"
+                                                <ComboBox IsEditable="False"
                                                           IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=Specialties}"
-                                                          Text="{Binding Specialty, UpdateSourceTrigger=PropertyChanged}"/>
+                                                          SelectedItem="{Binding Specialty, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellEditingTemplate>
                                     </DataGridTemplateColumn>
 
-                                        <DataGridTextColumn Header="Разряд" Binding="{Binding Rank, UpdateSourceTrigger=PropertyChanged}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Разряд" Binding="{Binding Rank, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
                                         <DataGridTextColumn Header="Вид инструктажа" Binding="{Binding InstructionType}" Width="Auto"/>
                                         <DataGridTextColumn Header="Номера инструкций по ОТ" Binding="{Binding InstructionNumbers}" Width="SizeToHeader">
                                             <DataGridTextColumn.ElementStyle>
@@ -1277,34 +1307,11 @@
                                         </DataGridTextColumn>
                                         <DataGridTextColumn Header="Период повторного (мес.)"
                                                         Binding="{Binding RepeatPeriodMonths, UpdateSourceTrigger=PropertyChanged}"
-                                                       Width="Auto"/>
-
-                                        <DataGridCheckBoxColumn Header="Бригадир" Binding="{Binding IsBrigadier, UpdateSourceTrigger=PropertyChanged}" Width="Auto"/>
-
-                                        <DataGridTemplateColumn Header="Бригадир звена" Width="Auto">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding BrigadierName}"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                        <DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox ItemsSource="{Binding ElementName=RootWindow, Path=BrigadierNames}"
-                                                          SelectedItem="{Binding BrigadierName, UpdateSourceTrigger=PropertyChanged}"
-                                                                                                                    IsEnabled="{Binding IsWorker}">
-                                                    <ComboBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <TextBlock Text="{Binding StringFormat={}{0} - бригадир}"/>
-                                                        </DataTemplate>
-                                                    </ComboBox.ItemTemplate>
-                                                </ComboBox>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellEditingTemplate>
-                                    </DataGridTemplateColumn>
+                                                        Width="54"/>
 
                                         <DataGridTextColumn Header="След. повторный" Binding="{Binding NextRepeatDate, StringFormat=dd.MM.yyyy}" Width="Auto" IsReadOnly="True"/>
 
-                                        <DataGridTemplateColumn Header="Статус" Width="140">
+                                        <DataGridTemplateColumn Header="Статус" Width="220">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold"/>
@@ -1323,15 +1330,6 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Сотрудник" Width="Auto">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Button Content="Нет на объекте"
-                                                        Padding="8,3"
-                                                        Click="MarkPersonDismissedRow_Click"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                            
@@ -1381,6 +1379,7 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="220"/>
                                                 <ColumnDefinition Width="170"/>
+                                                <ColumnDefinition Width="140"/>
                                                 <ColumnDefinition Width="80"/>
                                                 <ColumnDefinition Width="180"/>
                                                 <ColumnDefinition Width="Auto"/>
@@ -1389,17 +1388,25 @@
 
                                             <TextBox x:Name="TimesheetFullNameTextBox" Grid.Column="0" Margin="0,0,10,0" Tag="ФИО сотрудника"/>
                                             <TextBox x:Name="TimesheetSpecialtyTextBox" Grid.Column="1" Margin="0,0,10,0" Tag="Специальность"/>
-                                            <TextBox x:Name="TimesheetRankTextBox" Grid.Column="2" Margin="0,0,10,0" Tag="Разряд"/>
+                                            <ComboBox x:Name="TimesheetWorkModeComboBox"
+                                                      Grid.Column="2"
+                                                      Margin="0,0,10,0"
+                                                      SelectedIndex="0"
+                                                      Tag="Режим работы">
+                                                <ComboBoxItem Content="Обычно (8 ч)"/>
+                                                <ComboBoxItem Content="Вахта (12 ч)"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="TimesheetRankTextBox" Grid.Column="3" Margin="0,0,10,0" Tag="Разряд"/>
                                             <ComboBox x:Name="TimesheetBrigadeComboBox"
-                                                      Grid.Column="3"
+                                                      Grid.Column="4"
                                                       Margin="0,0,10,0"
                                                       Tag="Название бригады"
                                                       IsEditable="True"
                                                       IsTextSearchEnabled="True"
                                                       StaysOpenOnEdit="True"
                                                       ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
-                                            <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Grid.Column="4" Content="Бригадир" Margin="0,0,12,0"/>
-                                            <WrapPanel Grid.Column="5" HorizontalAlignment="Right">
+                                            <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Grid.Column="5" Content="Бригадир" Margin="0,0,12,0"/>
+                                            <WrapPanel Grid.Column="6" HorizontalAlignment="Right">
                                                 <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить</Button>
                                                 <Button Style="{StaticResource SecondaryButton}" Click="DeleteTimesheetPerson_Click" Margin="8,0,0,0">🗑 Удалить</Button>
                                                 <Button Style="{StaticResource SecondaryButton}" Click="EditSelectedDayComment_Click" Margin="8,0,0,0">💬 Комментарий</Button>
@@ -1409,7 +1416,7 @@
                                     </Grid>
                                 </Border>
 
-                                <Grid Grid.Row="1">
+                                <Grid Grid.Row="2">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
@@ -1426,6 +1433,8 @@
                                       EnableColumnVirtualization="True"
                                       VirtualizingPanel.IsVirtualizing="True"
                                       VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                       ScrollViewer.CanContentScroll="True"
                                       BeginningEdit="TimesheetGrid_BeginningEdit"
                                       CellEditEnding="TimesheetGrid_CellEditEnding"
@@ -1619,7 +1628,8 @@
                                         <DataGridTemplateColumn Header="Дата" Width="115">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Date, StringFormat=dd.MM.yyyy}"/>
+                                                    <TextBlock Text="{Binding DateDisplay}"
+                                                               TextWrapping="NoWrap"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1666,7 +1676,8 @@
                                         <DataGridTemplateColumn Header="Элементы" Width="240">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding ElementsText}"/>
+                                                    <TextBlock Text="{Binding ElementsDisplay}"
+                                                               TextWrapping="Wrap"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1734,7 +1745,8 @@
                                         <DataGridTemplateColumn Header="Погода" Width="180">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Weather}"/>
+                                                    <TextBlock Text="{Binding WeatherDisplay}"
+                                                               TextWrapping="Wrap"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1751,7 +1763,8 @@
                                         <DataGridTemplateColumn Header="Отклонения" Width="240">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Deviations}"/>
+                                                    <TextBlock Text="{Binding DeviationsDisplay}"
+                                                               TextWrapping="Wrap"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1765,7 +1778,7 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridCheckBoxColumn Header="Скрытые работы" Binding="{Binding RequiresHiddenWorkAct, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
+                                        <DataGridCheckBoxColumn Header="Скрытые работы" Binding="{Binding RequiresHiddenWorkAct, UpdateSourceTrigger=PropertyChanged}" Width="56"/>
                                         <DataGridTextColumn Header="Остаток по блоку/отметке" Binding="{Binding RemainingInfo}" Width="280" IsReadOnly="True"/>
 
                                         <DataGridTemplateColumn Header="Акт" Width="350">
@@ -1799,8 +1812,8 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="160"/>
-                                                <ColumnDefinition Width="160"/>
+                                                <ColumnDefinition Width="120"/>
+                                                <ColumnDefinition Width="104"/>
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
@@ -1836,7 +1849,7 @@
 
                                         <Grid Grid.Row="1">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="180"/>
+                                                <ColumnDefinition Width="132"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
@@ -1863,34 +1876,68 @@
                                 </Border>
 
                                 <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
-                                    <DataGrid x:Name="InspectionJournalGrid"
-                                              AutoGenerateColumns="False"
-                                              CanUserAddRows="False"
-                                              CanUserDeleteRows="False"
-                                              IsReadOnly="True"
-                                              ColumnWidth="Auto"
-                                              SelectionChanged="InspectionJournalGrid_SelectionChanged">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Журнал" Binding="{Binding JournalName}" Width="220"/>
-                                            <DataGridTextColumn Header="Осмотр" Binding="{Binding InspectionName}" Width="220"/>
-                                            <DataGridTextColumn Header="Напоминать с" Binding="{Binding ReminderStartDate, StringFormat=dd.MM.yyyy}" Width="120"/>
-                                            <DataGridTextColumn Header="Период, дней" Binding="{Binding ReminderPeriodDays}" Width="110"/>
-                                            <DataGridTextColumn Header="Последний осмотр" Binding="{Binding LastCompletedDate, StringFormat=dd.MM.yyyy}" Width="130"/>
-                                            <DataGridTextColumn Header="Следующее напоминание" Binding="{Binding NextReminderDate, StringFormat=dd.MM.yyyy}" Width="150"/>
-                                            <DataGridTextColumn Header="Статус" Binding="{Binding ReminderStatus}" Width="220"/>
-                                            <DataGridTextColumn Header="Комментарий" Binding="{Binding Notes}" Width="260"/>
-                                            <DataGridTemplateColumn Header="Действие" Width="120">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Button Style="{StaticResource SecondaryButton}"
-                                                                Content="Проведен"
-                                                                MinWidth="100"
-                                                                Click="MarkInspectionCompleted_Click"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+
+                                        <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+                                            <Border Background="{StaticResource WarningSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                                <TextBlock Text="Желтый: осмотр просрочен"/>
+                                            </Border>
+                                            <Border Background="{StaticResource SuccessSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                                <TextBlock Text="Зеленый: осмотр проведен, создана следующая запись"/>
+                                            </Border>
+                                        </WrapPanel>
+
+                                        <DataGrid x:Name="InspectionJournalGrid"
+                                                  Grid.Row="1"
+                                                  AutoGenerateColumns="False"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  IsReadOnly="True"
+                                                  ColumnWidth="Auto"
+                                                  RowHeaderWidth="0"
+                                                  RowStyle="{StaticResource InspectionRowStyle}"
+                                                  SelectionChanged="InspectionJournalGrid_SelectionChanged">
+                                            <DataGrid.Columns>
+                                                <DataGridTemplateColumn Header="Журнал" Width="300">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding JournalDisplay}"
+                                                                       TextWrapping="Wrap"
+                                                                       VerticalAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Осмотр" Width="320">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding InspectionDisplay}"
+                                                                       TextWrapping="Wrap"
+                                                                       VerticalAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Напоминать с" Binding="{Binding ReminderStartDate, StringFormat=dd.MM.yyyy}" Width="92"/>
+                                                <DataGridTextColumn Header="Период, дней" Binding="{Binding ReminderPeriodDays}" Width="58"/>
+                                                <DataGridTextColumn Header="Последний осмотр" Binding="{Binding LastCompletedDate, StringFormat=dd.MM.yyyy}" Width="92"/>
+                                                <DataGridTextColumn Header="Статус" Binding="{Binding ReminderStatus}" Width="260"/>
+                                                <DataGridTextColumn Header="Комментарий" Binding="{Binding Notes}" Width="280"/>
+                                                <DataGridTemplateColumn Header="Действие" Width="120">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Button Style="{StaticResource SecondaryButton}"
+                                                                    Content="Проведен"
+                                                                    MinWidth="100"
+                                                                    Click="MarkInspectionCompleted_Click"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
                                 </Border>
                             </Grid>
                         </TabItem>
@@ -1936,8 +1983,8 @@
 
                                     <Border x:Name="PdfTreeHoverStrip"
                                             Grid.Column="0"
-                                            Background="#EEF4FB"
-                                            BorderBrush="#D6E2F0"
+                                            Background="{StaticResource SelectedBrush}"
+                                            BorderBrush="{StaticResource StrokeBrush}"
                                             BorderThickness="1"
                                             CornerRadius="8"
                                             Margin="0,0,4,0"
@@ -1946,7 +1993,7 @@
                                             <TextBlock Text="Дерево PDF"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
-                                                       Foreground="#526173"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.LayoutTransform>
@@ -2004,7 +2051,7 @@
                                                 <TextBlock Text="ПДФ-документы" FontSize="20" FontWeight="SemiBold"/>
                                                 <TextBlock Text="Выберите один или несколько PDF-файлов, затем разложите их по своему дереву. Папки, названия и расположение узлов можно менять в любой момент."
                                                            Margin="0,8,0,16"
-                                                           Foreground="#64748B"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="PdfSelectedNameText"
@@ -2014,19 +2061,19 @@
                                                 <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="PdfSelectedPathText"
                                                            Margin="0,6,0,10"
-                                                           Foreground="#475569"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            TextWrapping="Wrap"
                                                            Text="—"/>
                                                 <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="PdfSelectedTypeText"
                                                            Margin="0,6,0,0"
-                                                           Foreground="#475569"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            Text="—"/>
                                             </StackPanel>
 
                                             <Border x:Name="PdfPreviewContainer"
-                                                    Background="#F8FAFC"
-                                                    BorderBrush="#E2E8F0"
+                                                    Background="{StaticResource SurfaceAltBrush}"
+                                                    BorderBrush="{StaticResource StrokeBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="12"
                                                     Padding="0"
@@ -2046,7 +2093,7 @@
                                                                        HorizontalAlignment="Center"/>
                                                             <TextBlock x:Name="PdfPreviewStatusText"
                                                                        Margin="0,10,0,0"
-                                                                       Foreground="#64748B"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                                        TextAlignment="Center"
                                                                        TextWrapping="Wrap"
                                                                        Text="Выберите PDF-файл в дереве слева, и он откроется здесь."/>
@@ -2101,8 +2148,8 @@
 
                                     <Border x:Name="EstimateTreeHoverStrip"
                                             Grid.Column="0"
-                                            Background="#EEF4FB"
-                                            BorderBrush="#D6E2F0"
+                                            Background="{StaticResource SelectedBrush}"
+                                            BorderBrush="{StaticResource StrokeBrush}"
                                             BorderThickness="1"
                                             CornerRadius="8"
                                             Margin="0,0,4,0"
@@ -2111,7 +2158,7 @@
                                             <TextBlock Text="Дерево смет"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
-                                                       Foreground="#526173"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.LayoutTransform>
@@ -2169,7 +2216,7 @@
                                                 <TextBlock Text="Сметы" FontSize="20" FontWeight="SemiBold"/>
                                                 <TextBlock Text="Выберите файлы смет и соберите для них свою структуру дерева. Можно создавать папки, переименовывать узлы и перемещать их мышкой."
                                                            Margin="0,8,0,16"
-                                                           Foreground="#64748B"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="EstimateSelectedNameText"
@@ -2179,19 +2226,19 @@
                                                 <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="EstimateSelectedPathText"
                                                            Margin="0,6,0,10"
-                                                           Foreground="#475569"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            TextWrapping="Wrap"
                                                            Text="—"/>
                                                 <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
                                                 <TextBlock x:Name="EstimateSelectedTypeText"
                                                            Margin="0,6,0,0"
-                                                           Foreground="#475569"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
                                                            Text="—"/>
                                             </StackPanel>
 
                                             <Border x:Name="EstimatePreviewContainer"
-                                                    Background="#F8FAFC"
-                                                    BorderBrush="#E2E8F0"
+                                                    Background="{StaticResource SurfaceAltBrush}"
+                                                    BorderBrush="{StaticResource StrokeBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="12"
                                                     Padding="0"
@@ -2214,7 +2261,7 @@
                                                                        HorizontalAlignment="Center"/>
                                                             <TextBlock x:Name="EstimatePreviewStatusText"
                                                                        Margin="0,10,0,0"
-                                                                       Foreground="#64748B"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                                        TextAlignment="Center"
                                                                        TextWrapping="Wrap"
                                                                        Text="Выберите файл сметы в дереве слева, и он откроется здесь."/>

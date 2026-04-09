@@ -68,19 +68,19 @@ namespace ConstructionControl
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 64 });
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            AddCell(grid, 0, 0, "Материал", true, "#E2E8F0", true);
+            AddCell(grid, 0, 0, "Материал", true, "#EEF2F7", true);
             Grid.SetRowSpan(grid.Children[^1], 2);
 
             int startColumn = 1;
             foreach (var blockGroup in markColumns.GroupBy(x => x.Block))
             {
-                AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, "#CBD5E1", true, HorizontalAlignment.Center);
+                AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, "#E5E7EB", true, HorizontalAlignment.Center);
                 Grid.SetColumnSpan(grid.Children[^1], blockGroup.Count());
 
                 int offset = 0;
                 foreach (var column in blockGroup)
                 {
-                    AddCell(grid, 1, startColumn + offset, column.Mark, true, "#E2E8F0", true, HorizontalAlignment.Center);
+                    AddCell(grid, 1, startColumn + offset, column.Mark, true, "#EEF2F7", true, HorizontalAlignment.Center);
                     offset++;
                 }
 
@@ -92,7 +92,7 @@ namespace ConstructionControl
             {
                 var row = groupRows[rowIndex];
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var bg = rowIndex % 2 == 0 ? "White" : "#F8FAFC";
+                var bg = rowIndex % 2 == 0 ? "White" : "#F9FAFB";
                 AddCell(grid, rowIndex + 2, 0, row.Material, false, bg, false);
 
                 string key = $"{row.Group}::{row.Material}";
@@ -109,7 +109,7 @@ namespace ConstructionControl
                         Padding = new Thickness(4, 2, 4, 2),
                         HorizontalContentAlignment = HorizontalAlignment.Right,
                         Tag = (key, row.Unit, col.Block, col.Mark),
-                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E1")),
+                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB")),
                         BorderThickness = new Thickness(1)
                     };
                     box.PreviewKeyDown += Cell_PreviewKeyDown;
@@ -245,7 +245,7 @@ namespace ConstructionControl
         {
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(203, 213, 225)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = (Brush)new BrushConverter().ConvertFromString(bg),
                 Padding = new Thickness(6, 5, 6, 5)
@@ -254,7 +254,7 @@ namespace ConstructionControl
             {
                 Text = text,
                 FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-                Foreground = header ? new SolidColorBrush(Color.FromRgb(30, 41, 59)) : new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Foreground = header ? new SolidColorBrush(Color.FromRgb(17, 24, 39)) : new SolidColorBrush(Color.FromRgb(107, 114, 128)),
                 HorizontalAlignment = alignment,
                 TextAlignment = alignment == HorizontalAlignment.Center ? TextAlignment.Center : TextAlignment.Left
             };

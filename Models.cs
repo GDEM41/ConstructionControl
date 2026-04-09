@@ -34,6 +34,16 @@ namespace ConstructionControl
 
         // Если этажи разные (ключ = номер блока, значение = этажи)
         public Dictionary<int, int> FloorsByBlock { get; set; } = new();
+        public Dictionary<int, string> BlockAxesByNumber { get; set; } = new();
+        public string FullObjectName { get; set; } = string.Empty;
+        public string GeneralContractorRepresentative { get; set; } = string.Empty;
+        public string TechnicalSupervisorRepresentative { get; set; } = string.Empty;
+        public string ProjectOrganizationRepresentative { get; set; } = string.Empty;
+        public string ProjectDocumentationName { get; set; } = string.Empty;
+        public List<string> MasterNames { get; set; } = new();
+        public List<string> ForemanNames { get; set; } = new();
+        public string ResponsibleForeman { get; set; } = string.Empty;
+        public string SiteManagerName { get; set; } = string.Empty;
 
         // ===== СТАРОЕ (НЕ ТРОГАЕМ) 3443=====
 
@@ -93,6 +103,7 @@ namespace ConstructionControl
     {
         private string name;
         private string filePath;
+        private string storedRelativePath;
         private bool isFolder;
 
         public string Name
@@ -105,6 +116,12 @@ namespace ConstructionControl
         {
             get => filePath;
             set => SetField(ref filePath, value);
+        }
+
+        public string StoredRelativePath
+        {
+            get => storedRelativePath;
+            set => SetField(ref storedRelativePath, value);
         }
 
         public bool IsFolder
@@ -136,6 +153,7 @@ namespace ConstructionControl
         private string rank;
         private string brigadeName;
         private bool isBrigadier;
+        private int dailyWorkHours = 8;
 
         public Guid PersonId
         {
@@ -171,6 +189,16 @@ namespace ConstructionControl
         {
             get => isBrigadier;
             set => SetField(ref isBrigadier, value);
+        }
+
+        public int DailyWorkHours
+        {
+            get => dailyWorkHours;
+            set
+            {
+                var normalized = Math.Clamp(value, 1, 24);
+                SetField(ref dailyWorkHours, normalized);
+            }
         }
 
         public List<TimesheetMonthEntry> Months { get; set; } = new();
@@ -351,6 +379,7 @@ namespace ConstructionControl
         private bool isDismissed;
         private bool isPendingRepeat;
         private bool isRepeatCompleted;
+        private bool isScheduledRepeat;
 
         public Guid PersonId
         {
@@ -492,6 +521,16 @@ namespace ConstructionControl
             }
         }
 
+        public bool IsScheduledRepeat
+        {
+            get => isScheduledRepeat;
+            set
+            {
+                if (SetField(ref isScheduledRepeat, value))
+                    OnPropertyChanged(nameof(StatusLabel));
+            }
+        }
+
         public bool IsPrimaryInstruction =>
             !string.IsNullOrWhiteSpace(InstructionType)
             && InstructionType.Contains("первич", StringComparison.CurrentCultureIgnoreCase);
@@ -502,7 +541,9 @@ namespace ConstructionControl
             ? "Требуется повторный"
             : IsRepeatCompleted
                 ? "Повторный пройден"
-                : string.Empty;
+                : IsScheduledRepeat
+                    ? "Запланирован"
+                    : string.Empty;
 
         public DateTime NextRepeatDate => InstructionDate.AddMonths(Math.Max(1, RepeatPeriodMonths));
 
@@ -650,6 +691,8 @@ namespace ConstructionControl
         private string deviations;
         private bool requiresHiddenWorkAct;
         private string remainingInfo;
+        private bool suppressDateDisplay;
+        private bool suppressWeatherDisplay;
 
         public DateTime Date
         {
@@ -717,6 +760,26 @@ namespace ConstructionControl
             set => SetField(ref remainingInfo, value);
         }
 
+        public bool SuppressDateDisplay
+        {
+            get => suppressDateDisplay;
+            set => SetField(ref suppressDateDisplay, value);
+        }
+
+        public bool SuppressWeatherDisplay
+        {
+            get => suppressWeatherDisplay;
+            set => SetField(ref suppressWeatherDisplay, value);
+        }
+
+        public string DateDisplay => SuppressDateDisplay ? string.Empty : Date.ToString("dd.MM.yyyy");
+
+        public string WeatherDisplay => SuppressWeatherDisplay ? string.Empty : (Weather ?? string.Empty);
+
+        public string ElementsDisplay => string.Join(Environment.NewLine, LevelMarkHelper.SplitText(ElementsText));
+
+        public string DeviationsDisplay => string.Join(Environment.NewLine, LevelMarkHelper.SplitText(Deviations));
+
         public string WorkKey => $"{ActionName?.Trim()}::{WorkName?.Trim()}";
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -728,6 +791,19 @@ namespace ConstructionControl
 
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+            if (propertyName == nameof(Date) || propertyName == nameof(SuppressDateDisplay))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DateDisplay)));
+
+            if (propertyName == nameof(Weather) || propertyName == nameof(SuppressWeatherDisplay))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WeatherDisplay)));
+
+            if (propertyName == nameof(ElementsText))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ElementsDisplay)));
+
+            if (propertyName == nameof(Deviations))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DeviationsDisplay)));
+
             return true;
         }
     }
@@ -740,6 +816,7 @@ namespace ConstructionControl
         private int reminderPeriodDays = 7;
         private DateTime? lastCompletedDate;
         private string notes;
+        private bool isCompletionHistory;
 
         public string JournalName
         {
@@ -752,6 +829,10 @@ namespace ConstructionControl
             get => inspectionName;
             set => SetField(ref inspectionName, value);
         }
+
+        public string JournalDisplay => LevelMarkHelper.PreventSingleLetterWrap(JournalName ?? string.Empty);
+
+        public string InspectionDisplay => LevelMarkHelper.PreventSingleLetterWrap(InspectionName ?? string.Empty);
 
         public DateTime ReminderStartDate
         {
@@ -777,6 +858,12 @@ namespace ConstructionControl
             set => SetField(ref notes, value);
         }
 
+        public bool IsCompletionHistory
+        {
+            get => isCompletionHistory;
+            set => SetField(ref isCompletionHistory, value);
+        }
+
         public DateTime NextReminderDate
         {
             get
@@ -792,11 +879,15 @@ namespace ConstructionControl
             }
         }
 
-        public bool IsDue => DateTime.Today >= NextReminderDate.Date;
+        public bool IsDue => !IsCompletionHistory && DateTime.Today >= NextReminderDate.Date;
 
-        public string ReminderStatus => IsDue
-            ? $"Нужно провести с {NextReminderDate:dd.MM.yyyy}"
-            : $"Следующий: {NextReminderDate:dd.MM.yyyy}";
+        public string ReminderStatus => IsCompletionHistory
+            ? (LastCompletedDate.HasValue
+                ? $"Проведен: {LastCompletedDate.Value:dd.MM.yyyy}"
+                : "Проведен")
+            : (IsDue
+                ? $"Нужно провести с {NextReminderDate:dd.MM.yyyy}"
+                : $"Следующий: {NextReminderDate:dd.MM.yyyy}");
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -807,6 +898,13 @@ namespace ConstructionControl
 
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+            if (propertyName == nameof(JournalName))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(JournalDisplay)));
+
+            if (propertyName == nameof(InspectionName))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InspectionDisplay)));
+
             if (propertyName != nameof(ReminderStatus) && propertyName != nameof(NextReminderDate) && propertyName != nameof(IsDue))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextReminderDate)));
@@ -819,6 +917,10 @@ namespace ConstructionControl
 
     public static class LevelMarkHelper
     {
+        private static readonly Regex SingleLetterWordPattern = new(
+            @"(?<=^|\s)([A-Za-zА-Яа-я])\s+(?=\S)",
+            RegexOptions.Compiled);
+
         public static string GetLegacyMarkLabel(int floor)
             => floor == 0 ? "Подвал" : floor.ToString();
 
@@ -912,10 +1014,19 @@ namespace ConstructionControl
 
             return text
                 .Split(new[] { ';', ',', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
+                .Select(x => PreventSingleLetterWrap(x.Trim()))
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
+        }
+
+        public static string PreventSingleLetterWrap(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            var normalized = text.Replace('\u00A0', ' ');
+            return SingleLetterWordPattern.Replace(normalized, match => $"{match.Groups[1].Value}\u00A0");
         }
     }
 

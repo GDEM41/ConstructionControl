@@ -6,9 +6,9 @@
         Width="450"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="#F6F7FB">
+        Background="{StaticResource AppBgBrush}">
 
-    <Border Background="White"
+    <Border Background="{StaticResource SurfaceBrush}"
             CornerRadius="10"
             Padding="20">
 
@@ -23,21 +23,21 @@
             <TextBlock Text="Создание объекта"
                        FontSize="18"
                        FontWeight="SemiBold"
-                       Foreground="#2B2B2B"
+                       Foreground="{StaticResource TextBrush}"
                        Margin="0,0,0,15"/>
 
             <!-- Поле ввода -->
             <StackPanel Grid.Row="1">
                 <TextBlock Text="Название объекта"
-                           Foreground="#555"
+                           Foreground="{StaticResource TextSecondaryBrush}"
                            Margin="0,0,0,5"/>
 
                 <TextBox x:Name="ObjectNameBox"
                          Height="36"
                          Padding="10,6"
                          FontSize="14"
-                         Background="#FAFAFA"
-                         BorderBrush="#D0D4DA"
+                         Background="{StaticResource SurfaceAltBrush}"
+                         BorderBrush="{StaticResource StrokeBrush}"
                          BorderThickness="1"/>
             </StackPanel>
 
@@ -51,15 +51,15 @@
                         Width="100"
                         Height="36"
                         Margin="0,0,10,0"
-                        Background="#E5E7EB"
+                        Background="{StaticResource StrokeBrush}"
                         BorderThickness="0"
                         Click="Cancel_Click"/>
 
                 <Button Content="Создать"
                         Width="110"
                         Height="36"
-                        Background="#2563EB"
-                        Foreground="White"
+                        Background="{StaticResource PrimaryBrush}"
+                        Foreground="{StaticResource SurfaceBrush}"
                         FontWeight="SemiBold"
                         BorderThickness="0"
                         Click="Ok_Click"/>
