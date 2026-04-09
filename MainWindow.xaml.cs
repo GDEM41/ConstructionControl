@@ -143,6 +143,10 @@ namespace ConstructionControl
         private object estimateExcelWorkbook;
         private IntPtr estimateExcelWindowHandle = IntPtr.Zero;
         private string estimateEmbeddedFilePath = string.Empty;
+        private Process excelWarmupProcess;
+        private bool excelWarmupProcessOwned;
+        private Process pdfWarmupProcess;
+        private bool pdfWarmupProcessOwned;
         private bool previewWarmupStarted;
         private string lastSavedStateSnapshot = string.Empty;
         private bool closeConfirmed;
@@ -606,17 +610,8 @@ namespace ConstructionControl
                 AddCandidate(candidates, System.IO.Path.Combine(scanDir.FullName, DefaultSaveFileName));
             }
 
-            var existing = candidates
-                .Where(File.Exists)
-                .Select(path => new
-                {
-                    Path = path,
-                    Stamp = File.GetLastWriteTimeUtc(path)
-                })
-                .OrderByDescending(x => x.Stamp)
-                .FirstOrDefault();
-
-            return existing?.Path ?? candidates[0];
+            var existing = candidates.FirstOrDefault(File.Exists);
+            return existing ?? candidates[0];
         }
 
         private void StartPreviewWarmupAsync()
@@ -625,67 +620,38 @@ namespace ConstructionControl
                 return;
 
             previewWarmupStarted = true;
-            ThreadPool.QueueUserWorkItem(_ =>
+            Dispatcher.BeginInvoke(new Action(() =>
             {
                 WarmupExcelInterop();
                 WarmupPdfHandler();
-            });
+            }), DispatcherPriority.ApplicationIdle);
         }
 
-        private static void WarmupExcelInterop()
+        private void WarmupExcelInterop()
+        {
+            TryEnsureWarmupProcess(".xlsx", ref excelWarmupProcess, ref excelWarmupProcessOwned);
+        }
+
+        private void WarmupPdfHandler()
+        {
+            TryEnsureWarmupProcess(".pdf", ref pdfWarmupProcess, ref pdfWarmupProcessOwned);
+        }
+
+        private static void TryEnsureWarmupProcess(string extension, ref Process processField, ref bool ownedField)
         {
             try
             {
-                var excelType = Type.GetTypeFromProgID("Excel.Application");
-                if (excelType == null)
+                if (processField != null && !processField.HasExited)
                     return;
-
-                dynamic excel = Activator.CreateInstance(excelType);
-                if (excel == null)
-                    return;
-
-                try
-                {
-                    excel.Visible = false;
-                    excel.DisplayAlerts = false;
-                    excel.ScreenUpdating = false;
-                }
-                catch
-                {
-                    // Ignore warmup tuning errors.
-                }
-                finally
-                {
-                    try
-                    {
-                        excel.Quit();
-                    }
-                    catch
-                    {
-                        // Ignore Excel shutdown errors during warmup.
-                    }
-
-                    try
-                    {
-                        Marshal.FinalReleaseComObject(excel);
-                    }
-                    catch
-                    {
-                        // Ignore COM release errors during warmup.
-                    }
-                }
             }
             catch
             {
-                // Ignore warmup startup errors.
+                processField = null;
             }
-        }
 
-        private static void WarmupPdfHandler()
-        {
             try
             {
-                var command = ResolveFileOpenCommand(".pdf");
+                var command = ResolveFileOpenCommand(extension);
                 if (string.IsNullOrWhiteSpace(command))
                     return;
 
@@ -693,11 +659,65 @@ namespace ConstructionControl
                 if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
                     return;
 
-                _ = FileVersionInfo.GetVersionInfo(executablePath);
+                var processName = System.IO.Path.GetFileNameWithoutExtension(executablePath);
+                if (!string.IsNullOrWhiteSpace(processName) && Process.GetProcessesByName(processName).Any())
+                {
+                    processField = null;
+                    ownedField = false;
+                    return;
+                }
+
+                var startedProcess = Process.Start(new ProcessStartInfo
+                {
+                    FileName = executablePath,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Minimized
+                });
+
+                processField = startedProcess;
+                ownedField = startedProcess != null;
             }
             catch
             {
-                // Ignore PDF handler warmup errors.
+                processField = null;
+                ownedField = false;
+            }
+        }
+
+        private static void StopWarmupProcess(ref Process processField, ref bool ownedField)
+        {
+            if (processField == null)
+            {
+                ownedField = false;
+                return;
+            }
+
+            try
+            {
+                if (ownedField && !processField.HasExited)
+                {
+                    processField.CloseMainWindow();
+                    if (!processField.WaitForExit(1500))
+                        processField.Kill();
+                }
+            }
+            catch
+            {
+                // Ignore warmup process shutdown errors.
+            }
+            finally
+            {
+                try
+                {
+                    processField.Dispose();
+                }
+                catch
+                {
+                    // Ignore process dispose errors.
+                }
+
+                processField = null;
+                ownedField = false;
             }
         }
 
@@ -777,6 +797,8 @@ namespace ConstructionControl
             timesheetRebuildDebounceTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
+            StopWarmupProcess(ref excelWarmupProcess, ref excelWarmupProcessOwned);
+            StopWarmupProcess(ref pdfWarmupProcess, ref pdfWarmupProcessOwned);
             if (reminderOverlayWindow != null)
             {
                 reminderOverlayWindow.Close();

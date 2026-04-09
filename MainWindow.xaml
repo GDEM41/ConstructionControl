@@ -2044,6 +2044,7 @@
                                     <Border Grid.Column="2"
                                             Padding="0"
                                             Style="{StaticResource CardBorderStyle}"
+                                            CornerRadius="0"
                                             MouseEnter="PdfPreviewArea_MouseEnter">
                                         <Grid>
                                             <StackPanel x:Name="PdfInfoPanel"
@@ -2075,7 +2076,7 @@
                                                     Background="{StaticResource SurfaceAltBrush}"
                                                     BorderBrush="{StaticResource StrokeBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="12"
+                                                    CornerRadius="0"
                                                     Padding="0"
                                                     Margin="0"
                                                     Visibility="Collapsed">
@@ -2209,6 +2210,7 @@
                                     <Border Grid.Column="2"
                                             Padding="0"
                                             Style="{StaticResource CardBorderStyle}"
+                                            CornerRadius="0"
                                             MouseEnter="EstimatePreviewArea_MouseEnter">
                                         <Grid>
                                             <StackPanel x:Name="EstimateInfoPanel"
@@ -2240,7 +2242,7 @@
                                                     Background="{StaticResource SurfaceAltBrush}"
                                                     BorderBrush="{StaticResource StrokeBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="12"
+                                                    CornerRadius="0"
                                                     Padding="0"
                                                     Margin="0"
                                                     SizeChanged="EstimatePreviewContainer_SizeChanged"
