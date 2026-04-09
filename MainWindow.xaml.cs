@@ -143,10 +143,6 @@ namespace ConstructionControl
         private object estimateExcelWorkbook;
         private IntPtr estimateExcelWindowHandle = IntPtr.Zero;
         private string estimateEmbeddedFilePath = string.Empty;
-        private Process excelWarmupProcess;
-        private bool excelWarmupProcessOwned;
-        private Process pdfWarmupProcess;
-        private bool pdfWarmupProcessOwned;
         private bool previewWarmupStarted;
         private string lastSavedStateSnapshot = string.Empty;
         private bool closeConfirmed;
@@ -166,6 +162,7 @@ namespace ConstructionControl
         private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_SHOWWINDOW = 0x0040;
         private const int SW_SHOW = 5;
+        private const int EmbeddedExcelTopTrim = 40;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
@@ -623,135 +620,152 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WarmupExcelInterop();
-                WarmupPdfHandler();
             }), DispatcherPriority.ApplicationIdle);
         }
 
         private void WarmupExcelInterop()
         {
-            TryEnsureWarmupProcess(".xlsx", ref excelWarmupProcess, ref excelWarmupProcessOwned);
-        }
-
-        private void WarmupPdfHandler()
-        {
-            TryEnsureWarmupProcess(".pdf", ref pdfWarmupProcess, ref pdfWarmupProcessOwned);
-        }
-
-        private static void TryEnsureWarmupProcess(string extension, ref Process processField, ref bool ownedField)
-        {
             try
             {
-                if (processField != null && !processField.HasExited)
-                    return;
+                _ = EnsureEstimateExcelApplication();
             }
             catch
             {
-                processField = null;
-            }
-
-            try
-            {
-                var command = ResolveFileOpenCommand(extension);
-                if (string.IsNullOrWhiteSpace(command))
-                    return;
-
-                var executablePath = ExtractExecutablePath(command);
-                if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
-                    return;
-
-                var processName = System.IO.Path.GetFileNameWithoutExtension(executablePath);
-                if (!string.IsNullOrWhiteSpace(processName) && Process.GetProcessesByName(processName).Any())
-                {
-                    processField = null;
-                    ownedField = false;
-                    return;
-                }
-
-                var startedProcess = Process.Start(new ProcessStartInfo
-                {
-                    FileName = executablePath,
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Minimized
-                });
-
-                processField = startedProcess;
-                ownedField = startedProcess != null;
-            }
-            catch
-            {
-                processField = null;
-                ownedField = false;
+                // Ignore Excel warmup errors to keep app startup resilient.
             }
         }
 
-        private static void StopWarmupProcess(ref Process processField, ref bool ownedField)
+        private dynamic EnsureEstimateExcelApplication()
         {
-            if (processField == null)
+            if (estimateExcelApplication != null)
+                return estimateExcelApplication;
+
+            var excelType = Type.GetTypeFromProgID("Excel.Application")
+                ?? throw new InvalidOperationException("Microsoft Excel не найден в системе.");
+
+            dynamic excelApp = Activator.CreateInstance(excelType)
+                ?? throw new InvalidOperationException("Не удалось создать экземпляр Excel.");
+
+            try
             {
-                ownedField = false;
+                excelApp.Visible = false;
+                excelApp.DisplayAlerts = false;
+                try { excelApp.AskToUpdateLinks = false; } catch { }
+                try { excelApp.EnableEvents = false; } catch { }
+                try { excelApp.ScreenUpdating = true; } catch { }
+                try { excelApp.DisplayStatusBar = true; } catch { }
+                try { excelApp.DisplayFormulaBar = true; } catch { }
+            }
+            catch
+            {
+                // Ignore non-critical UI tuning errors for compatibility with different Excel versions.
+            }
+
+            estimateExcelApplication = excelApp;
+            return excelApp;
+        }
+
+        private void ConfigureEstimateExcelLiteUi(dynamic excelApp)
+        {
+            if (excelApp == null)
                 return;
-            }
 
             try
             {
-                if (ownedField && !processField.HasExited)
+                excelApp.Visible = true;
+                excelApp.DisplayAlerts = false;
+                try { excelApp.WindowState = -4143; } catch { } // xlNormal
+                try { excelApp.DisplayFullScreen = false; } catch { }
+                try { excelApp.DisplayStatusBar = true; } catch { }
+                try { excelApp.DisplayFormulaBar = true; } catch { }
+                try { excelApp.Interactive = true; } catch { }
+                try { excelApp.UserControl = true; } catch { }
+                try { excelApp.CommandBars["Ribbon"].Visible = true; } catch { }
+                try { excelApp.ExecuteExcel4Macro("SHOW.TOOLBAR(\"Ribbon\",True)"); } catch { }
+                try { excelApp.ExecuteExcel4Macro("SHOW.TOOLBAR(\"Standard\",True)"); } catch { }
+                try { excelApp.ExecuteExcel4Macro("SHOW.TOOLBAR(\"Formatting\",True)"); } catch { }
+                try { excelApp.CommandBars["Worksheet Menu Bar"].Enabled = true; } catch { }
+                try
                 {
-                    processField.CloseMainWindow();
-                    if (!processField.WaitForExit(1500))
-                        processField.Kill();
+                    try { excelApp.CommandBars.ExecuteMso("MinimizeRibbon"); } catch { }
+                    var ribbonMinimized = excelApp.CommandBars.GetPressedMso("MinimizeRibbon");
+                    var isMinimized = false;
+                    if (ribbonMinimized is bool boolValue)
+                    {
+                        isMinimized = boolValue;
+                    }
+                    else
+                    {
+                        var minimizedText = ribbonMinimized?.ToString();
+                        var parsedBool = false;
+                        if (!string.IsNullOrWhiteSpace(minimizedText)
+                            && bool.TryParse(minimizedText, out parsedBool))
+                        {
+                            isMinimized = parsedBool;
+                        }
+                    }
+                    if (isMinimized)
+                        excelApp.CommandBars.ExecuteMso("MinimizeRibbon");
                 }
+                catch { }
+                try { excelApp.CommandBars.ExecuteMso("TabHome"); } catch { }
+                try { excelApp.ActiveWindow.DisplayHeadings = true; } catch { }
+                try { excelApp.ActiveWindow.DisplayGridlines = true; } catch { }
+                try { excelApp.ActiveWindow.DisplayWorkbookTabs = true; } catch { }
+                try { excelApp.ActiveWindow.DisplayHorizontalScrollBar = true; } catch { }
+                try { excelApp.ActiveWindow.DisplayVerticalScrollBar = true; } catch { }
+                try { excelApp.ActiveWindow.View = 1; } catch { } // xlNormalView
+                try { excelApp.ActiveWindow.Zoom = 100; } catch { }
             }
             catch
             {
-                // Ignore warmup process shutdown errors.
+                // Keep preview alive even if a UI tweak is unsupported on this Excel build.
+            }
+
+        }
+
+        private void CloseEstimateWorkbook(bool saveChanges)
+        {
+            if (estimateExcelWorkbook == null)
+                return;
+
+            try
+            {
+                ((dynamic)estimateExcelWorkbook).Close(saveChanges);
+            }
+            catch
+            {
+                // Ignore workbook close errors during preview cleanup.
             }
             finally
             {
+                Marshal.FinalReleaseComObject(estimateExcelWorkbook);
+                estimateExcelWorkbook = null;
+                estimateExcelWindowHandle = IntPtr.Zero;
+                estimateEmbeddedFilePath = string.Empty;
+            }
+        }
+
+        private void DisposeEstimateExcelApplication()
+        {
+            CloseEstimateWorkbook(saveChanges: true);
+
+            if (estimateExcelApplication != null)
+            {
                 try
                 {
-                    processField.Dispose();
+                    ((dynamic)estimateExcelApplication).Quit();
                 }
                 catch
                 {
-                    // Ignore process dispose errors.
+                    // Ignore Excel shutdown errors on app close.
                 }
-
-                processField = null;
-                ownedField = false;
+                finally
+                {
+                    Marshal.FinalReleaseComObject(estimateExcelApplication);
+                    estimateExcelApplication = null;
+                }
             }
-        }
-
-        private static string ResolveFileOpenCommand(string extension)
-        {
-            if (string.IsNullOrWhiteSpace(extension))
-                return string.Empty;
-
-            using var extensionKey = Registry.ClassesRoot.OpenSubKey(extension);
-            var className = extensionKey?.GetValue(string.Empty)?.ToString();
-            if (string.IsNullOrWhiteSpace(className))
-                return string.Empty;
-
-            using var commandKey = Registry.ClassesRoot.OpenSubKey($@"{className}\shell\open\command");
-            return commandKey?.GetValue(string.Empty)?.ToString() ?? string.Empty;
-        }
-
-        private static string ExtractExecutablePath(string commandLine)
-        {
-            if (string.IsNullOrWhiteSpace(commandLine))
-                return string.Empty;
-
-            var command = commandLine.Trim();
-            if (command.StartsWith("\"", StringComparison.Ordinal))
-            {
-                var endQuote = command.IndexOf('"', 1);
-                return endQuote > 1 ? command[1..endQuote] : string.Empty;
-            }
-
-            var exeIndex = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-            if (exeIndex < 0)
-                return string.Empty;
-
-            return command[..(exeIndex + 4)].Trim();
         }
 
         private ReminderOverlayWindow EnsureReminderOverlayWindow()
@@ -797,8 +811,7 @@ namespace ConstructionControl
             timesheetRebuildDebounceTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
-            StopWarmupProcess(ref excelWarmupProcess, ref excelWarmupProcessOwned);
-            StopWarmupProcess(ref pdfWarmupProcess, ref pdfWarmupProcessOwned);
+            DisposeEstimateExcelApplication();
             if (reminderOverlayWindow != null)
             {
                 reminderOverlayWindow.Close();
@@ -1449,16 +1462,11 @@ namespace ConstructionControl
                 return;
             }
 
-            StopEstimateEmbeddedPreview();
+            CloseEstimateWorkbook(saveChanges: true);
 
-            var excelType = Type.GetTypeFromProgID("Excel.Application")
-                ?? throw new InvalidOperationException("Microsoft Excel не найден в системе.");
-
-            dynamic excelApp = Activator.CreateInstance(excelType)
-                ?? throw new InvalidOperationException("Не удалось создать экземпляр Excel.");
-
-            dynamic workbook = null;
+            dynamic excelApp = EnsureEstimateExcelApplication();
             object workbooks = null;
+            dynamic workbook = null;
 
             try
             {
@@ -1470,14 +1478,15 @@ namespace ConstructionControl
                     System.Reflection.BindingFlags.InvokeMethod,
                     null,
                     workbooks,
-                    new object[] { filePath, Type.Missing, true });
+                    new object[] { filePath, Type.Missing, false });
 
-                estimateExcelApplication = excelApp;
                 estimateExcelWorkbook = workbook;
                 estimateEmbeddedFilePath = filePath;
                 estimateExcelWindowHandle = new IntPtr((int)excelApp.Hwnd);
                 if (estimateExcelWindowHandle == IntPtr.Zero)
                     throw new InvalidOperationException("Excel не предоставил окно для встраивания.");
+
+                ConfigureEstimateExcelLiteUi(excelApp);
 
                 ConfigureEmbeddedWindow(estimateExcelWindowHandle, estimateExcelPanel.Handle);
                 EstimateExcelHost.Visibility = Visibility.Visible;
@@ -1487,7 +1496,7 @@ namespace ConstructionControl
             }
             catch
             {
-                StopEstimateEmbeddedPreview();
+                CloseEstimateWorkbook(saveChanges: false);
                 throw;
             }
             finally
@@ -1502,42 +1511,7 @@ namespace ConstructionControl
             if (EstimateExcelHost != null)
                 EstimateExcelHost.Visibility = Visibility.Collapsed;
 
-            if (estimateExcelWorkbook != null)
-            {
-                try
-                {
-                    ((dynamic)estimateExcelWorkbook).Close(false);
-                }
-                catch
-                {
-                    // Ignore workbook close errors during cleanup.
-                }
-                finally
-                {
-                    Marshal.FinalReleaseComObject(estimateExcelWorkbook);
-                    estimateExcelWorkbook = null;
-                }
-            }
-
-            if (estimateExcelApplication != null)
-            {
-                try
-                {
-                    ((dynamic)estimateExcelApplication).Quit();
-                }
-                catch
-                {
-                    // Ignore Excel shutdown errors during cleanup.
-                }
-                finally
-                {
-                    Marshal.FinalReleaseComObject(estimateExcelApplication);
-                    estimateExcelApplication = null;
-                }
-            }
-
-            estimateExcelWindowHandle = IntPtr.Zero;
-            estimateEmbeddedFilePath = string.Empty;
+            CloseEstimateWorkbook(saveChanges: true);
         }
 
         private void LayoutEmbeddedEstimateWindow()
@@ -1546,12 +1520,14 @@ namespace ConstructionControl
                 return;
 
             var width = Math.Max(0, estimateExcelPanel.ClientSize.Width);
-            var height = Math.Max(0, estimateExcelPanel.ClientSize.Height);
+            var hostHeight = Math.Max(0, estimateExcelPanel.ClientSize.Height);
+            var topTrim = hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
+            var height = Math.Max(0, hostHeight + topTrim);
             SetWindowPos(
                 estimateExcelWindowHandle,
                 IntPtr.Zero,
                 0,
-                0,
+                -topTrim,
                 width,
                 height,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
