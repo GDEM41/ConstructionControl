@@ -52,10 +52,26 @@ namespace ConstructionControl
         public List<OtJournalEntry> OtJournal { get; set; } = new();
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
+        public ProductionAutoFillSettings ProductionAutoFillSettings { get; set; } = new();
         public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
         public List<DocumentTreeNode> PdfDocuments { get; set; } = new();
         public List<DocumentTreeNode> EstimateDocuments { get; set; } = new();
         public ProjectUiSettings UiSettings { get; set; } = new();
+    }
+
+    public class ProductionAutoFillSettings
+    {
+        public int MinQuantityPerRow { get; set; } = 4;
+        public int MaxQuantityPerRow { get; set; } = 8;
+        public int MinRowsPerRun { get; set; } = 4;
+        public int TargetRowsPerRun { get; set; } = 5;
+        public int MaxRowsPerRun { get; set; } = 6;
+        public int MaxItemsPerRow { get; set; } = 2;
+        public bool PreferSelectedTypeOnly { get; set; } = true;
+        public bool UseBalancedDistribution { get; set; } = true;
+        public bool PreferDemandDeficit { get; set; } = true;
+        public bool RespectSelectedBlocksAndMarks { get; set; } = true;
+        public bool AllowMixedMaterialsInRow { get; set; } = true;
     }
 
     public class ProjectUiSettings
@@ -63,6 +79,14 @@ namespace ConstructionControl
         public bool DisableTree { get; set; }
         public bool PinTreeByDefault { get; set; }
         public bool ShowReminderPopup { get; set; } = true;
+        public int ReminderSnoozeMinutes { get; set; } = 15;
+        public bool HideReminderDetails { get; set; }
+    }
+
+    public class ReminderSectionViewModel
+    {
+        public string Header { get; set; }
+        public List<string> Items { get; set; } = new();
     }
 
     public class DocumentTreeNode : INotifyPropertyChanged

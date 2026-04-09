@@ -22,6 +22,8 @@ namespace ConstructionControl
             DependencyPropertyDescriptor.FromProperty(ItemsControl.ItemsSourceProperty, typeof(DataGrid));
 
         private static readonly Dictionary<DataGrid, INotifyCollectionChanged> CollectionSubscriptions = new();
+        private static readonly HashSet<DataGrid> PendingApply = new();
+        private const int MaxRowsToMeasure = 120;
 
         public static readonly DependencyProperty EnableSmartSizingProperty =
             DependencyProperty.RegisterAttached(
@@ -44,6 +46,7 @@ namespace ConstructionControl
                 grid.Loaded += DataGrid_Loaded;
                 grid.Unloaded += DataGrid_Unloaded;
                 grid.IsVisibleChanged += DataGrid_IsVisibleChanged;
+                grid.SizeChanged += DataGrid_SizeChanged;
                 ItemsSourceDescriptor?.AddValueChanged(grid, DataGrid_ItemsSourceChanged);
 
                 if (grid.Columns is INotifyCollectionChanged columnsChanged)
@@ -57,6 +60,7 @@ namespace ConstructionControl
                 grid.Loaded -= DataGrid_Loaded;
                 grid.Unloaded -= DataGrid_Unloaded;
                 grid.IsVisibleChanged -= DataGrid_IsVisibleChanged;
+                grid.SizeChanged -= DataGrid_SizeChanged;
                 ItemsSourceDescriptor?.RemoveValueChanged(grid, DataGrid_ItemsSourceChanged);
 
                 if (grid.Columns is INotifyCollectionChanged columnsChanged)
@@ -81,6 +85,12 @@ namespace ConstructionControl
         private static void DataGrid_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
             if (sender is DataGrid grid && grid.IsVisible)
+                ScheduleApply(grid);
+        }
+
+        private static void DataGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (sender is DataGrid grid && grid.IsVisible && e.WidthChanged)
                 ScheduleApply(grid);
         }
 
@@ -139,7 +149,14 @@ namespace ConstructionControl
             if (grid == null)
                 return;
 
-            grid.Dispatcher.BeginInvoke(new Action(() => ApplySizing(grid)), DispatcherPriority.Background);
+            if (!PendingApply.Add(grid))
+                return;
+
+            grid.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                PendingApply.Remove(grid);
+                ApplySizing(grid);
+            }), DispatcherPriority.Background);
         }
 
         private static void ApplySizing(DataGrid grid)
@@ -147,17 +164,27 @@ namespace ConstructionControl
             if (grid == null || !grid.IsLoaded || grid.Columns.Count == 0)
                 return;
 
-            foreach (var column in grid.Columns)
+            var visibleColumns = grid.Columns.Where(x => x.Visibility == Visibility.Visible).ToList();
+            if (visibleColumns.Count == 0)
+                return;
+
+            var sampleItems = grid.Items
+                .OfType<object>()
+                .Where(item => item != null && !ReferenceEquals(item, CollectionView.NewItemPlaceholder))
+                .Take(MaxRowsToMeasure)
+                .ToList();
+
+            var calculatedWidths = new Dictionary<DataGridColumn, double>();
+            var totalWidth = 0d;
+
+            foreach (var column in visibleColumns)
             {
                 var headerText = GetHeaderText(column.Header);
                 var headerWidth = MeasureTextWidth(headerText, grid.FontFamily, grid.FontSize, FontWeights.SemiBold) + 28;
 
                 var contentWidth = headerWidth;
-                foreach (var item in grid.Items)
+                foreach (var item in sampleItems)
                 {
-                    if (item == null || ReferenceEquals(item, CollectionView.NewItemPlaceholder))
-                        continue;
-
                     foreach (var text in GetColumnTexts(column, item))
                     {
                         var longestWord = GetLongestWord(text);
@@ -165,32 +192,49 @@ namespace ConstructionControl
                             continue;
 
                         var measured = MeasureTextWidth(longestWord, grid.FontFamily, grid.FontSize, FontWeights.Normal) + 24;
+                        var measuredLine = MeasureTextWidth(GetLongestLine(text), grid.FontFamily, grid.FontSize, FontWeights.Normal) + 24;
+                        measured = Math.Max(measured, Math.Min(measuredLine, measured + 180));
                         if (measured > contentWidth)
                             contentWidth = measured;
                     }
                 }
 
                 column.MinWidth = Math.Max(40, headerWidth);
-                column.Width = new DataGridLength(Math.Max(column.MinWidth, contentWidth));
+                var targetWidth = Math.Max(column.MinWidth, contentWidth);
+                calculatedWidths[column] = targetWidth;
+                totalWidth += targetWidth;
+            }
+
+            var availableWidth = Math.Max(0, grid.ActualWidth - 24);
+            if (availableWidth > totalWidth + 1 && calculatedWidths.Count > 0)
+            {
+                var extraWidth = availableWidth - totalWidth;
+                var expandableColumns = calculatedWidths.Keys.ToList();
+
+                if (expandableColumns.Count > 0)
+                {
+                    var extraPerColumn = extraWidth / expandableColumns.Count;
+                    foreach (var column in expandableColumns)
+                        calculatedWidths[column] += extraPerColumn;
+                }
+            }
+
+            foreach (var pair in calculatedWidths)
+            {
+                pair.Key.Width = new DataGridLength(pair.Value, DataGridLengthUnitType.Pixel);
             }
         }
 
         private static IEnumerable<string> GetColumnTexts(DataGridColumn column, object item)
         {
+            if (column is DataGridTemplateColumn)
+                yield break;
+
             if (TryGetBoundPath(column, out var path))
             {
                 var rawValue = GetValueByPath(item, path);
                 if (rawValue != null)
                     yield return rawValue.ToString();
-            }
-
-            if (column is DataGridTemplateColumn templateColumn)
-            {
-                foreach (var value in GetTextsFromTemplate(templateColumn.CellTemplate, item))
-                    yield return value;
-
-                foreach (var value in GetTextsFromTemplate(templateColumn.CellEditingTemplate, item))
-                    yield return value;
             }
         }
 
@@ -316,6 +360,19 @@ namespace ConstructionControl
             return Regex.Matches(text, @"[^\s,;:/\\|]+")
                 .Cast<Match>()
                 .Select(x => x.Value)
+                .OrderByDescending(x => x.Length)
+                .FirstOrDefault() ?? string.Empty;
+        }
+
+        private static string GetLongestLine(object value)
+        {
+            var text = value?.ToString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            return text
+                .Split(new[] { Environment.NewLine, "\r\n", "\n" }, StringSplitOptions.None)
+                .Select(x => x?.Trim() ?? string.Empty)
                 .OrderByDescending(x => x.Length)
                 .FirstOrDefault() ?? string.Empty;
         }

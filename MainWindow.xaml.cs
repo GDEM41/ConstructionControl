@@ -8,7 +8,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -18,6 +20,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Documents;
 using System.Windows.Threading;
+using WinForms = System.Windows.Forms;
 using WpfPath = System.Windows.Shapes.Path;
 using System.Text.RegularExpressions;
 
@@ -122,6 +125,62 @@ namespace ConstructionControl
         private DocumentTreeNode estimateDragNode;
         private bool isPdfTreePinned;
         private bool isEstimateTreePinned;
+        private readonly Random productionAutoRandom = new();
+        private readonly ObservableCollection<ReminderSectionViewModel> reminderSections = new();
+        private readonly DispatcherTimer reminderRefreshTimer;
+        private DateTime? reminderSnoozedUntil;
+        private bool timesheetNeedsRebuild;
+        private const int MaxTimesheetMissingDocs = 3;
+        private ReminderOverlayWindow reminderOverlayWindow;
+        private WinForms.Panel estimateExcelPanel;
+        private object estimateExcelApplication;
+        private object estimateExcelWorkbook;
+        private IntPtr estimateExcelWindowHandle = IntPtr.Zero;
+        private string estimateEmbeddedFilePath = string.Empty;
+
+        private const int GWL_STYLE = -16;
+        private const int GWL_EXSTYLE = -20;
+        private const long WS_CHILD = 0x40000000L;
+        private const long WS_CAPTION = 0x00C00000L;
+        private const long WS_THICKFRAME = 0x00040000L;
+        private const long WS_MINIMIZEBOX = 0x00020000L;
+        private const long WS_MAXIMIZEBOX = 0x00010000L;
+        private const long WS_SYSMENU = 0x00080000L;
+        private const long WS_POPUP = unchecked((int)0x80000000);
+        private const long WS_EX_APPWINDOW = 0x00040000L;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+        private const uint SWP_SHOWWINDOW = 0x0040;
+        private const int SW_SHOW = 5;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr hWndInsertAfter,
+            int x,
+            int y,
+            int cx,
+            int cy,
+            uint uFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
         private sealed class TimesheetRowViewModel : INotifyPropertyChanged
         {
@@ -327,7 +386,7 @@ namespace ConstructionControl
 
                 var docAccepted = IsDocumentAccepted(day);
                 if (docAccepted == true)
-                    return new SolidColorBrush(Color.FromRgb(209, 250, 229));
+                    return new SolidColorBrush(Color.FromRgb(254, 240, 138));
 
                 return new SolidColorBrush(Color.FromRgb(254, 226, 226));
             }
@@ -346,6 +405,84 @@ namespace ConstructionControl
             public List<string> PrefixSegments { get; set; }
         }
 
+        private sealed class SelectableOption : INotifyPropertyChanged
+        {
+            private bool isSelected;
+
+            public string Value { get; set; } = string.Empty;
+
+            public bool IsSelected
+            {
+                get => isSelected;
+                set
+                {
+                    if (isSelected == value)
+                        return;
+
+                    isSelected = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class ProductionItemEditorRow : INotifyPropertyChanged
+        {
+            private string materialName = string.Empty;
+            private double quantity;
+
+            public string MaterialName
+            {
+                get => materialName;
+                set
+                {
+                    if (materialName == value)
+                        return;
+
+                    materialName = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialName)));
+                }
+            }
+
+            public double Quantity
+            {
+                get => quantity;
+                set
+                {
+                    if (Math.Abs(quantity - value) < 0.0001)
+                        return;
+
+                    quantity = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
+                }
+            }
+
+            public ObservableCollection<string> AvailableNames { get; set; } = new();
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class SummaryReorderPreviewRow
+        {
+            public string Group { get; set; }
+            public string Material { get; set; }
+            public int Block { get; set; }
+            public string Mark { get; set; }
+            public double Quantity { get; set; }
+            public string Unit { get; set; }
+        }
+
+        private sealed class AutoProductionCandidate
+        {
+            public string Group { get; set; }
+            public string Material { get; set; }
+            public string Unit { get; set; }
+            public double Available { get; set; }
+            public double Deficit { get; set; }
+            public double RemainingToPlan { get; set; }
+        }
+
         public ObservableCollection<string> BrigadierNames => brigadierNames;
         public ObservableCollection<string> Specialties => specialties;
         public ObservableCollection<string> Professions => professions;
@@ -362,6 +499,17 @@ namespace ConstructionControl
         public MainWindow()
         {
             InitializeComponent();
+            EnsureReminderOverlayWindow();
+            InitializeEstimatePreviewHost();
+            SizeChanged += (_, _) => UpdateReminderOverlayPlacement();
+            LocationChanged += (_, _) => UpdateReminderOverlayPlacement();
+            StateChanged += MainWindow_StateChanged;
+            reminderRefreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(30)
+            };
+            reminderRefreshTimer.Tick += ReminderRefreshTimer_Tick;
+            reminderRefreshTimer.Start();
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
@@ -388,6 +536,58 @@ namespace ConstructionControl
             ApplyProjectUiSettings();
 
         }
+
+        private ReminderOverlayWindow EnsureReminderOverlayWindow()
+        {
+            if (reminderOverlayWindow != null)
+                return reminderOverlayWindow;
+
+            reminderOverlayWindow = new ReminderOverlayWindow();
+            reminderOverlayWindow.SectionsHostElement.ItemsSource = reminderSections;
+            reminderOverlayWindow.SnoozeRequested += SnoozeRemindersButton_Click;
+            reminderOverlayWindow.ToggleDetailsRequested += ToggleReminderDetailsButton_Click;
+            return reminderOverlayWindow;
+        }
+
+        private void InitializeEstimatePreviewHost()
+        {
+            if (EstimateExcelHost == null || estimateExcelPanel != null)
+                return;
+
+            estimateExcelPanel = new WinForms.Panel
+            {
+                BackColor = System.Drawing.Color.White
+            };
+            estimateExcelPanel.Resize += (_, _) => LayoutEmbeddedEstimateWindow();
+            EstimateExcelHost.Child = estimateExcelPanel;
+        }
+
+        private void MainWindow_StateChanged(object sender, EventArgs e)
+        {
+            if (WindowState == WindowState.Minimized)
+            {
+                reminderOverlayWindow?.Hide();
+                return;
+            }
+
+            UpdateReminderOverlayPlacement();
+        }
+
+        private void MainWindow_Closed(object sender, EventArgs e)
+        {
+            HideReminderOverlayWindow();
+            StopEstimateEmbeddedPreview();
+            if (reminderOverlayWindow != null)
+            {
+                reminderOverlayWindow.Close();
+                reminderOverlayWindow = null;
+            }
+        }
+
+        private void ReminderRefreshTimer_Tick(object sender, EventArgs e)
+        {
+            UpdateOtReminders();
+        }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             if (initialUiPrepared)
@@ -398,6 +598,8 @@ namespace ConstructionControl
             {
                 ApplyAllFilters();
                 Activate();
+                UpdateOtReminders();
+                UpdateReminderOverlayPlacement();
             }), DispatcherPriority.Background);
         }
 
@@ -585,7 +787,7 @@ namespace ConstructionControl
         private void UpdateEstimateSelectionInfo()
         {
             UpdateDocumentSelectionInfo(selectedEstimateNode, EstimateSelectedNameText, EstimateSelectedPathText, EstimateSelectedTypeText);
-            UpdateDocumentPreview(selectedEstimateNode, EstimateInfoPanel, EstimatePreviewContainer, EstimatePreviewBrowser, EstimatePreviewPlaceholder, EstimatePreviewStatusText);
+            UpdateEstimatePreview(selectedEstimateNode);
         }
 
         private static void UpdateDocumentSelectionInfo(DocumentTreeNode node, TextBlock nameText, TextBlock pathText, TextBlock typeText)
@@ -604,6 +806,75 @@ namespace ConstructionControl
             nameText.Text = string.IsNullOrWhiteSpace(node.Name) ? "Без названия" : node.Name;
             pathText.Text = string.IsNullOrWhiteSpace(node.FilePath) ? "—" : node.FilePath;
             typeText.Text = node.IsFolder ? "Папка" : "Файл";
+        }
+
+        private void UpdateEstimatePreview(DocumentTreeNode node)
+        {
+            if (EstimateInfoPanel == null || EstimatePreviewContainer == null || EstimatePreviewBrowser == null || EstimatePreviewPlaceholder == null || EstimatePreviewStatusText == null)
+                return;
+
+            InitializeEstimatePreviewHost();
+
+            if (node == null)
+            {
+                StopEstimateEmbeddedPreview();
+                EstimateInfoPanel.Visibility = Visibility.Visible;
+                EstimatePreviewContainer.Visibility = Visibility.Collapsed;
+                ShowEstimatePreviewPlaceholder("Выберите файл сметы в дереве слева, и он откроется здесь.");
+                return;
+            }
+
+            if (node.IsFolder)
+            {
+                StopEstimateEmbeddedPreview();
+                EstimateInfoPanel.Visibility = Visibility.Visible;
+                EstimatePreviewContainer.Visibility = Visibility.Collapsed;
+                ShowEstimatePreviewPlaceholder("Для папки предпросмотр не показывается. Выберите конкретный файл.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(node.FilePath) || !File.Exists(node.FilePath))
+            {
+                StopEstimateEmbeddedPreview();
+                EstimateInfoPanel.Visibility = Visibility.Visible;
+                EstimatePreviewContainer.Visibility = Visibility.Collapsed;
+                ShowEstimatePreviewPlaceholder("Файл не найден по сохраненному пути.");
+                return;
+            }
+
+            var extension = System.IO.Path.GetExtension(node.FilePath)?.ToLowerInvariant() ?? string.Empty;
+            if (!IsEstimateExcelExtension(extension))
+            {
+                StopEstimateEmbeddedPreview();
+                UpdateDocumentPreview(node, EstimateInfoPanel, EstimatePreviewContainer, EstimatePreviewBrowser, EstimatePreviewPlaceholder, EstimatePreviewStatusText);
+                return;
+            }
+
+            EstimateInfoPanel.Visibility = Visibility.Collapsed;
+            EstimatePreviewContainer.Visibility = Visibility.Visible;
+
+            try
+            {
+                ShowEmbeddedEstimateWorkbook(node.FilePath);
+            }
+            catch (Exception ex)
+            {
+                StopEstimateEmbeddedPreview();
+                EstimateInfoPanel.Visibility = Visibility.Visible;
+                EstimatePreviewContainer.Visibility = Visibility.Collapsed;
+                ShowEstimatePreviewPlaceholder($"Не удалось открыть Excel-предпросмотр: {ex.Message}");
+            }
+        }
+
+        private static bool IsEstimateExcelExtension(string extension)
+            => extension is ".xlsx" or ".xlsm" or ".xls";
+
+        private void ShowEstimatePreviewPlaceholder(string message)
+        {
+            if (EstimateExcelHost != null)
+                EstimateExcelHost.Visibility = Visibility.Collapsed;
+
+            ShowDocumentPreviewPlaceholder(EstimatePreviewBrowser, EstimatePreviewPlaceholder, EstimatePreviewStatusText, message);
         }
 
         private void UpdateDocumentPreview(DocumentTreeNode node, FrameworkElement infoPanel, Border previewContainer, WebBrowser browser, Border placeholder, TextBlock statusText)
@@ -654,12 +925,22 @@ namespace ConstructionControl
                     case ".gif":
                     case ".tif":
                     case ".tiff":
-                    case ".xlsx":
-                    case ".xlsm":
-                    case ".xls":
-                    case ".docx":
                     case ".doc":
                         ShowDocumentPreviewUri(browser, placeholder, node.FilePath);
+                        break;
+                    case ".xlsx":
+                    case ".xlsm":
+                        ShowDocumentPreviewHtml(browser, placeholder, BuildWorkbookPreviewHtml(node.FilePath));
+                        break;
+                    case ".docx":
+                        ShowDocumentPreviewHtml(browser, placeholder, BuildDocxPreviewHtml(node.FilePath));
+                        break;
+                    case ".xls":
+                        ShowDocumentPreviewPlaceholder(
+                            browser,
+                            placeholder,
+                            statusText,
+                            "Для формата .xls встроенный предпросмотр ограничен. Используйте кнопку \"Открыть\".");
                         break;
                     case ".txt":
                     case ".log":
@@ -712,6 +993,158 @@ namespace ConstructionControl
             browser.Visibility = Visibility.Visible;
             browser.Navigate(new Uri(filePath, UriKind.Absolute));
         }
+
+        private void ShowEmbeddedEstimateWorkbook(string filePath)
+        {
+            InitializeEstimatePreviewHost();
+            if (EstimateExcelHost == null || estimateExcelPanel == null)
+                throw new InvalidOperationException("Область предпросмотра Excel не готова.");
+
+            if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
+                && estimateExcelWindowHandle != IntPtr.Zero)
+            {
+                EstimateExcelHost.Visibility = Visibility.Visible;
+                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                LayoutEmbeddedEstimateWindow();
+                return;
+            }
+
+            StopEstimateEmbeddedPreview();
+
+            var excelType = Type.GetTypeFromProgID("Excel.Application")
+                ?? throw new InvalidOperationException("Microsoft Excel не найден в системе.");
+
+            dynamic excelApp = Activator.CreateInstance(excelType)
+                ?? throw new InvalidOperationException("Не удалось создать экземпляр Excel.");
+
+            dynamic workbook = null;
+            object workbooks = null;
+
+            try
+            {
+                excelApp.Visible = true;
+                excelApp.DisplayAlerts = false;
+                workbooks = excelApp.Workbooks;
+                workbook = workbooks.GetType().InvokeMember(
+                    "Open",
+                    System.Reflection.BindingFlags.InvokeMethod,
+                    null,
+                    workbooks,
+                    new object[] { filePath, Type.Missing, true });
+
+                estimateExcelApplication = excelApp;
+                estimateExcelWorkbook = workbook;
+                estimateEmbeddedFilePath = filePath;
+                estimateExcelWindowHandle = new IntPtr((int)excelApp.Hwnd);
+                if (estimateExcelWindowHandle == IntPtr.Zero)
+                    throw new InvalidOperationException("Excel не предоставил окно для встраивания.");
+
+                ConfigureEmbeddedWindow(estimateExcelWindowHandle, estimateExcelPanel.Handle);
+                EstimateExcelHost.Visibility = Visibility.Visible;
+                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                LayoutEmbeddedEstimateWindow();
+            }
+            catch
+            {
+                StopEstimateEmbeddedPreview();
+                throw;
+            }
+            finally
+            {
+                if (workbooks != null)
+                    Marshal.FinalReleaseComObject(workbooks);
+            }
+        }
+
+        private void StopEstimateEmbeddedPreview()
+        {
+            if (EstimateExcelHost != null)
+                EstimateExcelHost.Visibility = Visibility.Collapsed;
+
+            if (estimateExcelWorkbook != null)
+            {
+                try
+                {
+                    ((dynamic)estimateExcelWorkbook).Close(false);
+                }
+                catch
+                {
+                    // Ignore workbook close errors during cleanup.
+                }
+                finally
+                {
+                    Marshal.FinalReleaseComObject(estimateExcelWorkbook);
+                    estimateExcelWorkbook = null;
+                }
+            }
+
+            if (estimateExcelApplication != null)
+            {
+                try
+                {
+                    ((dynamic)estimateExcelApplication).Quit();
+                }
+                catch
+                {
+                    // Ignore Excel shutdown errors during cleanup.
+                }
+                finally
+                {
+                    Marshal.FinalReleaseComObject(estimateExcelApplication);
+                    estimateExcelApplication = null;
+                }
+            }
+
+            estimateExcelWindowHandle = IntPtr.Zero;
+            estimateEmbeddedFilePath = string.Empty;
+        }
+
+        private void LayoutEmbeddedEstimateWindow()
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero || estimateExcelPanel == null || estimateExcelPanel.IsDisposed)
+                return;
+
+            var width = Math.Max(0, estimateExcelPanel.ClientSize.Width);
+            var height = Math.Max(0, estimateExcelPanel.ClientSize.Height);
+            SetWindowPos(
+                estimateExcelWindowHandle,
+                IntPtr.Zero,
+                0,
+                0,
+                width,
+                height,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            ShowWindow(estimateExcelWindowHandle, SW_SHOW);
+        }
+
+        private static void ConfigureEmbeddedWindow(IntPtr windowHandle, IntPtr parentHandle)
+        {
+            if (windowHandle == IntPtr.Zero || parentHandle == IntPtr.Zero)
+                return;
+
+            SetParent(windowHandle, parentHandle);
+
+            var style = GetWindowLongPtr(windowHandle, GWL_STYLE).ToInt64();
+            style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_POPUP);
+            style |= WS_CHILD;
+            SetWindowLongPtr(windowHandle, GWL_STYLE, new IntPtr(style));
+
+            var exStyle = GetWindowLongPtr(windowHandle, GWL_EXSTYLE).ToInt64();
+            exStyle &= ~WS_EX_APPWINDOW;
+            SetWindowLongPtr(windowHandle, GWL_EXSTYLE, new IntPtr(exStyle));
+        }
+
+        private static IntPtr GetWindowLongPtr(IntPtr handle, int index)
+            => IntPtr.Size == 8
+                ? GetWindowLongPtr64(handle, index)
+                : new IntPtr(GetWindowLong32(handle, index));
+
+        private static IntPtr SetWindowLongPtr(IntPtr handle, int index, IntPtr value)
+            => IntPtr.Size == 8
+                ? SetWindowLongPtr64(handle, index, value)
+                : new IntPtr(SetWindowLong32(handle, index, value.ToInt32()));
 
         private static string BuildTextPreviewHtml(string filePath)
         {
@@ -1024,6 +1457,9 @@ namespace ConstructionControl
             });
         }
 
+        private void EstimatePreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+            => LayoutEmbeddedEstimateWindow();
+
         private void PdfTreeView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             pdfTreeDragStart = e.GetPosition(null);
@@ -1134,6 +1570,7 @@ namespace ConstructionControl
         private void ArrivalMatrixViewButton_Click(object sender, RoutedEventArgs e)
         {
             arrivalMatrixMode = true;
+            SyncArrivalMatrixSelectionWithTree();
             if (selectedArrivalTypes.Count > 1)
             {
                 var selected = selectedArrivalTypes.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).First();
@@ -1155,6 +1592,9 @@ namespace ConstructionControl
             UpdateTreePanelState(forceVisible: isTreePinned);
             UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
             UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
+
+            if (!ReferenceEquals(item, EstimateTab))
+                StopEstimateEmbeddedPreview();
 
             if (item.Header?.ToString() == "Приход")
             {
@@ -1196,11 +1636,13 @@ namespace ConstructionControl
 
             view?.Refresh();
             if (item.Header?.ToString() == "Табель")
-                RebuildTimesheetView();
+                RebuildTimesheetView(force: timesheetNeedsRebuild);
             if (item.Header?.ToString() == "ПР")
                 RefreshProductionJournalState();
             if (item.Header?.ToString() == "Осмотры")
                 RefreshInspectionJournalState();
+            if (ReferenceEquals(item, EstimateTab))
+                UpdateEstimateSelectionInfo();
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -1547,30 +1989,191 @@ namespace ConstructionControl
             var idx = samePersonRepeats.IndexOf(row);
             return idx >= 0 ? idx + 1 : samePersonRepeats.Count + 1;
         }
+        private int GetReminderSnoozeMinutes()
+        {
+            EnsureProjectUiSettings();
+
+            var minutes = currentObject?.UiSettings?.ReminderSnoozeMinutes ?? 15;
+            if (minutes < 1)
+                return 1;
+            if (minutes > 240)
+                return 240;
+            return minutes;
+        }
+
+        private static bool IsDiscreteUnit(string unit)
+        {
+            if (string.IsNullOrWhiteSpace(unit))
+                return false;
+
+            var normalized = unit.Trim().ToLowerInvariant();
+            return normalized is "шт" or "шт." or "piece" or "pieces" or "pc" or "pcs";
+        }
+
+        private static double NormalizeQuantityByUnit(double value, string unit)
+        {
+            if (!IsDiscreteUnit(unit))
+                return Math.Max(0, value);
+
+            return Math.Max(0, Math.Round(value, 0, MidpointRounding.AwayFromZero));
+        }
+
+        private string FormatNumberByUnit(double value, string unit)
+            => IsDiscreteUnit(unit)
+                ? NormalizeQuantityByUnit(value, unit).ToString("0", CultureInfo.CurrentCulture)
+                : FormatNumber(value);
+
+        private List<string> CollectTimesheetMissingDocsPreview(out int count)
+        {
+            count = 0;
+            var preview = new List<string>();
+
+            if (currentObject?.TimesheetPeople == null)
+                return preview;
+
+            var monthKey = timesheetMonth.ToString("yyyy-MM");
+            var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
+
+            foreach (var person in currentObject.TimesheetPeople)
+            {
+                for (var day = 1; day <= daysInMonth; day++)
+                {
+                    if (!person.IsNonHourCode(monthKey, day))
+                        continue;
+
+                    if (person.GetDocumentAccepted(monthKey, day) == true)
+                        continue;
+
+                    count++;
+                    preview.Add($"{person.FullName} — {day:00}.{timesheetMonth.Month:00}.{timesheetMonth.Year}");
+
+                    // Ограничиваем объём по запросу пользователя: максимум 3 отсутствующих с требованием документа.
+                    if (count >= MaxTimesheetMissingDocs)
+                        return preview;
+                }
+            }
+
+            return preview;
+        }
+
+        private void SetReminderPopupVisible(bool visible)
+        {
+            if (!visible)
+            {
+                HideReminderOverlayWindow();
+                return;
+            }
+
+            if (!IsLoaded || !IsVisible)
+                return;
+
+            var overlay = EnsureReminderOverlayWindow();
+            if (WindowState == WindowState.Minimized)
+                return;
+
+            if (!overlay.IsVisible && overlay.Owner == null)
+                overlay.Owner = this;
+
+            if (!overlay.IsVisible)
+                overlay.Show();
+
+            UpdateReminderOverlayPlacement();
+            Dispatcher.BeginInvoke(new Action(UpdateReminderOverlayPlacement), DispatcherPriority.Loaded);
+        }
+
+        private void HideReminderOverlayWindow()
+        {
+            if (reminderOverlayWindow?.IsVisible == true)
+                reminderOverlayWindow.Hide();
+        }
+
+        private void UpdateReminderOverlayPlacement()
+        {
+            if (reminderOverlayWindow == null || !reminderOverlayWindow.IsVisible || MainRootGrid == null || WindowState == WindowState.Minimized)
+                return;
+
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget == null)
+                return;
+
+            const double margin = 12.0;
+            var fromDevice = source.CompositionTarget.TransformFromDevice;
+            var topLeft = fromDevice.Transform(MainRootGrid.PointToScreen(new Point(0, 0)));
+            var bottomRight = fromDevice.Transform(MainRootGrid.PointToScreen(new Point(MainRootGrid.ActualWidth, MainRootGrid.ActualHeight)));
+
+            var root = reminderOverlayWindow.RootElement;
+            root.Measure(new Size(reminderOverlayWindow.Width, double.PositiveInfinity));
+            var height = root.DesiredSize.Height;
+            if (height <= 0)
+            {
+                reminderOverlayWindow.UpdateLayout();
+                height = reminderOverlayWindow.ActualHeight;
+            }
+
+            var width = reminderOverlayWindow.Width > 0 ? reminderOverlayWindow.Width : reminderOverlayWindow.ActualWidth;
+            reminderOverlayWindow.Left = Math.Max(topLeft.X + margin, bottomRight.X - width - margin);
+            reminderOverlayWindow.Top = Math.Max(topLeft.Y + margin, bottomRight.Y - height - margin);
+        }
+
         private void UpdateOtReminders()
         {
             if (currentObject == null)
             {
-                OtReminderPopup.Visibility = Visibility.Collapsed;
+                reminderSections.Clear();
+                SetReminderPopupVisible(false);
                 return;
             }
 
             EnsureProjectUiSettings();
             if (currentObject.UiSettings?.ShowReminderPopup == false)
             {
-                OtReminderPopup.Visibility = Visibility.Collapsed;
+                reminderSections.Clear();
+                SetReminderPopupVisible(false);
                 return;
             }
 
-            var parts = new List<string>();
+            if (reminderSnoozedUntil.HasValue && reminderSnoozedUntil.Value <= DateTime.Now)
+                reminderSnoozedUntil = null;
+
+            var sections = new List<ReminderSectionViewModel>();
+            var totalCount = 0;
 
             var dueRows = currentObject.OtJournal?
                 .Where(x => x.IsPendingRepeat && !x.IsDismissed)
                 .ToList() ?? new List<OtJournalEntry>();
             if (dueRows.Count > 0)
             {
-                parts.Add($"ОТ: требуется повторный инструктаж для {dueRows.Count} чел.");
-                parts.AddRange(dueRows.Take(4).Select(x => $"• ОТ: {x.LastName}"));
+                totalCount += dueRows.Count;
+                sections.Add(new ReminderSectionViewModel
+                {
+                    Header = "Вкладка ОТ",
+                    Items = dueRows
+                        .Take(4)
+                        .Select(x =>
+                        {
+                            var person = !string.IsNullOrWhiteSpace(x.LastName) ? x.LastName : x.FullName;
+                            return $"Нужен повторный инструктаж: {person}";
+                        })
+                        .ToList()
+                });
+            }
+
+            var missingDocsPreview = CollectTimesheetMissingDocsPreview(out var missingDocsCount);
+            if (missingDocsCount > 0)
+            {
+                totalCount += missingDocsCount;
+                var tabItems = missingDocsPreview
+                    .Take(MaxTimesheetMissingDocs)
+                    .Select(x => $"Нет документа: {x}")
+                    .ToList();
+                if (missingDocsCount >= MaxTimesheetMissingDocs)
+                    tabItems.Add("Порог контроля: максимум 3 отсутствующих с документами.");
+
+                sections.Add(new ReminderSectionViewModel
+                {
+                    Header = "Вкладка Табель",
+                    Items = tabItems
+                });
             }
 
             var dueInspections = currentObject.InspectionJournal?
@@ -1579,18 +2182,74 @@ namespace ConstructionControl
                 .ToList() ?? new List<InspectionJournalEntry>();
             if (dueInspections.Count > 0)
             {
-                parts.Add($"Осмотры: нужно провести {dueInspections.Count} шт.");
-                parts.AddRange(dueInspections.Take(4).Select(x => $"• {x.JournalName}: {x.InspectionName}"));
+                totalCount += dueInspections.Count;
+                sections.Add(new ReminderSectionViewModel
+                {
+                    Header = "Вкладка Осмотры",
+                    Items = dueInspections
+                        .Take(4)
+                        .Select(x => $"{x.JournalName}: {x.InspectionName} (с {x.NextReminderDate:dd.MM.yyyy})")
+                        .ToList()
+                });
             }
 
-            if (parts.Count == 0)
+            if (totalCount == 0)
             {
-                OtReminderPopup.Visibility = Visibility.Collapsed;
+                reminderSections.Clear();
+                SetReminderPopupVisible(false);
                 return;
             }
 
-            OtReminderText.Text = string.Join(Environment.NewLine, parts);
-            OtReminderPopup.Visibility = Visibility.Visible;
+            reminderSections.Clear();
+            foreach (var section in sections)
+                reminderSections.Add(section);
+
+            var overlay = EnsureReminderOverlayWindow();
+            overlay.SnoozeButtonElement.Content = $"Отложить ({GetReminderSnoozeMinutes()} мин)";
+
+            var isSnoozed = reminderSnoozedUntil.HasValue && reminderSnoozedUntil.Value > DateTime.Now;
+            var detailsHidden = currentObject.UiSettings?.HideReminderDetails == true;
+            overlay.ToggleDetailsButtonElement.Content = detailsHidden ? "Показать" : "Скрыть";
+
+            if (isSnoozed)
+            {
+                // По запросу: при отложении уведомления полностью скрываются до окончания срока.
+                SetReminderPopupVisible(false);
+                return;
+            }
+            else if (detailsHidden)
+            {
+                overlay.StateTextElement.Text = "Уведомления скрыты. Нажмите «Показать», чтобы увидеть детали.";
+                overlay.StateTextElement.Visibility = Visibility.Visible;
+                overlay.SectionsHostElement.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                overlay.StateTextElement.Visibility = Visibility.Collapsed;
+                overlay.SectionsHostElement.Visibility = Visibility.Visible;
+            }
+
+            SetReminderPopupVisible(true);
+        }
+
+        private void SnoozeRemindersButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+                return;
+
+            reminderSnoozedUntil = DateTime.Now.AddMinutes(GetReminderSnoozeMinutes());
+            UpdateOtReminders();
+        }
+
+        private void ToggleReminderDetailsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+                return;
+
+            EnsureProjectUiSettings();
+            currentObject.UiSettings.HideReminderDetails = !(currentObject.UiSettings.HideReminderDetails);
+            SaveState();
+            UpdateOtReminders();
         }
 
         private void AddOtRow_Click(object sender, RoutedEventArgs e)
@@ -1860,23 +2519,32 @@ namespace ConstructionControl
             }
         }
 
-        private void RebuildTimesheetView()
+        private void RebuildTimesheetView(bool force = false)
         {
             if (currentObject == null)
             {
                 RefreshTimesheetPersonSubscriptions();
                 TimesheetGrid.ItemsSource = null;
-                OtReminderPopup.Visibility = Visibility.Collapsed;
+                timesheetNeedsRebuild = false;
+                UpdateOtReminders();
                 return;
             }
 
             EnsureTimesheetStorage();
             SyncTimesheetPeopleWithOtJournal();
             RefreshTimesheetPersonSubscriptions();
-            BuildTimesheetColumns();
             RefreshTimesheetBrigades();
+
+            if (!force && !ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab))
+            {
+                timesheetNeedsRebuild = true;
+                return;
+            }
+
+            BuildTimesheetColumns();
             RefreshTimesheetRows();
             TimesheetMonthText.Text = timesheetMonth.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+            timesheetNeedsRebuild = false;
             UpdateTimesheetMissingDocsNotification();
         }
 
@@ -2439,38 +3107,7 @@ namespace ConstructionControl
         }
         private void UpdateTimesheetMissingDocsNotification()
         {
-            if (currentObject?.TimesheetPeople == null)
-            {
-                OtReminderPopup.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            var monthKey = timesheetMonth.ToString("yyyy-MM");
-            var pending = new List<string>();
-            foreach (var person in currentObject.TimesheetPeople)
-            {
-                var daysInMonth = DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month);
-                for (var day = 1; day <= daysInMonth; day++)
-                {
-                    if (!person.IsNonHourCode(monthKey, day))
-                        continue;
-
-                    if (person.GetDocumentAccepted(monthKey, day) == true)
-                        continue;
-
-                    pending.Add($"{person.FullName} — {day:00}.{timesheetMonth.Month:00}.{timesheetMonth.Year}");
-                }
-            }
-
-            if (pending.Count == 0)
-            {
-                OtReminderPopup.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            OtReminderText.Text = $"Нет оправдательных документов: {Environment.NewLine}{string.Join(Environment.NewLine, pending.Take(8))}"
-                                + (pending.Count > 8 ? $"{Environment.NewLine}… и еще {pending.Count - 8}" : string.Empty);
-            OtReminderPopup.Visibility = Visibility.Visible;
+            UpdateOtReminders();
         }
 
         private string PromptMultiline(string title, string question, string initialValue)
@@ -2577,6 +3214,7 @@ namespace ConstructionControl
                 return;
 
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
+            currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
             currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
         }
 
@@ -2606,13 +3244,28 @@ namespace ConstructionControl
 
         private void RefreshProductionJournalLookups()
         {
-            FillLookupCollection(productionActions,
-                currentObject?.ProductionJournal?.Select(x => x.ActionName));
+            productionActions.Clear();
+            foreach (var value in new[] { "Монтаж", "Кладка", "Устройство" }
+                .Concat(currentObject?.ProductionJournal?.Select(x => x.ActionName) ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase))
+            {
+                productionActions.Add(value);
+            }
             FillLookupCollection(productionTargets,
-                currentObject?.ProductionJournal?.Select(x => x.WorkName));
+                (currentObject?.ProductionJournal?.Select(x => x.WorkName) ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.TypeName) ?? Enumerable.Empty<string>())
+                .Concat(journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialGroup)));
             FillLookupCollection(productionElements,
-                (currentObject?.ProductionJournal?.Select(x => x.ElementsText) ?? Enumerable.Empty<string>())
-                .Concat(currentObject?.MaterialCatalog?.Select(x => x.MaterialName) ?? Enumerable.Empty<string>()));
+                currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>());
             FillLookupCollection(productionWeatherOptions,
                 currentObject?.ProductionJournal?.Select(x => x.Weather));
             FillLookupCollection(productionDeviationOptions,
@@ -2628,6 +3281,8 @@ namespace ConstructionControl
             FillLookupCollection(productionMarkOptions,
                 (currentObject?.SummaryMarksByGroup?.Values.SelectMany(x => x) ?? Enumerable.Empty<string>())
                 .Concat(LevelMarkHelper.GetDefaultMarks(currentObject)));
+
+            RefreshProductionElementOptions();
         }
 
         private static void FillLookupCollection(ObservableCollection<string> target, IEnumerable<string> values)
@@ -2641,6 +3296,58 @@ namespace ConstructionControl
             {
                 target.Add(value);
             }
+        }
+
+        private void RefreshProductionElementOptions()
+        {
+            var currentText = ProductionElementsBox?.Text?.Trim();
+            var selectedWork = ProductionWorkBox?.Text?.Trim();
+            var values = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(selectedWork))
+            {
+                values.AddRange(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.TypeName ?? string.Empty, selectedWork, StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>());
+
+                values.AddRange(journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.MaterialGroup ?? string.Empty, selectedWork, StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName));
+            }
+            else
+            {
+                values.AddRange(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>());
+
+                values.AddRange(journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName));
+            }
+
+            values.AddRange(currentObject?.ProductionJournal?
+                .SelectMany(x => ParseProductionItems(x.ElementsText))
+                .Select(x => x.MaterialName)
+                ?? Enumerable.Empty<string>());
+
+            FillLookupCollection(productionElements, values);
+
+            if (ProductionElementsBox != null && !string.IsNullOrWhiteSpace(currentText))
+                ProductionElementsBox.Text = currentText;
+        }
+
+        private void ProductionWorkBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            RefreshProductionElementOptions();
+        }
+
+        private void ProductionWorkBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            RefreshProductionElementOptions();
         }
 
         private void InitializeInspectionJournal()
@@ -2883,7 +3590,8 @@ namespace ConstructionControl
             var row = selectedProductionRow ?? new ProductionJournalEntry();
             productionRowSnapshotJson = JsonSerializer.Serialize(row);
             ReadProductionForm(row);
-            ApplyProductionRowChanges(row);
+            if (!ApplyProductionRowChanges(row))
+                return;
 
             if (selectedProductionRow == null)
                 currentObject.ProductionJournal.Add(row);
@@ -2892,6 +3600,7 @@ namespace ConstructionControl
             RefreshProductionJournalState();
             ProductionJournalGrid.SelectedItem = row;
             ProductionJournalGrid.ScrollIntoView(row);
+            SaveState();
         }
 
         private void DeleteProductionRow_Click(object sender, RoutedEventArgs e)
@@ -2943,14 +3652,716 @@ namespace ConstructionControl
                 ProductionSaveButton.Content = selectedProductionRow == null ? "➕ Добавить" : "💾 Обновить";
         }
 
+        private List<string> GetAvailableProductionElements(string workName)
+        {
+            var values = new List<string>();
+            if (!string.IsNullOrWhiteSpace(workName))
+            {
+                values.AddRange(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.TypeName ?? string.Empty, workName.Trim(), StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>());
+
+                values.AddRange(journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.MaterialGroup ?? string.Empty, workName.Trim(), StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName));
+            }
+            else
+            {
+                values.AddRange(productionElements);
+            }
+
+            return values
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private void EditProductionItems_Click(object sender, RoutedEventArgs e)
+        {
+            var availableNames = GetAvailableProductionElements(ProductionWorkBox?.Text);
+            var currentItems = ParseProductionItems(ProductionElementsBox?.Text);
+            var result = PromptProductionItems(currentItems, availableNames);
+            if (result == null)
+                return;
+
+            ProductionElementsBox.Text = FormatProductionItems(result);
+        }
+
+        private List<ProductionItemQuantity> PromptProductionItems(IEnumerable<ProductionItemQuantity> currentItems, List<string> availableNames)
+        {
+            var rows = new ObservableCollection<ProductionItemEditorRow>(
+                (currentItems ?? Enumerable.Empty<ProductionItemQuantity>())
+                .Select(x => new ProductionItemEditorRow
+                {
+                    MaterialName = x.MaterialName,
+                    Quantity = x.Quantity,
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                }));
+
+            if (rows.Count == 0)
+            {
+                rows.Add(new ProductionItemEditorRow
+                {
+                    Quantity = 1,
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                });
+            }
+
+            var dialog = new Window
+            {
+                Title = "Элементы и количество",
+                Owner = this,
+                Width = 760,
+                Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(16) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var hint = new TextBlock
+            {
+                Text = "Количество вводится отдельно для каждого элемента. \"шт\" писать не нужно.",
+                Margin = new Thickness(0, 0, 0, 12),
+                Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105))
+            };
+            Grid.SetRow(hint, 0);
+            root.Children.Add(hint);
+
+            var rowsScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            Grid.SetRow(rowsScroll, 1);
+            root.Children.Add(rowsScroll);
+
+            var rowsPanel = new StackPanel();
+            rowsScroll.Content = rowsPanel;
+
+            void RenderRows()
+            {
+                rowsPanel.Children.Clear();
+                foreach (var row in rows.ToList())
+                {
+                    var rowGrid = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                    var elementBox = new ComboBox
+                    {
+                        IsEditable = true,
+                        IsTextSearchEnabled = true,
+                        StaysOpenOnEdit = true,
+                        ItemsSource = row.AvailableNames,
+                        Margin = new Thickness(0, 0, 10, 0)
+                    };
+                    elementBox.SetBinding(ComboBox.TextProperty, new Binding(nameof(ProductionItemEditorRow.MaterialName))
+                    {
+                        Source = row,
+                        Mode = BindingMode.TwoWay,
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                    });
+                    Grid.SetColumn(elementBox, 0);
+                    rowGrid.Children.Add(elementBox);
+
+                    var quantityBox = new TextBox
+                    {
+                        Margin = new Thickness(0, 0, 10, 0),
+                        VerticalContentAlignment = VerticalAlignment.Center
+                    };
+                    quantityBox.SetBinding(TextBox.TextProperty, new Binding(nameof(ProductionItemEditorRow.Quantity))
+                    {
+                        Source = row,
+                        Mode = BindingMode.TwoWay,
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
+                        StringFormat = "0.##"
+                    });
+                    Grid.SetColumn(quantityBox, 1);
+                    rowGrid.Children.Add(quantityBox);
+
+                    var deleteButton = new Button
+                    {
+                        Content = "Удалить",
+                        Style = FindResource("SecondaryButton") as Style,
+                        MinWidth = 90
+                    };
+                    deleteButton.Click += (_, _) =>
+                    {
+                        rows.Remove(row);
+                        if (rows.Count == 0)
+                        {
+                            rows.Add(new ProductionItemEditorRow
+                            {
+                                Quantity = 1,
+                                AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                            });
+                        }
+                        RenderRows();
+                    };
+                    Grid.SetColumn(deleteButton, 2);
+                    rowGrid.Children.Add(deleteButton);
+
+                    rowsPanel.Children.Add(rowGrid);
+                }
+            }
+
+            RenderRows();
+
+            var footer = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            var addButton = new Button
+            {
+                Content = "Добавить строку",
+                Style = FindResource("SecondaryButton") as Style,
+                MinWidth = 140
+            };
+            addButton.Click += (_, _) =>
+            {
+                rows.Add(new ProductionItemEditorRow
+                {
+                    Quantity = 1,
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                });
+                RenderRows();
+            };
+            DockPanel.SetDock(addButton, Dock.Left);
+            footer.Children.Add(addButton);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            DockPanel.SetDock(buttons, Dock.Right);
+            footer.Children.Add(buttons);
+
+            var okButton = new Button
+            {
+                Content = "Сохранить",
+                MinWidth = 118,
+                IsDefault = true
+            };
+            var cancelButton = new Button
+            {
+                Content = "Отмена",
+                Style = FindResource("SecondaryButton") as Style,
+                MinWidth = 110,
+                IsCancel = true,
+                Margin = new Thickness(10, 0, 0, 0)
+            };
+            buttons.Children.Add(okButton);
+            buttons.Children.Add(cancelButton);
+
+            List<ProductionItemQuantity> result = null;
+            okButton.Click += (_, _) =>
+            {
+                result = rows
+                    .Select(x => new ProductionItemQuantity
+                    {
+                        MaterialName = x.MaterialName?.Trim(),
+                        Quantity = x.Quantity
+                    })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
+                    .ToList();
+
+                dialog.DialogResult = true;
+            };
+
+            dialog.Content = root;
+            return dialog.ShowDialog() == true ? result : null;
+        }
+
+        private void ConfigureProductionAutoFill_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureProductionJournalStorage();
+            var settings = currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+
+            var dialog = new Window
+            {
+                Title = "Настройки автомастера ПР",
+                Owner = this,
+                Width = 520,
+                Height = 560,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var root = new Grid { Margin = new Thickness(16) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            TextBox CreateNumericBox(string text, int rowIndex, string caption)
+            {
+                var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+                Grid.SetRow(panel, rowIndex);
+                panel.Children.Add(new TextBlock { Text = caption, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+                var box = new TextBox { Text = text };
+                panel.Children.Add(box);
+                root.Children.Add(panel);
+                return box;
+            }
+
+            var minBox = CreateNumericBox(settings.MinQuantityPerRow.ToString(), 0, "Минимум в строке");
+            var maxBox = CreateNumericBox(settings.MaxQuantityPerRow.ToString(), 1, "Максимум в строке");
+            var minRowsBox = CreateNumericBox(settings.MinRowsPerRun.ToString(), 2, "Минимум строк за один запуск");
+            var targetRowsBox = CreateNumericBox(settings.TargetRowsPerRun.ToString(), 3, "Целевое число строк");
+            var maxRowsBox = CreateNumericBox(settings.MaxRowsPerRun.ToString(), 4, "Максимум строк за один запуск");
+            var itemsPerRowBox = CreateNumericBox(settings.MaxItemsPerRow.ToString(), 5, "Максимум элементов в одной строке");
+
+            var preferTypeCheck = new CheckBox
+            {
+                Content = "Брать материалы только из выбранного типа",
+                IsChecked = settings.PreferSelectedTypeOnly,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            Grid.SetRow(preferTypeCheck, 6);
+            root.Children.Add(preferTypeCheck);
+
+            var balanceCheck = new CheckBox
+            {
+                Content = "Распределять количество более равномерно",
+                IsChecked = settings.UseBalancedDistribution,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            Grid.SetRow(balanceCheck, 7);
+            root.Children.Add(balanceCheck);
+
+            var deficitCheck = new CheckBox
+            {
+                Content = "Сначала закрывать дефицит по сводке",
+                IsChecked = settings.PreferDemandDeficit,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            Grid.SetRow(deficitCheck, 8);
+            root.Children.Add(deficitCheck);
+
+            var selectedCellsCheck = new CheckBox
+            {
+                Content = "Учитывать только выбранные блоки и отметки из формы",
+                IsChecked = settings.RespectSelectedBlocksAndMarks,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            Grid.SetRow(selectedCellsCheck, 9);
+            root.Children.Add(selectedCellsCheck);
+
+            var mixedRowsCheck = new CheckBox
+            {
+                Content = "Разрешать несколько элементов в одной строке",
+                IsChecked = settings.AllowMixedMaterialsInRow
+            };
+            Grid.SetRow(mixedRowsCheck, 10);
+            root.Children.Add(mixedRowsCheck);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            Grid.SetRow(footer, 11);
+            root.Children.Add(footer);
+
+            var saveButton = new Button { Content = "Сохранить", MinWidth = 120, IsDefault = true };
+            var cancelButton = new Button { Content = "Отмена", Style = FindResource("SecondaryButton") as Style, MinWidth = 110, Margin = new Thickness(10, 0, 0, 0), IsCancel = true };
+            footer.Children.Add(saveButton);
+            footer.Children.Add(cancelButton);
+
+            saveButton.Click += (_, _) =>
+            {
+                settings.MinQuantityPerRow = Math.Max(1, int.TryParse(minBox.Text, out var min) ? min : 4);
+                settings.MaxQuantityPerRow = Math.Max(settings.MinQuantityPerRow, int.TryParse(maxBox.Text, out var max) ? max : 8);
+                settings.MinRowsPerRun = Math.Clamp(int.TryParse(minRowsBox.Text, out var minRows) ? minRows : 4, 1, 12);
+                settings.TargetRowsPerRun = Math.Clamp(int.TryParse(targetRowsBox.Text, out var targetRows) ? targetRows : 5, settings.MinRowsPerRun, 16);
+                settings.MaxRowsPerRun = Math.Clamp(int.TryParse(maxRowsBox.Text, out var maxRows) ? maxRows : 6, settings.TargetRowsPerRun, 20);
+                settings.MaxItemsPerRow = Math.Clamp(int.TryParse(itemsPerRowBox.Text, out var maxItems) ? maxItems : 2, 1, 6);
+                settings.PreferSelectedTypeOnly = preferTypeCheck.IsChecked == true;
+                settings.UseBalancedDistribution = balanceCheck.IsChecked == true;
+                settings.PreferDemandDeficit = deficitCheck.IsChecked == true;
+                settings.RespectSelectedBlocksAndMarks = selectedCellsCheck.IsChecked == true;
+                settings.AllowMixedMaterialsInRow = mixedRowsCheck.IsChecked == true;
+                dialog.DialogResult = true;
+            };
+
+            dialog.Content = root;
+            if (dialog.ShowDialog() == true)
+                SaveState();
+        }
+
+        private void AutoFillProduction_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            EnsureProductionJournalStorage();
+            var settings = currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+            var baseDate = ProductionDatePicker?.SelectedDate ?? DateTime.Today;
+            var baseAction = string.IsNullOrWhiteSpace(ProductionActionBox?.Text) ? (productionActions.FirstOrDefault() ?? "Монтаж") : ProductionActionBox.Text.Trim();
+            var baseWork = ProductionWorkBox?.Text?.Trim();
+            var baseBlocks = string.IsNullOrWhiteSpace(ProductionBlocksBox?.Text) ? (productionBlockOptions.FirstOrDefault() ?? "1") : ProductionBlocksBox.Text.Trim();
+            var baseMarks = string.IsNullOrWhiteSpace(ProductionMarksBox?.Text) ? (productionMarkOptions.FirstOrDefault() ?? string.Empty) : ProductionMarksBox.Text.Trim();
+            var baseBrigade = ProductionBrigadeBox?.Text?.Trim();
+            var baseWeather = ProductionWeatherBox?.Text?.Trim();
+            var baseDeviation = ProductionDeviationBox?.Text?.Trim();
+            var blocks = settings.RespectSelectedBlocksAndMarks
+                ? LevelMarkHelper.ParseBlocks(baseBlocks)
+                : Enumerable.Range(1, Math.Max(1, currentObject.BlocksCount)).ToList();
+            var groupForMarks = ResolveProductionAutoFillGroup(baseWork);
+            var marks = settings.RespectSelectedBlocksAndMarks
+                ? LevelMarkHelper.ParseMarks(baseMarks)
+                : LevelMarkHelper.GetMarksForGroup(currentObject, groupForMarks);
+
+            if (blocks.Count == 0)
+                blocks = Enumerable.Range(1, Math.Max(1, currentObject.BlocksCount)).ToList();
+
+            if (marks.Count == 0)
+                marks = LevelMarkHelper.GetMarksForGroup(currentObject, groupForMarks);
+
+            if (blocks.Count > 0)
+                baseBlocks = string.Join(", ", blocks);
+            if (marks.Count > 0)
+                baseMarks = string.Join(", ", marks);
+            if (string.IsNullOrWhiteSpace(baseWork))
+                baseWork = groupForMarks;
+
+            if (ProductionWorkBox != null && !string.IsNullOrWhiteSpace(baseWork))
+                ProductionWorkBox.Text = baseWork;
+            if (ProductionBlocksBox != null && !string.IsNullOrWhiteSpace(baseBlocks))
+                ProductionBlocksBox.Text = baseBlocks;
+            if (ProductionMarksBox != null && !string.IsNullOrWhiteSpace(baseMarks))
+                ProductionMarksBox.Text = baseMarks;
+            RefreshProductionElementOptions();
+
+            var candidates = BuildProductionAutoFillCandidates(settings, groupForMarks, blocks, marks);
+
+            if (candidates.Count == 0)
+            {
+                MessageBox.Show("Нет доступного прихода или дефицита для автозаполнения ПР.");
+                return;
+            }
+
+            var targetRows = Math.Clamp(settings.TargetRowsPerRun, settings.MinRowsPerRun, settings.MaxRowsPerRun);
+            var plannedRows = BuildProductionAutoFillPlan(candidates, settings, targetRows);
+            if (plannedRows.Count == 0)
+            {
+                MessageBox.Show("Автомастер не смог подобрать строки по текущим ограничениям.");
+                return;
+            }
+
+            var addedRows = new List<ProductionJournalEntry>();
+            foreach (var plannedItems in plannedRows)
+            {
+                var row = new ProductionJournalEntry
+                {
+                    Date = baseDate,
+                    ActionName = baseAction,
+                    WorkName = string.IsNullOrWhiteSpace(baseWork) ? groupForMarks : baseWork,
+                    ElementsText = FormatProductionItems(plannedItems),
+                    BlocksText = baseBlocks,
+                    MarksText = baseMarks,
+                    BrigadeName = baseBrigade,
+                    Weather = baseWeather,
+                    Deviations = baseDeviation,
+                    RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox?.IsChecked == true
+                };
+
+                if (!ApplyProductionRowChanges(row))
+                    continue;
+
+                currentObject.ProductionJournal.Add(row);
+                addedRows.Add(row);
+            }
+
+            if (addedRows.Count == 0)
+            {
+                MessageBox.Show("Автозаполнение не добавило строки. Возможно, доступные количества уже исчерпаны.");
+                return;
+            }
+
+            selectedProductionRow = addedRows.Last();
+            RefreshProductionJournalState();
+            ProductionJournalGrid.SelectedItem = selectedProductionRow;
+            ProductionJournalGrid.ScrollIntoView(selectedProductionRow);
+            SaveState();
+            MessageBox.Show($"Автозаполнение добавило {addedRows.Count} строк(и) в ПР по выбранным блокам и отметкам.");
+        }
+
+        private string ResolveProductionAutoFillGroup(string currentWork)
+        {
+            if (!string.IsNullOrWhiteSpace(currentWork))
+                return currentWork.Trim();
+
+            if (ObjectsTree?.SelectedItem is TreeViewItem node)
+            {
+                foreach (var currentNode in EnumerateNodeWithParents(node))
+                {
+                    if (GetNodeKind(currentNode) == "Group")
+                        return currentNode.Header?.ToString()?.Trim();
+
+                    if (currentNode.Tag is TreeNodeMeta meta && !string.IsNullOrWhiteSpace(meta.GroupName))
+                        return meta.GroupName.Trim();
+                }
+            }
+
+            return currentObject?.SummaryVisibleGroups?.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                ?? productionTargets.FirstOrDefault()
+                ?? string.Empty;
+        }
+
+        private List<AutoProductionCandidate> BuildProductionAutoFillCandidates(
+            ProductionAutoFillSettings settings,
+            string groupFilter,
+            List<int> blocks,
+            List<string> marks)
+        {
+            var selectedBlocks = (blocks ?? new List<int>()).Where(x => x > 0).Distinct().ToList();
+            var selectedMarks = (marks ?? new List<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var candidates = journal
+                .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                         && !string.IsNullOrWhiteSpace(x.MaterialName)
+                         && (!settings.PreferSelectedTypeOnly
+                             || string.IsNullOrWhiteSpace(groupFilter)
+                             || string.Equals(x.MaterialGroup ?? string.Empty, groupFilter, StringComparison.CurrentCultureIgnoreCase)))
+                .GroupBy(x => new
+                {
+                    Group = (x.MaterialGroup ?? string.Empty).Trim(),
+                    Material = (x.MaterialName ?? string.Empty).Trim()
+                })
+                .Select(x =>
+                {
+                    var group = x.Key.Group;
+                    var material = x.Key.Material;
+                    var unit = x.Select(y => y.Unit).FirstOrDefault(y => !string.IsNullOrWhiteSpace(y))
+                               ?? GetUnitForMaterial(group, material);
+                    var arrived = x.Sum(y => y.Quantity);
+                    var mounted = GetMountedQuantityFromProductionJournal(material);
+                    var available = Math.Max(0, arrived - mounted);
+                    var deficit = CalculateProductionDeficit(group, material, unit, settings, selectedBlocks, selectedMarks);
+                    var remaining = settings.PreferDemandDeficit
+                        ? Math.Min(available, deficit > 0 ? deficit : available)
+                        : available;
+
+                    return new AutoProductionCandidate
+                    {
+                        Group = group,
+                        Material = material,
+                        Unit = unit,
+                        Available = available,
+                        Deficit = deficit,
+                        RemainingToPlan = remaining
+                    };
+                })
+                .Where(x => x.Available > 0.0001 && x.RemainingToPlan > 0.0001)
+                .OrderByDescending(x => settings.PreferDemandDeficit ? x.Deficit : x.Available)
+                .ThenByDescending(x => x.Available)
+                .ThenBy(x => x.Material, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (settings.PreferDemandDeficit && candidates.Any(x => x.Deficit > 0.0001))
+                candidates = candidates.Where(x => x.Deficit > 0.0001).ToList();
+
+            return candidates;
+        }
+
+        private double CalculateProductionDeficit(
+            string group,
+            string material,
+            string unit,
+            ProductionAutoFillSettings settings,
+            List<int> blocks,
+            List<string> marks)
+        {
+            if (string.IsNullOrWhiteSpace(group) || string.IsNullOrWhiteSpace(material))
+                return 0;
+
+            var demand = GetOrCreateDemand(BuildDemandKey(group, material), unit);
+            var availableBlocks = settings.RespectSelectedBlocksAndMarks && blocks.Count > 0
+                ? blocks
+                : Enumerable.Range(1, Math.Max(1, currentObject?.BlocksCount ?? 1)).ToList();
+            var availableMarks = settings.RespectSelectedBlocksAndMarks && marks.Count > 0
+                ? marks
+                : LevelMarkHelper.GetMarksForGroup(currentObject, group);
+
+            double total = 0;
+            foreach (var block in availableBlocks)
+            {
+                foreach (var mark in availableMarks)
+                {
+                    var planned = GetDemandValue(demand, block, mark);
+                    var mounted = GetMountedValue(demand, block, mark);
+                    total += Math.Max(0, planned - mounted);
+                }
+            }
+
+            return total;
+        }
+
+        private List<List<ProductionItemQuantity>> BuildProductionAutoFillPlan(
+            List<AutoProductionCandidate> candidates,
+            ProductionAutoFillSettings settings,
+            int targetRows)
+        {
+            var result = new List<List<ProductionItemQuantity>>();
+            if (candidates == null || candidates.Count == 0)
+                return result;
+
+            var working = candidates
+                .Select(x => new AutoProductionCandidate
+                {
+                    Group = x.Group,
+                    Material = x.Material,
+                    Unit = x.Unit,
+                    Available = x.Available,
+                    Deficit = x.Deficit,
+                    RemainingToPlan = x.RemainingToPlan
+                })
+                .ToList();
+
+            var maxRows = Math.Clamp(settings.MaxRowsPerRun, 1, 20);
+            var desiredRows = Math.Clamp(targetRows, 1, maxRows);
+            var maxItemsPerRow = settings.AllowMixedMaterialsInRow
+                ? Math.Max(1, settings.MaxItemsPerRow)
+                : 1;
+
+            while (result.Count < maxRows)
+            {
+                var remainingCandidates = working
+                    .Where(x => x.RemainingToPlan > 0.0001)
+                    .OrderByDescending(x => settings.PreferDemandDeficit ? x.Deficit : x.Available)
+                    .ThenByDescending(x => x.RemainingToPlan)
+                    .ThenBy(x => x.Material, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+
+                if (remainingCandidates.Count == 0)
+                    break;
+
+                var rowItems = new List<ProductionItemQuantity>();
+                var itemsInRow = Math.Min(maxItemsPerRow, remainingCandidates.Count);
+
+                for (var itemIndex = 0; itemIndex < itemsInRow; itemIndex++)
+                {
+                    var candidate = remainingCandidates[itemIndex];
+                    var rowsRemaining = Math.Max(1, desiredRows - result.Count);
+                    var quantity = CalculateAutoFillChunk(candidate.RemainingToPlan, rowsRemaining, settings);
+                    if (quantity <= 0.0001)
+                        continue;
+
+                    rowItems.Add(new ProductionItemQuantity
+                    {
+                        MaterialName = candidate.Material,
+                        Quantity = quantity
+                    });
+
+                    candidate.RemainingToPlan = Math.Max(0, candidate.RemainingToPlan - quantity);
+                    candidate.Available = Math.Max(0, candidate.Available - quantity);
+                    candidate.Deficit = Math.Max(0, candidate.Deficit - quantity);
+                }
+
+                if (rowItems.Count == 0)
+                    break;
+
+                result.Add(rowItems);
+
+                if (result.Count >= desiredRows)
+                {
+                    var anyBigRemainders = working.Any(x => x.RemainingToPlan > settings.MaxQuantityPerRow + 0.0001);
+                    if (!anyBigRemainders)
+                        break;
+                }
+            }
+
+            while (result.Count < settings.MinRowsPerRun)
+            {
+                var extra = working
+                    .Where(x => x.RemainingToPlan > 0.0001)
+                    .OrderByDescending(x => x.RemainingToPlan)
+                    .FirstOrDefault();
+
+                if (extra == null)
+                    break;
+
+                var quantity = CalculateAutoFillChunk(extra.RemainingToPlan, 1, settings);
+                if (quantity <= 0.0001)
+                    break;
+
+                result.Add(new List<ProductionItemQuantity>
+                {
+                    new ProductionItemQuantity
+                    {
+                        MaterialName = extra.Material,
+                        Quantity = quantity
+                    }
+                });
+
+                extra.RemainingToPlan = Math.Max(0, extra.RemainingToPlan - quantity);
+                if (result.Count >= settings.MaxRowsPerRun)
+                    break;
+            }
+
+            return result.Take(settings.MaxRowsPerRun).ToList();
+        }
+
+        private double CalculateAutoFillChunk(double remaining, int rowsRemaining, ProductionAutoFillSettings settings)
+        {
+            if (remaining <= 0.0001)
+                return 0;
+
+            var min = Math.Max(1, settings.MinQuantityPerRow);
+            var max = Math.Max(min, settings.MaxQuantityPerRow);
+            var averageTarget = settings.UseBalancedDistribution
+                ? Math.Max(min, Math.Min(max, Math.Ceiling(remaining / Math.Max(1, rowsRemaining))))
+                : productionAutoRandom.Next(min, max + 1);
+
+            var quantity = Math.Min(remaining, averageTarget);
+
+            if (rowsRemaining <= 1)
+                return Math.Round(remaining, 2);
+
+            if (remaining > max * rowsRemaining)
+                quantity = Math.Ceiling(remaining / rowsRemaining);
+            else if (remaining < min)
+                quantity = remaining;
+
+            return Math.Round(Math.Max(1, quantity), 2);
+        }
+
         private void ResetProductionFormInputs()
         {
             if (ProductionDatePicker == null)
                 return;
 
             ProductionDatePicker.SelectedDate = DateTime.Today;
-            ProductionActionBox.Text = string.Empty;
-            ProductionWorkBox.Text = string.Empty;
+            ProductionActionBox.Text = productionActions.FirstOrDefault() ?? "Монтаж";
+            ProductionWorkBox.Text = productionTargets.FirstOrDefault() ?? string.Empty;
             ProductionElementsBox.Text = string.Empty;
             ProductionBlocksBox.Text = productionBlockOptions.FirstOrDefault() ?? "1";
             ProductionMarksBox.Text = productionMarkOptions.FirstOrDefault() ?? string.Empty;
@@ -2958,6 +4369,7 @@ namespace ConstructionControl
             ProductionWeatherBox.Text = string.Empty;
             ProductionDeviationBox.Text = string.Empty;
             ProductionHiddenWorksCheckBox.IsChecked = false;
+            RefreshProductionElementOptions();
         }
 
         private void FillProductionForm(ProductionJournalEntry row)
@@ -2968,6 +4380,7 @@ namespace ConstructionControl
             ProductionDatePicker.SelectedDate = row.Date;
             ProductionActionBox.Text = row.ActionName ?? string.Empty;
             ProductionWorkBox.Text = row.WorkName ?? string.Empty;
+            RefreshProductionElementOptions();
             ProductionElementsBox.Text = row.ElementsText ?? string.Empty;
             ProductionBlocksBox.Text = row.BlocksText ?? string.Empty;
             ProductionMarksBox.Text = row.MarksText ?? string.Empty;
@@ -2991,30 +4404,67 @@ namespace ConstructionControl
             row.RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox.IsChecked == true;
         }
 
-        private void ApplyProductionRowChanges(ProductionJournalEntry row)
+        private bool ApplyProductionRowChanges(ProductionJournalEntry row)
         {
             if (row == null || currentObject?.ProductionJournal == null)
-                return;
+                return false;
 
             ApplyProductionDefaults(row);
+
+            var originalItems = ParseProductionItems(row.ElementsText);
+            var adjustedMessages = new List<string>();
+            var adjustedItems = AdjustProductionItems(row, originalItems, adjustedMessages);
+            row.ElementsText = FormatProductionItems(adjustedItems);
 
             if (!ValidateProductionRow(row, out var message))
             {
                 RestoreProductionRowSnapshot(row);
                 MessageBox.Show(message, "Проверка ПР", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
             }
 
+            if (adjustedItems.Count == 0)
+            {
+                if (selectedProductionRow != null)
+                    currentObject.ProductionJournal.Remove(row);
+
+                selectedProductionRow = null;
+                RefreshProductionJournalState();
+                RefreshSummaryTable();
+                SaveState();
+                MessageBox.Show("Для выбранных элементов больше нет доступного количества. Строка не сохранена.", "Проверка ПР", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
+
+            EnsureArmoringCompanionRow(row);
             RefreshProductionJournalLookups();
             RebuildMountedDemandFromProductionJournal();
             RefreshProductionRemainingInfo();
             RefreshSummaryTable();
             SaveState();
+
+            if (adjustedMessages.Count > 0)
+            {
+                MessageBox.Show(string.Join(Environment.NewLine, adjustedMessages), "Проверка ПР", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return true;
         }
 
         private void ApplyProductionDefaults(ProductionJournalEntry row)
         {
             if (row == null)
                 return;
+
+            if (string.IsNullOrWhiteSpace(row.ActionName))
+                row.ActionName = productionActions.FirstOrDefault() ?? "Монтаж";
+
+            if (string.IsNullOrWhiteSpace(row.WorkName))
+            {
+                row.WorkName = ParseProductionItems(row.ElementsText)
+                    .Select(x => FindMaterialGroupByName(x.MaterialName))
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? row.WorkName;
+            }
 
             if (string.IsNullOrWhiteSpace(row.Deviations))
             {
@@ -3145,6 +4595,101 @@ namespace ConstructionControl
             return result
                 .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
                 .ToList();
+        }
+
+        private List<ProductionItemQuantity> AdjustProductionItems(ProductionJournalEntry row, List<ProductionItemQuantity> items, List<string> adjustedMessages)
+        {
+            var result = new List<ProductionItemQuantity>();
+
+            foreach (var item in items)
+            {
+                var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
+                var alreadyMounted = GetMountedQuantityFromProductionJournal(item.MaterialName, excludeRow: row);
+                var arrived = journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.MaterialName ?? string.Empty, item.MaterialName, StringComparison.CurrentCultureIgnoreCase)
+                             && (string.IsNullOrWhiteSpace(group)
+                                 || string.Equals(x.MaterialGroup ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)))
+                    .Sum(x => x.Quantity);
+
+                var allowed = Math.Max(0, arrived - alreadyMounted);
+                var finalQuantity = Math.Min(item.Quantity, allowed);
+                if (finalQuantity <= 0)
+                {
+                    adjustedMessages?.Add($"\"{item.MaterialName}\" не добавлен: доступное количество закончилось.");
+                    continue;
+                }
+
+                if (finalQuantity + 0.0001 < item.Quantity)
+                {
+                    adjustedMessages?.Add($"\"{item.MaterialName}\" скорректирован до {FormatNumber(finalQuantity)}. Больше записать нельзя: пришло {FormatNumber(arrived)}, уже смонтировано {FormatNumber(alreadyMounted)}.");
+                }
+
+                result.Add(new ProductionItemQuantity
+                {
+                    MaterialName = item.MaterialName,
+                    Quantity = finalQuantity
+                });
+            }
+
+            return result;
+        }
+
+        private static string FormatProductionItems(IEnumerable<ProductionItemQuantity> items)
+        {
+            return string.Join(", ", (items ?? Enumerable.Empty<ProductionItemQuantity>())
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
+                .Select(x => $"{x.MaterialName.Trim()} - {x.Quantity:0.##}"));
+        }
+
+        private void EnsureArmoringCompanionRow(ProductionJournalEntry row)
+        {
+            if (row == null
+                || currentObject?.ProductionJournal == null
+                || !string.Equals(row.ActionName?.Trim(), "Устройство", StringComparison.CurrentCultureIgnoreCase)
+                || string.IsNullOrWhiteSpace(row.WorkName)
+                || row.Date <= DateTime.MinValue)
+                return;
+
+            var workName = row.WorkName.Trim();
+            if (workName.IndexOf("бетонир", StringComparison.CurrentCultureIgnoreCase) < 0)
+                return;
+
+            var previousDay = row.Date.AddDays(-1).Date;
+            var armoringWork = Regex.Replace(workName, "бетонир\\w*", "армирование", RegexOptions.IgnoreCase);
+            var previousWeather = currentObject.ProductionJournal
+                .Where(x => !ReferenceEquals(x, row)
+                         && x.Date.Date == previousDay
+                         && !string.IsNullOrWhiteSpace(x.Weather))
+                .OrderByDescending(x => x.Date)
+                .Select(x => x.Weather)
+                .FirstOrDefault() ?? row.Weather;
+
+            var exists = currentObject.ProductionJournal.Any(x =>
+                !ReferenceEquals(x, row)
+                && x.Date.Date == previousDay
+                && string.Equals(x.ActionName?.Trim(), row.ActionName?.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(x.WorkName?.Trim(), armoringWork, StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(x.ElementsText?.Trim(), row.ElementsText?.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(x.BlocksText?.Trim(), row.BlocksText?.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(x.MarksText?.Trim(), row.MarksText?.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+            if (exists)
+                return;
+
+            currentObject.ProductionJournal.Add(new ProductionJournalEntry
+            {
+                Date = previousDay,
+                ActionName = row.ActionName,
+                WorkName = armoringWork,
+                ElementsText = row.ElementsText,
+                BlocksText = row.BlocksText,
+                MarksText = row.MarksText,
+                BrigadeName = row.BrigadeName,
+                Weather = previousWeather,
+                Deviations = row.Deviations,
+                RequiresHiddenWorkAct = row.RequiresHiddenWorkAct
+            });
         }
 
         private double GetMountedQuantityFromProductionJournal(string materialName, ProductionJournalEntry excludeRow = null)
@@ -4305,7 +5850,42 @@ namespace ConstructionControl
         }
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            SyncArrivalMatrixSelectionWithTree();
             ApplyAllFilters();
+        }
+
+        private void SyncArrivalMatrixSelectionWithTree()
+        {
+            if (!arrivalMatrixMode || ObjectsTree?.SelectedItem is not TreeViewItem node)
+                return;
+
+            string group = null;
+            foreach (var currentNode in EnumerateNodeWithParents(node))
+            {
+                if (GetNodeKind(currentNode) == "Group")
+                {
+                    group = currentNode.Header?.ToString();
+                    break;
+                }
+
+                if (currentNode.Tag is TreeNodeMeta meta && !string.IsNullOrWhiteSpace(meta.GroupName))
+                {
+                    group = meta.GroupName;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(group))
+                return;
+
+            if (selectedArrivalTypes.Count == 1 && selectedArrivalTypes.Contains(group))
+                return;
+
+            selectedArrivalTypes.Clear();
+            selectedArrivalTypes.Add(group);
+            selectedArrivalNames.Clear();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
         }
 
         private string GetNodeKind(TreeViewItem node)
@@ -5019,7 +6599,7 @@ namespace ConstructionControl
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(108) });
-            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(78) });
             foreach (var _ in materials)
                 ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });
 
@@ -5117,7 +6697,7 @@ namespace ConstructionControl
             border.Child = new TextBlock
             {
                 Text = text,
-                FontSize = 13,
+                FontSize = 12,
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
@@ -5419,11 +6999,87 @@ namespace ConstructionControl
                         currentObject.Archive.Stb.Add(rec.Stb);
                 }
             }
+            SeedDemandFromArrivalsIfMissing();
             EnsureOtJournalStorage();
             EnsureProjectUiSettings();
             EnsureDocumentLibraries();
             RefreshDocumentLibraries();
 
+        }
+
+        private void SeedDemandFromArrivalsIfMissing()
+        {
+            if (currentObject == null || journal == null || journal.Count == 0)
+                return;
+
+            currentObject.Demand ??= new Dictionary<string, MaterialDemand>(StringComparer.CurrentCultureIgnoreCase);
+
+            var grouped = journal
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialGroup) && !string.IsNullOrWhiteSpace(x.MaterialName))
+                .GroupBy(x => new
+                {
+                    Group = x.MaterialGroup.Trim(),
+                    Material = x.MaterialName.Trim()
+                })
+                .ToList();
+
+            foreach (var group in grouped)
+            {
+                var demandKey = BuildDemandKey(group.Key.Group, group.Key.Material);
+                if (currentObject.Demand.ContainsKey(demandKey))
+                    continue;
+
+                var arrivedTotal = group.Sum(x => Math.Max(0, x.Quantity));
+                if (arrivedTotal <= 0.0001)
+                    continue;
+
+                var marks = LevelMarkHelper.GetMarksForGroup(currentObject, group.Key.Group);
+                if (marks.Count == 0)
+                    marks = new List<string> { "0.000" };
+
+                var blocks = Math.Max(1, currentObject.BlocksCount);
+                var cells = Math.Max(1, blocks * marks.Count);
+                var unit = group.Select(x => x.Unit).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                           ?? GetUnitForMaterial(group.Key.Group, group.Key.Material);
+                var demand = GetOrCreateDemand(demandKey, unit);
+                var isDiscrete = IsDiscreteUnit(unit);
+                var totalPlan = isDiscrete
+                    ? Math.Ceiling(Math.Max(1, arrivedTotal * 1.25))
+                    : Math.Round(Math.Max(1, arrivedTotal * 1.25), 2, MidpointRounding.AwayFromZero);
+                var remaining = totalPlan;
+                var leftCells = cells;
+                var discreteBase = isDiscrete ? (int)totalPlan / cells : 0;
+                var discreteRemainder = isDiscrete ? (int)totalPlan % cells : 0;
+
+                for (var block = 1; block <= blocks; block++)
+                {
+                    if (!demand.Levels.ContainsKey(block))
+                        demand.Levels[block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
+
+                    foreach (var mark in marks)
+                    {
+                        leftCells = Math.Max(1, leftCells);
+                        double value;
+                        if (isDiscrete)
+                        {
+                            value = discreteBase + (discreteRemainder > 0 ? 1 : 0);
+                            if (discreteRemainder > 0)
+                                discreteRemainder--;
+                        }
+                        else
+                        {
+                            value = Math.Round(remaining / leftCells, 2, MidpointRounding.AwayFromZero);
+                        }
+
+                        if (value < 0)
+                            value = 0;
+
+                        demand.Levels[block][mark] = value;
+                        remaining = Math.Max(0, remaining - value);
+                        leftCells--;
+                    }
+                }
+            }
         }
 
         private void CommitOpenEdits()
@@ -5900,6 +7556,7 @@ namespace ConstructionControl
             if (summaryGrid == null)
                 return;
 
+            totalArrival = NormalizeQuantityByUnit(totalArrival, unit);
             var blockTotals = new Dictionary<int, double>();
 
             summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -5918,9 +7575,9 @@ namespace ConstructionControl
                 double blockTotal = 0;
                 foreach (var mark in block.Levels)
                 {
-                    blockTotal += summaryMountedMode
+                    blockTotal += NormalizeQuantityByUnit(summaryMountedMode
                         ? GetMountedValue(demand, block.Block, mark)
-                        : GetDemandValue(demand, block.Block, mark);
+                        : GetDemandValue(demand, block.Block, mark), unit);
                 }
 
                 blockTotals[block.Block] = blockTotal;  // теперь ок
@@ -5962,15 +7619,15 @@ namespace ConstructionControl
                     bool blockComplete = blockFilled.TryGetValue(col.Block, out var complete) && complete;
                     bool blockIsOverage = blockOverage.TryGetValue(col.Block, out var over) && over;
                     Brush cellBg = blockIsOverage ? warningHighlight : (blockComplete ? blockHighlight : null);
-                    AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumber(blockTotal), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
+                    AddCell(summaryGrid, summaryRowIndex, col.ColumnIndex, FormatNumberByUnit(blockTotal, unit), align: TextAlignment.Right, bg: cellBg, noWrap: true, minWidth: 44);
                 }
                 else if (!string.IsNullOrWhiteSpace(col.Level))
                 {
-                    double plan = GetDemandValue(demand, col.Block, col.Level);
-                    double mounted = GetMountedValue(demand, col.Block, col.Level);
+                    double plan = NormalizeQuantityByUnit(GetDemandValue(demand, col.Block, col.Level), unit);
+                    double mounted = NormalizeQuantityByUnit(GetMountedValue(demand, col.Block, col.Level), unit);
                     double arrived = allocations.TryGetValue(col.Block, out var blockDict)
                         && blockDict.TryGetValue(col.Level, out var arr)
-                        ? arr
+                        ? NormalizeQuantityByUnit(arr, unit)
                         : 0;
 
                     double compareBase = summaryMountedMode ? mounted : plan;
@@ -5991,9 +7648,9 @@ namespace ConstructionControl
                ? Math.Max(0, totalArrival - totalPlanned)
                : Math.Max(0, totalPlanned - totalArrival);
             Brush arrivedBg = rowOverage ? warningHighlight : null;
-            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumber(totalPlanned), align: TextAlignment.Right, bg: rowComplete ? blockHighlight : null, noWrap: true, minWidth: 70);
-            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumber(notArrived), align: TextAlignment.Right, noWrap: true, minWidth: 70);
-            AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumber(totalArrival), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryTotalColumn, FormatNumberByUnit(totalPlanned, unit), align: TextAlignment.Right, bg: rowComplete ? blockHighlight : null, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryNotArrivedColumn, FormatNumberByUnit(notArrived, unit), align: TextAlignment.Right, noWrap: true, minWidth: 70);
+            AddCell(summaryGrid, summaryRowIndex, summaryArrivedColumn, FormatNumberByUnit(totalArrival, unit), align: TextAlignment.Right, bg: arrivedBg, noWrap: true, minWidth: 70);
 
             summaryRowIndex++;
         }
@@ -6183,6 +7840,312 @@ namespace ConstructionControl
 
             if (window.ShowDialog() == true)
                 RefreshSummaryTable();
+        }
+
+        private void OpenReorderWindow_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект");
+                return;
+            }
+
+            var group = currentObject.SummaryVisibleGroups.FirstOrDefault() ?? summaryFilterGroups.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(group))
+            {
+                MessageBox.Show("Сначала выберите тип в сводке.");
+                return;
+            }
+
+            var blocks = BuildSummaryBlocks(group);
+            var marks = blocks.SelectMany(x => x.Levels).Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+            var materials = GetMaterialsForGroup(group);
+
+            var blockOptions = new ObservableCollection<SelectableOption>(blocks.Select(x => new SelectableOption
+            {
+                Value = $"Блок {x.Block}",
+                IsSelected = true
+            }));
+            var markOptions = new ObservableCollection<SelectableOption>(marks.Select(x => new SelectableOption
+            {
+                Value = x,
+                IsSelected = true
+            }));
+            var materialOptions = new ObservableCollection<SelectableOption>(materials.Select(x => new SelectableOption
+            {
+                Value = x,
+                IsSelected = true
+            }));
+            var previewRows = new ObservableCollection<SummaryReorderPreviewRow>();
+
+            var dialog = new Window
+            {
+                Title = $"Дозаказать: {group}",
+                Owner = this,
+                Width = 1080,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(16) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var title = new TextBlock
+            {
+                Text = $"Выберите блоки, отметки и материалы для дозаказа по типу \"{group}\".",
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 15,
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            Grid.SetRow(title, 0);
+            Grid.SetColumnSpan(title, 4);
+            root.Children.Add(title);
+
+            FrameworkElement BuildSelectionPanel(string caption, ObservableCollection<SelectableOption> options, int column)
+            {
+                var border = new Border
+                {
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(12),
+                    Padding = new Thickness(10),
+                    Margin = new Thickness(0, 0, 10, 0),
+                    Background = Brushes.White
+                };
+                Grid.SetRow(border, 1);
+                Grid.SetColumn(border, column);
+
+                var panel = new DockPanel();
+                border.Child = panel;
+                var captionText = new TextBlock
+                {
+                    Text = caption,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                panel.Children.Add(captionText);
+                DockPanel.SetDock(captionText, Dock.Top);
+
+                var list = new ListBox
+                {
+                    BorderThickness = new Thickness(0),
+                    Background = Brushes.Transparent,
+                    ItemsSource = options
+                };
+                var template = new DataTemplate(typeof(SelectableOption));
+                var factory = new FrameworkElementFactory(typeof(CheckBox));
+                factory.SetBinding(ToggleButton.IsCheckedProperty, new Binding(nameof(SelectableOption.IsSelected)) { Mode = BindingMode.TwoWay });
+                factory.SetBinding(ContentControl.ContentProperty, new Binding(nameof(SelectableOption.Value)));
+                template.VisualTree = factory;
+                list.ItemTemplate = template;
+                panel.Children.Add(list);
+                return border;
+            }
+
+            root.Children.Add(BuildSelectionPanel("Блоки", blockOptions, 0));
+            root.Children.Add(BuildSelectionPanel("Отметки", markOptions, 1));
+            root.Children.Add(BuildSelectionPanel("Материалы", materialOptions, 2));
+
+            var previewGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = previewRows
+            };
+            previewGrid.Columns.Add(new DataGridTextColumn { Header = "Наименование", Binding = new Binding(nameof(SummaryReorderPreviewRow.Material)) });
+            previewGrid.Columns.Add(new DataGridTextColumn { Header = "Блок", Binding = new Binding(nameof(SummaryReorderPreviewRow.Block)) });
+            previewGrid.Columns.Add(new DataGridTextColumn { Header = "Отметка", Binding = new Binding(nameof(SummaryReorderPreviewRow.Mark)) });
+            previewGrid.Columns.Add(new DataGridTextColumn { Header = "Количество", Binding = new Binding(nameof(SummaryReorderPreviewRow.Quantity)) { StringFormat = "0.##" } });
+            previewGrid.Columns.Add(new DataGridTextColumn { Header = "Ед.", Binding = new Binding(nameof(SummaryReorderPreviewRow.Unit)) });
+            Grid.SetRow(previewGrid, 1);
+            Grid.SetColumn(previewGrid, 3);
+            DataGridSizingHelper.SetEnableSmartSizing(previewGrid, true);
+            root.Children.Add(previewGrid);
+
+            void RefreshPreview()
+            {
+                previewRows.Clear();
+                var selectedBlocks = blockOptions
+                    .Where(x => x.IsSelected)
+                    .Select(x => int.TryParse(x.Value.Replace("Блок", string.Empty).Trim(), out var block) ? block : 0)
+                    .Where(x => x > 0)
+                    .ToHashSet();
+                var selectedMarks = markOptions.Where(x => x.IsSelected).Select(x => x.Value).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+                var selectedMaterials = materialOptions.Where(x => x.IsSelected).Select(x => x.Value).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+                foreach (var row in BuildSummaryReorderRows(group, selectedMaterials, selectedBlocks, selectedMarks))
+                    previewRows.Add(row);
+            }
+
+            foreach (var option in blockOptions.Cast<SelectableOption>()
+                         .Concat(markOptions)
+                         .Concat(materialOptions))
+            {
+                option.PropertyChanged += (_, _) => RefreshPreview();
+            }
+
+            RefreshPreview();
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            Grid.SetColumnSpan(footer, 4);
+            root.Children.Add(footer);
+
+            var exportButton = new Button { Content = "Экспорт в Word", MinWidth = 140 };
+            var closeButton = new Button { Content = "Закрыть", Style = FindResource("SecondaryButton") as Style, MinWidth = 110, Margin = new Thickness(10, 0, 0, 0), IsCancel = true };
+            footer.Children.Add(exportButton);
+            footer.Children.Add(closeButton);
+
+            exportButton.Click += (_, _) =>
+            {
+                RefreshPreview();
+                if (previewRows.Count == 0)
+                {
+                    MessageBox.Show("По выбранным блокам и отметкам нет позиций для дозаказа.");
+                    return;
+                }
+
+                var dlg = new SaveFileDialog
+                {
+                    Filter = "Word (*.docx)|*.docx",
+                    FileName = $"Дозаказать_{group}_{DateTime.Today:yyyyMMdd}.docx"
+                };
+
+                if (dlg.ShowDialog() != true)
+                    return;
+
+                ExportSummaryReorderToWord(dlg.FileName, group, previewRows.ToList());
+                MessageBox.Show("Файл Word сформирован.");
+            };
+
+            dialog.Content = root;
+            dialog.ShowDialog();
+        }
+
+        private List<SummaryReorderPreviewRow> BuildSummaryReorderRows(string group, IEnumerable<string> selectedMaterials, IEnumerable<int> selectedBlocks, IEnumerable<string> selectedMarks)
+        {
+            var rows = new List<SummaryReorderPreviewRow>();
+            var materials = (selectedMaterials ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+            var blocks = (selectedBlocks ?? Enumerable.Empty<int>()).Where(x => x > 0).ToHashSet();
+            var marks = (selectedMarks ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+            if (materials.Count == 0 || blocks.Count == 0 || marks.Count == 0)
+                return rows;
+
+            var summaryBlockSet = BuildSummaryBlocks(group);
+            foreach (var material in materials.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                var records = journal
+                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.MaterialGroup ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals(x.MaterialName ?? string.Empty, material, StringComparison.CurrentCultureIgnoreCase))
+                    .ToList();
+
+                var unit = records.Select(x => x.Unit).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? GetUnitForMaterial(group, material);
+                var demand = GetOrCreateDemand(BuildDemandKey(group, material), unit);
+                var allocations = AllocateArrivalForBlocks(summaryBlockSet, demand, records.Sum(x => x.Quantity));
+
+                foreach (var block in summaryBlockSet.Where(x => blocks.Contains(x.Block)))
+                {
+                    foreach (var mark in block.Levels.Where(marks.Contains))
+                    {
+                        var planned = GetDemandValue(demand, block.Block, mark);
+                        var arrived = allocations.TryGetValue(block.Block, out var blockMap)
+                            && blockMap.TryGetValue(mark, out var arrivedValue)
+                            ? arrivedValue
+                            : 0;
+                        var reorder = Math.Max(0, planned - arrived);
+                        if (reorder <= 0.0001)
+                            continue;
+
+                        rows.Add(new SummaryReorderPreviewRow
+                        {
+                            Group = group,
+                            Material = material,
+                            Block = block.Block,
+                            Mark = mark,
+                            Quantity = reorder,
+                            Unit = unit
+                        });
+                    }
+                }
+            }
+
+            return rows;
+        }
+
+        private void ExportSummaryReorderToWord(string filePath, string group, List<SummaryReorderPreviewRow> rows)
+        {
+            using var document = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(
+                filePath,
+                DocumentFormat.OpenXml.WordprocessingDocumentType.Document);
+
+            var mainPart = document.AddMainDocumentPart();
+            mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+            var body = new DocumentFormat.OpenXml.Wordprocessing.Body();
+            mainPart.Document.Append(body);
+
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text($"Дозаказ материалов: {group}"))));
+
+            if (!string.IsNullOrWhiteSpace(currentObject?.Name))
+            {
+                body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(
+                        new DocumentFormat.OpenXml.Wordprocessing.Text($"Объект: {currentObject.Name}"))));
+            }
+
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text($"Дата формирования: {DateTime.Today:dd.MM.yyyy}"))));
+
+            var table = new DocumentFormat.OpenXml.Wordprocessing.Table();
+            table.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.TableProperties(
+                new DocumentFormat.OpenXml.Wordprocessing.TableBorders(
+                    new DocumentFormat.OpenXml.Wordprocessing.TopBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) },
+                    new DocumentFormat.OpenXml.Wordprocessing.BottomBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) },
+                    new DocumentFormat.OpenXml.Wordprocessing.LeftBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) },
+                    new DocumentFormat.OpenXml.Wordprocessing.RightBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) },
+                    new DocumentFormat.OpenXml.Wordprocessing.InsideHorizontalBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) },
+                    new DocumentFormat.OpenXml.Wordprocessing.InsideVerticalBorder { Val = new DocumentFormat.OpenXml.EnumValue<DocumentFormat.OpenXml.Wordprocessing.BorderValues>(DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single) })));
+
+            DocumentFormat.OpenXml.Wordprocessing.TableRow CreateRow(params string[] values)
+            {
+                var row = new DocumentFormat.OpenXml.Wordprocessing.TableRow();
+                foreach (var value in values)
+                {
+                    row.Append(new DocumentFormat.OpenXml.Wordprocessing.TableCell(
+                        new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                            new DocumentFormat.OpenXml.Wordprocessing.Run(
+                                new DocumentFormat.OpenXml.Wordprocessing.Text(value ?? string.Empty)))));
+                }
+                return row;
+            }
+
+            table.Append(CreateRow("Наименование", "Блок", "Отметка", "Количество", "Ед."));
+            foreach (var row in rows.OrderBy(x => x.Material).ThenBy(x => x.Block).ThenBy(x => x.Mark))
+                table.Append(CreateRow(row.Material, row.Block.ToString(), row.Mark, FormatNumber(row.Quantity), row.Unit));
+
+            body.Append(table);
+            mainPart.Document.Save();
         }
 
         private void SummaryModeSwitch_Changed(object sender, RoutedEventArgs e)
@@ -6417,6 +8380,9 @@ namespace ConstructionControl
         {
             if (currentObject != null)
                 currentObject.UiSettings ??= new ProjectUiSettings();
+
+            if (currentObject?.UiSettings != null && currentObject.UiSettings.ReminderSnoozeMinutes <= 0)
+                currentObject.UiSettings.ReminderSnoozeMinutes = 15;
         }
 
         private void ApplyProjectUiSettings()
@@ -6457,6 +8423,38 @@ namespace ConstructionControl
             return blocks;
         }
 
+        private Dictionary<int, Dictionary<string, double>> AllocateArrivalForBlocks(List<SummaryBlockInfo> blocks, MaterialDemand demand, double totalArrival)
+        {
+            var allocations = new Dictionary<int, Dictionary<string, double>>();
+            if (blocks == null || blocks.Count == 0)
+                return allocations;
+
+            double remaining = NormalizeQuantityByUnit(totalArrival, demand?.Unit);
+            foreach (var level in blocks.SelectMany(b => b.Levels).Distinct(StringComparer.CurrentCultureIgnoreCase))
+            {
+                foreach (var block in blocks)
+                {
+                    if (!block.Levels.Contains(level))
+                        continue;
+
+                    double plan = NormalizeQuantityByUnit(GetDemandValue(demand, block.Block, level), demand?.Unit);
+                    double filled = Math.Min(plan, remaining);
+                    if (IsDiscreteUnit(demand?.Unit))
+                        filled = Math.Floor(filled);
+
+                    if (!allocations.ContainsKey(block.Block))
+                        allocations[block.Block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
+
+                    allocations[block.Block][level] = filled;
+                    remaining = NormalizeQuantityByUnit(remaining - filled, demand?.Unit);
+                    if (remaining <= 0)
+                        return allocations;
+                }
+            }
+
+            return allocations;
+        }
+
         private Dictionary<int, Dictionary<string, double>> AllocateArrival(MaterialDemand demand, double totalArrival)
         {
             var allocations = new Dictionary<int, Dictionary<string, double>>();
@@ -6464,7 +8462,7 @@ namespace ConstructionControl
             if (summaryBlocks == null || summaryBlocks.Count == 0)
                 return allocations;
 
-            double remaining = totalArrival;
+            double remaining = NormalizeQuantityByUnit(totalArrival, demand?.Unit);
 
             foreach (var level in summaryBlocks.SelectMany(b => b.Levels).Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
@@ -6473,14 +8471,16 @@ namespace ConstructionControl
                     if (!block.Levels.Contains(level))
                         continue;
 
-                    double plan = GetDemandValue(demand, block.Block, level);
+                    double plan = NormalizeQuantityByUnit(GetDemandValue(demand, block.Block, level), demand?.Unit);
                     double filled = Math.Min(plan, remaining);
+                    if (IsDiscreteUnit(demand?.Unit))
+                        filled = Math.Floor(filled);
 
                     if (!allocations.ContainsKey(block.Block))
                         allocations[block.Block] = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
 
                     allocations[block.Block][level] = filled;
-                    remaining -= filled;
+                    remaining = NormalizeQuantityByUnit(remaining - filled, demand?.Unit);
 
                     if (remaining <= 0)
                         return allocations;
@@ -6516,6 +8516,12 @@ namespace ConstructionControl
             demand.MountedFloors ??= new Dictionary<int, Dictionary<int, double>>();
 
             return demand;
+        }
+
+        private void JvkLayout_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged && JvkTab?.IsSelected == true)
+                RenderJvk();
         }
 
         private double GetDemandValue(MaterialDemand demand, int block, string level)
@@ -6737,7 +8743,7 @@ namespace ConstructionControl
 
 
             var text = tb.Text?.Trim() ?? string.Empty;
-            double value = ParseNumber(text);
+            double value = NormalizeQuantityByUnit(ParseNumber(text), tag.Unit);
 
             var demand = GetOrCreateDemand(tag.DemandKey, tag.Unit);
 
@@ -6875,7 +8881,6 @@ namespace ConstructionControl
             int maxSupplier = filteredJournal.Max(j => j.Supplier?.Length ?? 0);
             int maxTtn = filteredJournal.Max(j => j.Ttn?.Length ?? 0);
 
-            int colDate = 95;
             int colTtn = Math.Max(140, maxTtn * 7);
             int colName = Math.Max(260, maxName * 7);
             int colStb = 90;
@@ -6884,10 +8889,8 @@ namespace ConstructionControl
             int colSupplier = Math.Max(220, maxSupplier * 7);
             int colPassport = Math.Max(260, maxPassport * 7);
 
-
-
-            int maxTotalWidth = (int)System.Math.Max(900, ActualWidth - 180);
-            int total = colDate + colTtn + colName + colStb + colUnit + colQty + colSupplier + colPassport;
+            int maxTotalWidth = (int)Math.Max(900, JvkHeaderBorder?.ActualWidth > 0 ? JvkHeaderBorder.ActualWidth : ActualWidth - 180);
+            int total = colTtn + colName + colStb + colUnit + colQty + colSupplier + colPassport;
 
             if (total > maxTotalWidth)
             {
@@ -6904,6 +8907,14 @@ namespace ConstructionControl
                 shrink(ref colPassport, 0.25);
                 shrink(ref colSupplier, 0.20);
                 shrink(ref colTtn, 0.10);
+            }
+            else if (total < maxTotalWidth)
+            {
+                var extra = maxTotalWidth - total;
+                colName += (int)(extra * 0.45);
+                colPassport += (int)(extra * 0.25);
+                colSupplier += (int)(extra * 0.20);
+                colTtn += (int)(extra * 0.10);
             }
 
             UpdateJvkHeaderColumns(colTtn, colName, colStb, colUnit, colQty, colSupplier, colPassport);
@@ -7059,12 +9070,12 @@ namespace ConstructionControl
                         string qty = x.Quantity > 0 ? x.Quantity.ToString() : "—";
 
                         AddCell(grid, r, 0, ttnVal, bg: bg, align: TextAlignment.Center);
-                        AddCell(grid, r, 1, name, wrap: true, bg: bg);
+                        AddCell(grid, r, 1, name, bg: bg, noWrap: true);
                         AddCell(grid, r, 2, stb, bg: bg, align: TextAlignment.Center);
                         AddCell(grid, r, 3, unit, bg: bg, align: TextAlignment.Center);
                         AddCell(grid, r, 4, qty, bg: bg, align: TextAlignment.Right);
-                        AddCell(grid, r, 5, supplier, wrap: true, bg: bg);
-                        AddCell(grid, r, 6, passport, wrap: true, bg: bg);
+                        AddCell(grid, r, 5, supplier, bg: bg, noWrap: true);
+                        AddCell(grid, r, 6, passport, bg: bg, noWrap: true);
                     }
 
                     columnWidths["Ttn"] = colTtn;
@@ -7219,7 +9230,7 @@ namespace ConstructionControl
                         string passport = string.IsNullOrWhiteSpace(x.Passport) ? "—" : x.Passport;
                         string qty = x.Qty > 0 ? x.Qty.ToString() : "—";
 
-                        AddCell(dayGrid, rowIndex, 1, name, wrap: true, bg: bg);
+                        AddCell(dayGrid, rowIndex, 1, name, bg: bg, noWrap: true);
                         
                         AddCell(dayGrid, rowIndex, 4, qty, bg: bg, align: TextAlignment.Right);
         
@@ -7229,8 +9240,8 @@ namespace ConstructionControl
                     }
                     AddCell(dayGrid, start, 2, stbMerged, rowspan: rows, bg: bg, align: TextAlignment.Center);
                     AddCell(dayGrid, start, 3, unitMerged, rowspan: rows, bg: bg, align: TextAlignment.Center);
-                    AddCell(dayGrid, start, 5, supplierMerged, rowspan: rows, wrap: true, bg: bg);
-                    AddCell(dayGrid, start, 6, passportMerged, rowspan: rows, wrap: true, bg: bg);
+                    AddCell(dayGrid, start, 5, supplierMerged, rowspan: rows, bg: bg, noWrap: true);
+                    AddCell(dayGrid, start, 6, passportMerged, rowspan: rows, bg: bg, noWrap: true);
 
 
                     // пустой отступ между группами

@@ -3,11 +3,13 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ConstructionControl"
+        xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
         Title="Журнал входного контроля"
         Height="700"
         Width="1300"
         Background="#F6F7FB"
-         Loaded="MainWindow_Loaded">
+         Loaded="MainWindow_Loaded"
+        Closed="MainWindow_Closed">
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
@@ -16,6 +18,49 @@
             <Setter Property="MinWidth" Value="118"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+        <Style x:Key="ReminderActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="118"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="BorderBrush" Value="#1D4ED8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                CornerRadius="8"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#1D4ED8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#1E40AF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
                         <Style x:Key="ChipToggle" TargetType="ToggleButton">
             <Setter Property="Padding" Value="8,4"/>
@@ -391,7 +436,7 @@
 
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="MainRootGrid">
         <DockPanel>
 
             <!-- ================= МЕНЮ ================= -->
@@ -666,6 +711,7 @@
                                         <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
                                             <StackPanel Orientation="Horizontal">
                                                 <Button Content="Потребность по отметкам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
+                                                <Button Content="Дозаказать" Style="{StaticResource ModernSummaryActionButton}" Margin="8,0,0,0" Click="OpenReorderWindow_Click"/>
                                                 <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" Style="{StaticResource ModernSummaryModeToggle}" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
                                             </StackPanel>
                                         </Border>
@@ -744,7 +790,8 @@
                                         Background="#F3F4F6"
                                         BorderBrush="#E5E7EB"
                                         BorderThickness="0,0,0,1"
-                                        Padding="0">
+                                        Padding="0"
+                                        SizeChanged="JvkLayout_SizeChanged">
                                     <Grid x:Name="JvkHeaderGrid">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="140"/>
@@ -910,6 +957,9 @@
                                               Visibility="Collapsed"
                                               AutoGenerateColumns="False"
                                               CanUserAddRows="False"
+                                              CanUserResizeColumns="True"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"
                                               GridLinesVisibility="All"
                                               HeadersVisibility="Column"
                                               RowHeaderWidth="0"
@@ -926,9 +976,6 @@
                                                                 Width="95"/>
                                             <DataGridTextColumn Header="Категория"
                                                                 Binding="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
-                                                                Width="110"/>
-                                            <DataGridTextColumn Header="Подтип"
-                                                                Binding="{Binding SubCategory, UpdateSourceTrigger=PropertyChanged}"
                                                                 Width="110"/>
                                             <DataGridTextColumn Header="Тип"
                                                                 Binding="{Binding MaterialGroup, UpdateSourceTrigger=PropertyChanged}"
@@ -1374,6 +1421,12 @@
                                       CanUserDeleteRows="False"
                                       ColumnWidth="Auto"
                                       HeadersVisibility="Column"
+                                      local:DataGridSizingHelper.EnableSmartSizing="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
                                       BeginningEdit="TimesheetGrid_BeginningEdit"
                                       CellEditEnding="TimesheetGrid_CellEditEnding"
                                       RowEditEnding="TimesheetGrid_RowEditEnding"
@@ -1404,10 +1457,9 @@
 
                                         <Grid Grid.Row="0" Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="0.9*"/>
+                                                <ColumnDefinition Width="1.1*"/>
+                                                <ColumnDefinition Width="1.1*"/>
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
@@ -1428,40 +1480,60 @@
                                             <StackPanel Grid.Column="2" Margin="0,0,12,0">
                                                 <TextBlock Text="Чего" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionWorkBox"
-                                                          Tag="Например: ригелей"
+                                                          Tag="Тип элементов, например: ригелей"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
+                                                          SelectionChanged="ProductionWorkBox_SelectionChanged"
+                                                          LostFocus="ProductionWorkBox_LostFocus"
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=ProductionTargets}"/>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="3">
-                                                <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionBrigadeBox"
-                                                          Tag="Какая бригада выполняла"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
                                             </StackPanel>
                                         </Grid>
 
                                         <Grid Grid.Row="1" Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="1.7*"/>
+                                                <ColumnDefinition Width="1.9*"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="1.3*"/>
+                                                <ColumnDefinition Width="1.2*"/>
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                                 <TextBlock Text="Элементы и количество" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionElementsBox"
-                                                          Tag="Например: РОП 4.26-30 - 4 шт"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionElements}"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBox x:Name="ProductionElementsBox"
+                                                             Grid.Column="0"
+                                                             IsReadOnly="True"
+                                                             Tag="Выберите элементы и количество через отдельное окно"
+                                                             VerticalContentAlignment="Center"/>
+
+                                                    <Button Grid.Column="1"
+                                                            Content="Элементы..."
+                                                            Margin="10,0,0,0"
+                                                            MinWidth="118"
+                                                            Click="EditProductionItems_Click"/>
+
+                                                    <Button Grid.Column="2"
+                                                            Content="Автозаполнить"
+                                                            Margin="10,0,0,0"
+                                                            MinWidth="132"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Click="AutoFillProduction_Click"/>
+
+                                                    <Button Grid.Column="3"
+                                                            Content="Настройки"
+                                                            Margin="10,0,0,0"
+                                                            MinWidth="118"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Click="ConfigureProductionAutoFill_Click"/>
+                                                </Grid>
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="1" Margin="0,0,12,0">
@@ -1485,6 +1557,24 @@
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="3">
+                                                <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="ProductionBrigadeBox"
+                                                          Tag="Какая бригада выполняла"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"
+                                                          StaysOpenOnEdit="True"
+                                                          ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="1.8*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                                 <TextBlock Text="Погода" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionWeatherBox"
                                                           Tag="Например: +15, ясно"
@@ -1493,15 +1583,8 @@
                                                           StaysOpenOnEdit="True"
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=ProductionWeatherOptions}"/>
                                             </StackPanel>
-                                        </Grid>
 
-                                        <Grid Grid.Row="2">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="1.8*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
                                                 <TextBlock Text="Отклонения" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <ComboBox x:Name="ProductionDeviationBox"
                                                           Tag="Например: отклонение от осей +3 мм"
@@ -1511,7 +1594,7 @@
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"/>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
                                                 <CheckBox x:Name="ProductionHiddenWorksCheckBox" Content="Нужен акт скрытых работ" Margin="0,0,14,8"/>
                                                 <Button Content="Акт" IsEnabled="False" Style="{StaticResource SecondaryButton}" MinWidth="88" Margin="0,0,10,0"/>
                                                 <Button x:Name="ProductionSaveButton" Content="➕ Добавить" Click="SaveProductionForm_Click" MinWidth="132"/>
@@ -1528,6 +1611,8 @@
                                           CanUserAddRows="False"
                                           CanUserDeleteRows="False"
                                           IsReadOnly="True"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch"
                                           ColumnWidth="Auto"
                                           SelectionChanged="ProductionJournalGrid_SelectionChanged">
                                     <DataGrid.Columns>
@@ -1544,7 +1629,7 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Работа" Width="150">
+                                        <DataGridTemplateColumn Header="Вид работы" Width="150">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding ActionName}"/>
@@ -1561,7 +1646,7 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Что делали" Width="150">
+                                        <DataGridTemplateColumn Header="Чего" Width="150">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding WorkName}"/>
@@ -1578,10 +1663,10 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Элементы и кол-во" Width="240">
+                                        <DataGridTemplateColumn Header="Элементы" Width="240">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding ElementsText}" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding ElementsText}"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1595,7 +1680,7 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Блок" Width="120">
+                                        <DataGridTemplateColumn Header="Блоки" Width="120">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding BlocksText}"/>
@@ -1612,7 +1697,7 @@
                                             </DataGridTemplateColumn.CellEditingTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <DataGridTemplateColumn Header="Отметка" Width="140">
+                                        <DataGridTemplateColumn Header="Отметки" Width="140">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding MarksText}"/>
@@ -1649,7 +1734,7 @@
                                         <DataGridTemplateColumn Header="Погода" Width="180">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Weather}" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Weather}"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -1666,7 +1751,7 @@
                                         <DataGridTemplateColumn Header="Отклонения" Width="240">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Deviations}" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Deviations}"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                             <DataGridTemplateColumn.CellEditingTemplate>
@@ -2111,8 +2196,11 @@
                                                     CornerRadius="12"
                                                     Padding="0"
                                                     Margin="0"
+                                                    SizeChanged="EstimatePreviewContainer_SizeChanged"
                                                     Visibility="Collapsed">
                                                 <Grid>
+                                                    <wfi:WindowsFormsHost x:Name="EstimateExcelHost"
+                                                                          Visibility="Collapsed"/>
                                                     <WebBrowser x:Name="EstimatePreviewBrowser"
                                                                 Visibility="Collapsed"/>
                                                     <Border x:Name="EstimatePreviewPlaceholder"
@@ -2148,25 +2236,5 @@
         </Grid>
         </DockPanel>
         
-        <Border x:Name="OtReminderPopup"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Bottom"
-            Margin="0,0,12,12"
-            Padding="12"
-            CornerRadius="10"
-            Background="#1F2937"
-            Visibility="Collapsed"
-            Panel.ZIndex="999">
-            <StackPanel>
-                <TextBlock Text="Напоминания"
-                       Foreground="White"
-                       FontWeight="SemiBold"/>
-                <TextBlock x:Name="OtReminderText"
-                       Margin="0,4,0,0"
-                       Foreground="#F9FAFB"
-                       TextWrapping="Wrap"
-                       MaxWidth="320"/>
-            </StackPanel>
-        </Border>
     </Grid>
 </Window>
