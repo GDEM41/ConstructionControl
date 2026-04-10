@@ -142,8 +142,11 @@ namespace ConstructionControl
         private WinForms.Panel estimateExcelPanel;
         private object estimateExcelApplication;
         private object estimateExcelWorkbook;
+        private Process estimateSpreadsheetProcess;
         private IntPtr estimateExcelWindowHandle = IntPtr.Zero;
         private string estimateEmbeddedFilePath = string.Empty;
+        private string preferredSpreadsheetEditorPath = string.Empty;
+        private bool useExternalSpreadsheetEditor;
         private bool previewWarmupStarted;
         private string lastSavedStateSnapshot = string.Empty;
         private bool closeConfirmed;
@@ -537,6 +540,7 @@ namespace ConstructionControl
             currentSaveFileName = ResolveDefaultSavePath();
             EnsureReminderOverlayWindow();
             InitializeEstimatePreviewHost();
+            InitializeSpreadsheetEditorPreference();
             SizeChanged += MainWindow_SizeChanged;
             LocationChanged += MainWindow_LocationChanged;
             StateChanged += MainWindow_StateChanged;
@@ -645,6 +649,26 @@ namespace ConstructionControl
             return existing ?? candidates[0];
         }
 
+        private void InitializeSpreadsheetEditorPreference()
+        {
+            preferredSpreadsheetEditorPath = ResolvePlanMakerExecutablePath();
+            useExternalSpreadsheetEditor = !string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath)
+                && File.Exists(preferredSpreadsheetEditorPath);
+        }
+
+        private static string ResolvePlanMakerExecutablePath()
+        {
+            var candidates = new[]
+            {
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\SoftMaker FreeOffice 2024\PlanMaker.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\SoftMaker FreeOffice 2024\PlanMaker.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\SoftMaker FreeOffice 2021\PlanMaker.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\SoftMaker FreeOffice 2021\PlanMaker.exe")
+            };
+
+            return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path)) ?? string.Empty;
+        }
+
         private void StartPreviewWarmupAsync()
         {
             if (previewWarmupStarted)
@@ -659,6 +683,9 @@ namespace ConstructionControl
 
         private void WarmupExcelInterop()
         {
+            if (useExternalSpreadsheetEditor)
+                return;
+
             try
             {
                 _ = EnsureEstimateExcelApplication();
@@ -667,6 +694,112 @@ namespace ConstructionControl
             {
                 // Ignore Excel warmup errors to keep app startup resilient.
             }
+        }
+
+        private bool IsEstimateSpreadsheetProcessAlive()
+        {
+            if (estimateSpreadsheetProcess == null)
+                return false;
+
+            try
+            {
+                return !estimateSpreadsheetProcess.HasExited;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IntPtr WaitForMainWindowHandle(Process process, int timeoutMs)
+        {
+            if (process == null)
+                return IntPtr.Zero;
+
+            var startedAt = Environment.TickCount;
+            while (Environment.TickCount - startedAt < timeoutMs)
+            {
+                try
+                {
+                    process.Refresh();
+                    var handle = process.MainWindowHandle;
+                    if (handle != IntPtr.Zero)
+                        return handle;
+
+                    if (process.HasExited)
+                        return IntPtr.Zero;
+                }
+                catch
+                {
+                    return IntPtr.Zero;
+                }
+
+                Thread.Sleep(80);
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private void ShowEmbeddedEstimateInExternalEditor(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath) || !File.Exists(preferredSpreadsheetEditorPath))
+                throw new InvalidOperationException("PlanMaker не найден. Перезапустите программу после установки редактора.");
+
+            if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
+                && estimateExcelWindowHandle != IntPtr.Zero
+                && IsEstimateSpreadsheetProcessAlive())
+            {
+                EstimateExcelHost.Visibility = Visibility.Visible;
+                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                ScheduleEstimateEmbeddedLayout();
+                return;
+            }
+
+            CloseEstimateWorkbook(saveChanges: false);
+
+            Process process;
+            try
+            {
+                process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = preferredSpreadsheetEditorPath,
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                }) ?? throw new InvalidOperationException("Не удалось запустить PlanMaker.");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Не удалось запустить PlanMaker: {ex.Message}");
+            }
+
+            var handle = WaitForMainWindowHandle(process, timeoutMs: 12000);
+            if (handle == IntPtr.Zero)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill();
+                }
+                catch
+                {
+                    // Ignore process shutdown failures.
+                }
+
+                throw new InvalidOperationException("PlanMaker не предоставил окно для встраивания.");
+            }
+
+            estimateSpreadsheetProcess = process;
+            estimateEmbeddedFilePath = filePath;
+            estimateExcelWindowHandle = handle;
+
+            ConfigureEmbeddedWindow(estimateExcelWindowHandle, estimateExcelPanel.Handle);
+            EstimateExcelHost.Visibility = Visibility.Visible;
+            EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+            EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+            ScheduleEstimateEmbeddedLayout();
         }
 
         private dynamic EnsureEstimateExcelApplication()
@@ -760,6 +893,38 @@ namespace ConstructionControl
 
         private void CloseEstimateWorkbook(bool saveChanges)
         {
+            if (estimateSpreadsheetProcess != null)
+            {
+                try
+                {
+                    if (!estimateSpreadsheetProcess.HasExited)
+                    {
+                        estimateSpreadsheetProcess.CloseMainWindow();
+                        if (!estimateSpreadsheetProcess.WaitForExit(1500))
+                            estimateSpreadsheetProcess.Kill();
+                    }
+                }
+                catch
+                {
+                    // Ignore external spreadsheet shutdown errors.
+                }
+                finally
+                {
+                    try
+                    {
+                        estimateSpreadsheetProcess.Dispose();
+                    }
+                    catch
+                    {
+                        // Ignore process dispose errors.
+                    }
+
+                    estimateSpreadsheetProcess = null;
+                    estimateExcelWindowHandle = IntPtr.Zero;
+                    estimateEmbeddedFilePath = string.Empty;
+                }
+            }
+
             if (estimateExcelWorkbook == null)
                 return;
 
@@ -1487,6 +1652,12 @@ namespace ConstructionControl
             if (EstimateExcelHost == null || estimateExcelPanel == null)
                 throw new InvalidOperationException("Область предпросмотра Excel не готова.");
 
+            if (useExternalSpreadsheetEditor)
+            {
+                ShowEmbeddedEstimateInExternalEditor(filePath);
+                return;
+            }
+
             if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
                 && estimateExcelWindowHandle != IntPtr.Zero)
             {
@@ -1580,7 +1751,7 @@ namespace ConstructionControl
 
             var width = Math.Max(0, estimateExcelPanel.ClientSize.Width);
             var hostHeight = Math.Max(0, estimateExcelPanel.ClientSize.Height);
-            var topTrim = hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
+            var topTrim = !useExternalSpreadsheetEditor && hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
             var height = Math.Max(0, hostHeight + topTrim);
             SetWindowPos(
                 estimateExcelWindowHandle,
