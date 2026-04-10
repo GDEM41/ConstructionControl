@@ -129,6 +129,7 @@ namespace ConstructionControl
         private readonly DispatcherTimer reminderRefreshTimer;
         private readonly DispatcherTimer reminderRefreshDebounceTimer;
         private readonly DispatcherTimer timesheetRebuildDebounceTimer;
+        private readonly DispatcherTimer estimateLayoutGuardTimer;
         private DateTime? reminderSnoozedUntil;
         private bool timesheetNeedsRebuild;
         private bool reminderRefreshRequested;
@@ -536,8 +537,8 @@ namespace ConstructionControl
             currentSaveFileName = ResolveDefaultSavePath();
             EnsureReminderOverlayWindow();
             InitializeEstimatePreviewHost();
-            SizeChanged += (_, _) => UpdateReminderOverlayPlacement();
-            LocationChanged += (_, _) => UpdateReminderOverlayPlacement();
+            SizeChanged += MainWindow_SizeChanged;
+            LocationChanged += MainWindow_LocationChanged;
             StateChanged += MainWindow_StateChanged;
             reminderRefreshTimer = new DispatcherTimer
             {
@@ -556,6 +557,13 @@ namespace ConstructionControl
                 Interval = TimeSpan.FromMilliseconds(120)
             };
             timesheetRebuildDebounceTimer.Tick += TimesheetRebuildDebounceTimer_Tick;
+
+            estimateLayoutGuardTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(650)
+            };
+            estimateLayoutGuardTimer.Tick += EstimateLayoutGuardTimer_Tick;
+            estimateLayoutGuardTimer.Start();
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
@@ -583,6 +591,32 @@ namespace ConstructionControl
             StartPreviewWarmupAsync();
             lastSavedStateSnapshot = BuildCurrentStateJson();
 
+        }
+
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateReminderOverlayPlacement();
+            ScheduleEstimateEmbeddedLayout();
+        }
+
+        private void MainWindow_LocationChanged(object sender, EventArgs e)
+        {
+            UpdateReminderOverlayPlacement();
+            ScheduleEstimateEmbeddedLayout();
+        }
+
+        private void EstimateLayoutGuardTimer_Tick(object sender, EventArgs e)
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero)
+                return;
+
+            if (!ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+                return;
+
+            if (EstimateExcelHost?.Visibility != Visibility.Visible)
+                return;
+
+            LayoutEmbeddedEstimateWindow();
         }
 
         private static string ResolveDefaultSavePath()
@@ -809,6 +843,7 @@ namespace ConstructionControl
             reminderRefreshTimer?.Stop();
             reminderRefreshDebounceTimer?.Stop();
             timesheetRebuildDebounceTimer?.Stop();
+            estimateLayoutGuardTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             DisposeEstimateExcelApplication();
@@ -1458,7 +1493,7 @@ namespace ConstructionControl
                 EstimateExcelHost.Visibility = Visibility.Visible;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
-                LayoutEmbeddedEstimateWindow();
+                ScheduleEstimateEmbeddedLayout();
                 return;
             }
 
@@ -1492,7 +1527,7 @@ namespace ConstructionControl
                 EstimateExcelHost.Visibility = Visibility.Visible;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
-                LayoutEmbeddedEstimateWindow();
+                ScheduleEstimateEmbeddedLayout();
             }
             catch
             {
@@ -1512,6 +1547,30 @@ namespace ConstructionControl
                 EstimateExcelHost.Visibility = Visibility.Collapsed;
 
             CloseEstimateWorkbook(saveChanges: true);
+        }
+
+        private void HideEstimateEmbeddedPreview()
+        {
+            if (EstimateExcelHost != null)
+                EstimateExcelHost.Visibility = Visibility.Collapsed;
+        }
+
+        private void ScheduleEstimateEmbeddedLayout()
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero)
+                return;
+
+            LayoutEmbeddedEstimateWindow();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (estimateExcelWindowHandle != IntPtr.Zero)
+                    LayoutEmbeddedEstimateWindow();
+            }), DispatcherPriority.Render);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (estimateExcelWindowHandle != IntPtr.Zero)
+                    LayoutEmbeddedEstimateWindow();
+            }), DispatcherPriority.ApplicationIdle);
         }
 
         private void LayoutEmbeddedEstimateWindow()
@@ -2025,7 +2084,7 @@ namespace ConstructionControl
             UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
 
             if (!ReferenceEquals(item, EstimateTab))
-                StopEstimateEmbeddedPreview();
+                HideEstimateEmbeddedPreview();
 
             if (item.Header?.ToString() == "Приход")
             {
@@ -2076,7 +2135,10 @@ namespace ConstructionControl
             if (item.Header?.ToString() == "Осмотры")
                 RefreshInspectionJournalState();
             if (ReferenceEquals(item, EstimateTab))
+            {
                 UpdateEstimateSelectionInfo();
+                ScheduleEstimateEmbeddedLayout();
+            }
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
