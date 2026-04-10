@@ -184,6 +184,18 @@ namespace ConstructionControl
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
         [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
         private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
 
@@ -726,6 +738,10 @@ namespace ConstructionControl
                     if (handle != IntPtr.Zero)
                         return handle;
 
+                    handle = FindTopLevelWindowForProcess(process.Id);
+                    if (handle != IntPtr.Zero)
+                        return handle;
+
                     if (process.HasExited)
                         return IntPtr.Zero;
                 }
@@ -738,6 +754,25 @@ namespace ConstructionControl
             }
 
             return IntPtr.Zero;
+        }
+
+        private static IntPtr FindTopLevelWindowForProcess(int processId)
+        {
+            IntPtr found = IntPtr.Zero;
+            EnumWindows((hWnd, lParam) =>
+            {
+                GetWindowThreadProcessId(hWnd, out var ownerPid);
+                if (ownerPid != (uint)processId)
+                    return true;
+
+                if (!IsWindowVisible(hWnd))
+                    return true;
+
+                found = hWnd;
+                return false;
+            }, IntPtr.Zero);
+
+            return found;
         }
 
         private void ShowEmbeddedEstimateInExternalEditor(string filePath)
@@ -1654,8 +1689,15 @@ namespace ConstructionControl
 
             if (useExternalSpreadsheetEditor)
             {
-                ShowEmbeddedEstimateInExternalEditor(filePath);
-                return;
+                try
+                {
+                    ShowEmbeddedEstimateInExternalEditor(filePath);
+                    return;
+                }
+                catch
+                {
+                    useExternalSpreadsheetEditor = false;
+                }
             }
 
             if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
