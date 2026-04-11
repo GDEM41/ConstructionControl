@@ -17,6 +17,9 @@ namespace ConstructionControl
             ReminderSnoozeMinutesBox.Text = settings.ReminderSnoozeMinutes > 0
                 ? settings.ReminderSnoozeMinutes.ToString()
                 : "15";
+            AutoSaveIntervalMinutesBox.Text = settings.AutoSaveIntervalMinutes > 0
+                ? settings.AutoSaveIntervalMinutes.ToString()
+                : "5";
             HideReminderDetailsCheckBox.IsChecked = settings.HideReminderDetails;
         }
 
@@ -31,12 +34,21 @@ namespace ConstructionControl
             if (snoozeMinutes > 240)
                 snoozeMinutes = 240;
 
+            var autoSaveMinutes = int.TryParse(AutoSaveIntervalMinutesBox.Text?.Trim(), out var parsedAutoSaveMinutes)
+                ? parsedAutoSaveMinutes
+                : 5;
+            if (autoSaveMinutes < 1)
+                autoSaveMinutes = 1;
+            if (autoSaveMinutes > 240)
+                autoSaveMinutes = 240;
+
             ResultSettings = new ProjectUiSettings
             {
                 DisableTree = DisableTreeCheckBox.IsChecked == true,
                 PinTreeByDefault = DisableTreeCheckBox.IsChecked == true ? false : PinTreeCheckBox.IsChecked == true,
                 ShowReminderPopup = ReminderPopupCheckBox.IsChecked != false,
                 ReminderSnoozeMinutes = snoozeMinutes,
+                AutoSaveIntervalMinutes = autoSaveMinutes,
                 HideReminderDetails = HideReminderDetailsCheckBox.IsChecked == true
             };
 

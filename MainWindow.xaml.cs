@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -130,6 +131,7 @@ namespace ConstructionControl
         private readonly DispatcherTimer reminderRefreshDebounceTimer;
         private readonly DispatcherTimer timesheetRebuildDebounceTimer;
         private readonly DispatcherTimer estimateLayoutGuardTimer;
+        private readonly DispatcherTimer autoSaveTimer;
         private DateTime? reminderSnoozedUntil;
         private bool timesheetNeedsRebuild;
         private bool reminderRefreshRequested;
@@ -580,6 +582,12 @@ namespace ConstructionControl
             };
             estimateLayoutGuardTimer.Tick += EstimateLayoutGuardTimer_Tick;
             estimateLayoutGuardTimer.Start();
+            autoSaveTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(5)
+            };
+            autoSaveTimer.Tick += AutoSaveTimer_Tick;
+            autoSaveTimer.Start();
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
@@ -647,6 +655,10 @@ namespace ConstructionControl
                     list.Add(full);
             }
 
+            var persistentPath = GetPersistentDefaultSavePath();
+            if (File.Exists(persistentPath))
+                return persistentPath;
+
             var candidates = new List<string>();
             AddCandidate(candidates, System.IO.Path.Combine(Environment.CurrentDirectory, DefaultSaveFileName));
             AddCandidate(candidates, System.IO.Path.Combine(AppContext.BaseDirectory, DefaultSaveFileName));
@@ -658,7 +670,52 @@ namespace ConstructionControl
             }
 
             var existing = candidates.FirstOrDefault(File.Exists);
-            return existing ?? candidates[0];
+            if (string.IsNullOrWhiteSpace(existing))
+                return persistentPath;
+
+            try
+            {
+                var persistentFolder = System.IO.Path.GetDirectoryName(persistentPath);
+                if (!string.IsNullOrWhiteSpace(persistentFolder))
+                    Directory.CreateDirectory(persistentFolder);
+
+                File.Copy(existing, persistentPath, overwrite: false);
+                CopyDirectorySafe(BuildStorageRootPath(existing), BuildStorageRootPath(persistentPath));
+                return persistentPath;
+            }
+            catch
+            {
+                return existing;
+            }
+        }
+
+        private static string GetPersistentDefaultSavePath()
+        {
+            var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appFolder = System.IO.Path.Combine(appDataFolder, "ConstructionControl");
+            Directory.CreateDirectory(appFolder);
+            return System.IO.Path.Combine(appFolder, DefaultSaveFileName);
+        }
+
+        private static void CopyDirectorySafe(string sourceRoot, string targetRoot)
+        {
+            if (string.IsNullOrWhiteSpace(sourceRoot) || string.IsNullOrWhiteSpace(targetRoot))
+                return;
+
+            if (!Directory.Exists(sourceRoot))
+                return;
+
+            Directory.CreateDirectory(targetRoot);
+            foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            {
+                var relative = System.IO.Path.GetRelativePath(sourceRoot, sourceFile);
+                var targetFile = System.IO.Path.Combine(targetRoot, relative);
+                var targetFolder = System.IO.Path.GetDirectoryName(targetFile);
+                if (!string.IsNullOrWhiteSpace(targetFolder))
+                    Directory.CreateDirectory(targetFolder);
+
+                File.Copy(sourceFile, targetFile, overwrite: true);
+            }
         }
 
         private void InitializeSpreadsheetEditorPreference()
@@ -801,8 +858,8 @@ namespace ConstructionControl
                     FileName = preferredSpreadsheetEditorPath,
                     Arguments = $"\"{filePath}\"",
                     UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 }) ?? throw new InvalidOperationException("Не удалось запустить PlanMaker.");
             }
             catch (Exception ex)
@@ -810,7 +867,16 @@ namespace ConstructionControl
                 throw new InvalidOperationException($"Не удалось запустить PlanMaker: {ex.Message}");
             }
 
-            var handle = WaitForMainWindowHandle(process, timeoutMs: 12000);
+            try
+            {
+                process.WaitForInputIdle(5000);
+            }
+            catch
+            {
+                // Some builds of external editors may not support this call.
+            }
+
+            var handle = WaitForMainWindowHandle(process, timeoutMs: 25000);
             if (handle == IntPtr.Zero)
             {
                 try
@@ -1044,6 +1110,7 @@ namespace ConstructionControl
             reminderRefreshDebounceTimer?.Stop();
             timesheetRebuildDebounceTimer?.Stop();
             estimateLayoutGuardTimer?.Stop();
+            autoSaveTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             DisposeEstimateExcelApplication();
@@ -1057,6 +1124,11 @@ namespace ConstructionControl
         private void ReminderRefreshTimer_Tick(object sender, EventArgs e)
         {
             RequestReminderRefresh();
+        }
+
+        private void AutoSaveTimer_Tick(object sender, EventArgs e)
+        {
+            TryAutoSaveState();
         }
 
         private void ReminderRefreshDebounceTimer_Tick(object sender, EventArgs e)
@@ -1172,7 +1244,14 @@ namespace ConstructionControl
                 {
                     var relative = TryBuildStoredRelativePath(node.FilePath, isPdfLibrary);
                     if (!string.IsNullOrWhiteSpace(relative))
+                    {
                         node.StoredRelativePath = relative;
+                    }
+                    else if (TryCopyDocumentToStorage(node.FilePath, isPdfLibrary, out var copiedPath, out var copiedRelativePath))
+                    {
+                        node.FilePath = copiedPath;
+                        node.StoredRelativePath = copiedRelativePath;
+                    }
                 }
 
                 var resolved = ResolveDocumentPath(node);
@@ -1462,6 +1541,22 @@ namespace ConstructionControl
         private void PdfPinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(PdfTab);
         private void EstimatePinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(EstimateTab);
 
+        private void PdfActionsMenuButton_Click(object sender, RoutedEventArgs e)
+            => OpenInlineActionsMenu(sender as FrameworkElement);
+
+        private void EstimateActionsMenuButton_Click(object sender, RoutedEventArgs e)
+            => OpenInlineActionsMenu(sender as FrameworkElement);
+
+        private static void OpenInlineActionsMenu(FrameworkElement sourceElement)
+        {
+            if (sourceElement?.ContextMenu == null)
+                return;
+
+            sourceElement.ContextMenu.PlacementTarget = sourceElement;
+            sourceElement.ContextMenu.Placement = PlacementMode.Bottom;
+            sourceElement.ContextMenu.IsOpen = true;
+        }
+
         private void UpdatePdfSelectionInfo()
         {
             UpdateDocumentSelectionInfo(selectedPdfNode, PdfSelectedNameText, PdfSelectedPathText, PdfSelectedTypeText);
@@ -1548,7 +1643,7 @@ namespace ConstructionControl
                 StopEstimateEmbeddedPreview();
                 EstimateInfoPanel.Visibility = Visibility.Visible;
                 EstimatePreviewContainer.Visibility = Visibility.Collapsed;
-                ShowEstimatePreviewPlaceholder($"Не удалось открыть Excel-предпросмотр: {ex.Message}");
+                ShowEstimatePreviewPlaceholder($"Не удалось открыть предпросмотр сметы: {ex.Message}");
             }
         }
 
@@ -1689,15 +1784,8 @@ namespace ConstructionControl
 
             if (useExternalSpreadsheetEditor)
             {
-                try
-                {
-                    ShowEmbeddedEstimateInExternalEditor(filePath);
-                    return;
-                }
-                catch
-                {
-                    useExternalSpreadsheetEditor = false;
-                }
+                ShowEmbeddedEstimateInExternalEditor(filePath);
+                return;
             }
 
             if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
@@ -1977,9 +2065,12 @@ namespace ConstructionControl
             var copyFailedFiles = new List<string>();
             foreach (var file in dialog.FileNames.Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
-                TryCopyDocumentToStorage(file, refreshPdf, out var storedPath, out var storedRelativePath);
-                if (string.IsNullOrWhiteSpace(storedRelativePath))
+                if (!TryCopyDocumentToStorage(file, refreshPdf, out var storedPath, out var storedRelativePath)
+                    || string.IsNullOrWhiteSpace(storedRelativePath))
+                {
                     copyFailedFiles.Add(file);
+                    continue;
+                }
 
                 targetCollection.Add(new DocumentTreeNode
                 {
@@ -2001,7 +2092,7 @@ namespace ConstructionControl
             if (copyFailedFiles.Count > 0)
             {
                 MessageBox.Show(
-                    "Часть файлов не удалось скопировать во внутреннее хранилище проекта. Они добавлены по внешнему пути и могут быть недоступны после переноса проекта.",
+                    "Часть файлов не удалось скопировать во внутреннее хранилище проекта. Эти файлы не были добавлены.",
                     "Внимание",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -8218,6 +8309,41 @@ namespace ConstructionControl
 
         // ================= СОХРАНЕНИЕ =================
 
+        private void UpdateAutoSaveTimerInterval()
+        {
+            int minutes = 5;
+            if (currentObject?.UiSettings != null)
+                minutes = currentObject.UiSettings.AutoSaveIntervalMinutes;
+
+            if (minutes < 1)
+                minutes = 1;
+            if (minutes > 240)
+                minutes = 240;
+
+            autoSaveTimer.Interval = TimeSpan.FromMinutes(minutes);
+            if (!autoSaveTimer.IsEnabled)
+                autoSaveTimer.Start();
+        }
+
+        private void TryAutoSaveState()
+        {
+            if (currentObject == null || string.IsNullOrWhiteSpace(currentSaveFileName))
+                return;
+
+            try
+            {
+                var snapshot = BuildCurrentStateJson();
+                if (string.Equals(snapshot, lastSavedStateSnapshot, StringComparison.Ordinal))
+                    return;
+
+                SaveState();
+            }
+            catch
+            {
+                // Автосохранение не должно прерывать работу пользователя всплывающими ошибками.
+            }
+        }
+
         private void SaveState()
         {
             var json = BuildCurrentStateJson();
@@ -8738,8 +8864,23 @@ namespace ConstructionControl
                 return;
 
             var state = new AppState { CurrentObject = currentObject, Journal = journal };
-            File.WriteAllText(dlg.FileName, JsonSerializer.Serialize(state));
-            MessageBox.Show("Резервная копия сохранена.");
+            var stateJson = JsonSerializer.Serialize(state);
+            var exportedStorageFiles = 0;
+
+            using (var stream = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                var stateEntry = archive.CreateEntry("state.json", CompressionLevel.Optimal);
+                using (var entryStream = stateEntry.Open())
+                using (var writer = new StreamWriter(entryStream))
+                {
+                    writer.Write(stateJson);
+                }
+
+                exportedStorageFiles = ExportProjectStorageToArchive(archive);
+            }
+
+            MessageBox.Show($"Резервная копия сохранена. В архив добавлено файлов ПДФ/смет: {exportedStorageFiles}.");
         }
 
         private void ImportAllData_Click(object sender, RoutedEventArgs e)
@@ -8753,9 +8894,17 @@ namespace ConstructionControl
             if (dlg.ShowDialog() != true)
                 return;
 
-            var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(dlg.FileName));
-            if (state == null)
+            if (!TryLoadBackupState(dlg.FileName, out var state, out var restoredStorageFiles, out var importError) || state == null)
+            {
+                MessageBox.Show(
+                    string.IsNullOrWhiteSpace(importError)
+                        ? "Не удалось импортировать резервную копию."
+                        : importError,
+                    "Ошибка импорта",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
                 return;
+            }
 
             PushUndo();
             RestoreState(state);
@@ -8766,7 +8915,161 @@ namespace ConstructionControl
               RefreshArrivalNames();
               RefreshDocumentLibraries();
               ApplyAllFilters();
+
+              MessageBox.Show($"Импорт завершен. Восстановлено файлов ПДФ/смет: {restoredStorageFiles}.", "Импорт", MessageBoxButton.OK, MessageBoxImage.Information);
           }
+
+        private int ExportProjectStorageToArchive(ZipArchive archive)
+        {
+            var storageRoot = GetProjectStorageRoot(createIfMissing: false);
+            if (string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
+                return 0;
+
+            var exported = 0;
+            foreach (var sourceFile in Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories))
+            {
+                var relativePath = System.IO.Path.GetRelativePath(storageRoot, sourceFile).Replace('\\', '/');
+                var entry = archive.CreateEntry($"storage/{relativePath}", CompressionLevel.Optimal);
+                using var input = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var output = entry.Open();
+                input.CopyTo(output);
+                exported++;
+            }
+
+            return exported;
+        }
+
+        private bool TryLoadBackupState(string backupPath, out AppState? state, out int restoredStorageFiles, out string errorMessage)
+        {
+            state = null;
+            restoredStorageFiles = 0;
+            errorMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(backupPath) || !File.Exists(backupPath))
+            {
+                errorMessage = "Файл резервной копии не найден.";
+                return false;
+            }
+
+            var extension = System.IO.Path.GetExtension(backupPath)?.ToLowerInvariant() ?? string.Empty;
+            if (extension == ".ccbak")
+            {
+                try
+                {
+                    using var stream = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+
+                    var stateEntry = archive.GetEntry("state.json")
+                        ?? archive.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+                    if (stateEntry == null)
+                    {
+                        errorMessage = "В резервной копии не найден файл состояния state.json.";
+                        return false;
+                    }
+
+                    string json;
+                    using (var stateStream = stateEntry.Open())
+                    using (var reader = new StreamReader(stateStream))
+                    {
+                        json = reader.ReadToEnd();
+                    }
+
+                    state = JsonSerializer.Deserialize<AppState>(json);
+                    if (state == null)
+                    {
+                        errorMessage = "Файл состояния в резервной копии имеет неверный формат.";
+                        return false;
+                    }
+
+                    restoredStorageFiles = ImportProjectStorageFromArchive(archive);
+                    return true;
+                }
+                catch (InvalidDataException)
+                {
+                    // Старый формат .ccbak был обычным JSON-файлом.
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = $"Ошибка чтения резервной копии: {ex.Message}";
+                    return false;
+                }
+            }
+
+            try
+            {
+                state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(backupPath));
+                if (state == null)
+                {
+                    errorMessage = "Файл резервной копии имеет неверный формат.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Ошибка чтения резервной копии: {ex.Message}";
+                return false;
+            }
+        }
+
+        private int ImportProjectStorageFromArchive(ZipArchive archive)
+        {
+            var storageEntries = archive.Entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Name)
+                    && entry.FullName.StartsWith("storage/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (storageEntries.Count == 0)
+                return 0;
+
+            var storageRoot = GetProjectStorageRoot(createIfMissing: true);
+            if (string.IsNullOrWhiteSpace(storageRoot))
+                return 0;
+
+            var fullRoot = System.IO.Path.GetFullPath(storageRoot);
+            if (Directory.Exists(fullRoot))
+            {
+                foreach (var directory in Directory.EnumerateDirectories(fullRoot))
+                    Directory.Delete(directory, recursive: true);
+                foreach (var file in Directory.EnumerateFiles(fullRoot))
+                    File.Delete(file);
+            }
+            else
+            {
+                Directory.CreateDirectory(fullRoot);
+            }
+
+            var restored = 0;
+            foreach (var entry in storageEntries)
+            {
+                var relative = entry.FullName.Substring("storage/".Length).TrimStart('/', '\\');
+                if (string.IsNullOrWhiteSpace(relative))
+                    continue;
+
+                var normalizedRelative = relative.Replace('/', System.IO.Path.DirectorySeparatorChar);
+                var targetPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(fullRoot, normalizedRelative));
+                var fullRootPrefix = fullRoot.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                    ? fullRoot
+                    : fullRoot + System.IO.Path.DirectorySeparatorChar;
+
+                if (!targetPath.StartsWith(fullRootPrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var targetDirectory = System.IO.Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrWhiteSpace(targetDirectory))
+                    Directory.CreateDirectory(targetDirectory);
+
+                using var input = entry.Open();
+                using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                input.CopyTo(output);
+                restored++;
+            }
+
+            return restored;
+        }
+
         private void LockToggle_Checked(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
@@ -10119,11 +10422,15 @@ namespace ConstructionControl
 
             if (currentObject?.UiSettings != null && currentObject.UiSettings.ReminderSnoozeMinutes <= 0)
                 currentObject.UiSettings.ReminderSnoozeMinutes = 15;
+
+            if (currentObject?.UiSettings != null && currentObject.UiSettings.AutoSaveIntervalMinutes <= 0)
+                currentObject.UiSettings.AutoSaveIntervalMinutes = 5;
         }
 
         private void ApplyProjectUiSettings()
         {
             EnsureProjectUiSettings();
+            UpdateAutoSaveTimerInterval();
 
             if (currentObject?.UiSettings == null)
             {

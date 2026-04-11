@@ -90,6 +90,7 @@ namespace ConstructionControl
         public bool PinTreeByDefault { get; set; }
         public bool ShowReminderPopup { get; set; } = true;
         public int ReminderSnoozeMinutes { get; set; } = 15;
+        public int AutoSaveIntervalMinutes { get; set; } = 5;
         public bool HideReminderDetails { get; set; }
     }
 

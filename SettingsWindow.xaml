@@ -77,10 +77,31 @@
                                    Foreground="{StaticResource TextBrush}"/>
                         <TextBox x:Name="ReminderSnoozeMinutesBox"
                                  Grid.Column="1"
-                                 Height="34"
-                                 HorizontalContentAlignment="Center"
+                                 Height="40"
+                                 Padding="8,2"
+                                 FontSize="14"
+                                 TextAlignment="Center"
                                  VerticalContentAlignment="Center"
                                  Text="15"/>
+                    </Grid>
+
+                    <Grid Margin="0,2,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="120"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Автосохранение каждые (мин)"
+                                   VerticalAlignment="Center"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"/>
+                        <TextBox x:Name="AutoSaveIntervalMinutesBox"
+                                 Grid.Column="1"
+                                 Height="40"
+                                 Padding="8,2"
+                                 FontSize="14"
+                                 TextAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 Text="5"/>
                     </Grid>
 
                     <CheckBox x:Name="HideReminderDetailsCheckBox" FontWeight="SemiBold">

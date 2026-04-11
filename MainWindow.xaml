@@ -1511,7 +1511,6 @@
                                                 <TextBlock Text="Элементы и количество" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
@@ -1521,22 +1520,26 @@
                                                              Grid.Column="0"
                                                              IsReadOnly="True"
                                                              Tag="Выберите элементы и количество через отдельное окно"
-                                                             VerticalContentAlignment="Center"/>
+                                                             VerticalContentAlignment="Center"
+                                                             Visibility="Collapsed"
+                                                             Width="0"
+                                                             Height="0"
+                                                             Margin="0"/>
 
-                                                    <Button Grid.Column="1"
+                                                    <Button Grid.Column="0"
                                                             Content="Элементы..."
-                                                            Margin="10,0,0,0"
+                                                            Margin="0"
                                                             MinWidth="118"
                                                             Click="EditProductionItems_Click"/>
 
-                                                    <Button Grid.Column="2"
+                                                    <Button Grid.Column="1"
                                                             Content="Автозаполнить"
                                                             Margin="10,0,0,0"
                                                             MinWidth="132"
                                                             Style="{StaticResource SecondaryButton}"
                                                             Click="AutoFillProduction_Click"/>
 
-                                                    <Button Grid.Column="3"
+                                                    <Button Grid.Column="2"
                                                             Content="Настройки"
                                                             Margin="10,0,0,0"
                                                             MinWidth="118"
@@ -1945,36 +1948,10 @@
                         <TabItem x:Name="PdfTab" Header="ПДФ" Style="{StaticResource HiddenPinnedTabItemStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
-                                    <WrapPanel>
-                                        <Button Content="Выбрать PDF"
-                                                Click="AddPdfFiles_Click"/>
-                                        <Button Content="Новая папка"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="AddPdfFolder_Click"/>
-                                        <Button Content="Переименовать"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="RenamePdfNode_Click"/>
-                                        <Button Content="Удалить"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="DeletePdfNode_Click"/>
-                                        <Button Content="Вверх"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="MovePdfNodeUp_Click"/>
-                                        <Button Content="Вниз"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="MovePdfNodeDown_Click"/>
-                                        <Button Content="Открыть"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="OpenPdfNode_Click"/>
-                                    </WrapPanel>
-                                </Border>
-
-                                <Grid Grid.Row="1">
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition x:Name="PdfTreeHoverColumn" Width="28"/>
                                         <ColumnDefinition x:Name="PdfTreeColumn" Width="320"/>
@@ -2015,15 +1992,48 @@
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <ToggleButton x:Name="PdfTreePinToggle"
-                                                          Width="24"
-                                                          Height="24"
-                                                          HorizontalAlignment="Right"
-                                                          VerticalAlignment="Top"
-                                                          Margin="0,0,0,6"
-                                                          ToolTip="Закрепить дерево PDF"
-                                                          Checked="PdfTreePinToggle_Checked"
-                                                          Unchecked="PdfTreePinToggle_Unchecked">📎</ToggleButton>
+                                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button Grid.Column="0"
+                                                        Content="⋯"
+                                                        Width="32"
+                                                        Height="24"
+                                                        Padding="0"
+                                                        FontSize="16"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        ToolTip="Действия с PDF"
+                                                        Click="PdfActionsMenuButton_Click">
+                                                    <Button.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Выбрать PDF" Click="AddPdfFiles_Click"/>
+                                                            <MenuItem Header="Новая папка" Click="AddPdfFolder_Click"/>
+                                                            <MenuItem Header="Переименовать" Click="RenamePdfNode_Click"/>
+                                                            <MenuItem Header="Удалить" Click="DeletePdfNode_Click"/>
+                                                            <Separator/>
+                                                            <MenuItem Header="Вверх" Click="MovePdfNodeUp_Click"/>
+                                                            <MenuItem Header="Вниз" Click="MovePdfNodeDown_Click"/>
+                                                            <Separator/>
+                                                            <MenuItem Header="Открыть" Click="OpenPdfNode_Click"/>
+                                                        </ContextMenu>
+                                                    </Button.ContextMenu>
+                                                </Button>
+
+                                                <ToggleButton x:Name="PdfTreePinToggle"
+                                                              Grid.Column="2"
+                                                              Width="24"
+                                                              Height="24"
+                                                              HorizontalAlignment="Right"
+                                                              VerticalAlignment="Top"
+                                                              Margin="0"
+                                                              ToolTip="Закрепить дерево PDF"
+                                                              Checked="PdfTreePinToggle_Checked"
+                                                              Unchecked="PdfTreePinToggle_Unchecked">📎</ToggleButton>
+                                            </Grid>
 
                                             <TreeView x:Name="PdfTreeView"
                                                       Grid.Row="1"
@@ -2111,36 +2121,10 @@
                         <TabItem x:Name="EstimateTab" Header="Сметы" Style="{StaticResource HiddenPinnedTabItemStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
-                                    <WrapPanel>
-                                        <Button Content="Выбрать сметы"
-                                                Click="AddEstimateFiles_Click"/>
-                                        <Button Content="Новая папка"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="AddEstimateFolder_Click"/>
-                                        <Button Content="Переименовать"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="RenameEstimateNode_Click"/>
-                                        <Button Content="Удалить"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="DeleteEstimateNode_Click"/>
-                                        <Button Content="Вверх"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="MoveEstimateNodeUp_Click"/>
-                                        <Button Content="Вниз"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="MoveEstimateNodeDown_Click"/>
-                                        <Button Content="Открыть"
-                                                Style="{StaticResource SecondaryButton}"
-                                                Click="OpenEstimateNode_Click"/>
-                                    </WrapPanel>
-                                </Border>
-
-                                <Grid Grid.Row="1">
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition x:Name="EstimateTreeHoverColumn" Width="28"/>
                                         <ColumnDefinition x:Name="EstimateTreeColumn" Width="320"/>
@@ -2181,15 +2165,48 @@
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <ToggleButton x:Name="EstimateTreePinToggle"
-                                                          Width="24"
-                                                          Height="24"
-                                                          HorizontalAlignment="Right"
-                                                          VerticalAlignment="Top"
-                                                          Margin="0,0,0,6"
-                                                          ToolTip="Закрепить дерево смет"
-                                                          Checked="EstimateTreePinToggle_Checked"
-                                                          Unchecked="EstimateTreePinToggle_Unchecked">📎</ToggleButton>
+                                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button Grid.Column="0"
+                                                        Content="⋯"
+                                                        Width="32"
+                                                        Height="24"
+                                                        Padding="0"
+                                                        FontSize="16"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        ToolTip="Действия со сметами"
+                                                        Click="EstimateActionsMenuButton_Click">
+                                                    <Button.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Выбрать сметы" Click="AddEstimateFiles_Click"/>
+                                                            <MenuItem Header="Новая папка" Click="AddEstimateFolder_Click"/>
+                                                            <MenuItem Header="Переименовать" Click="RenameEstimateNode_Click"/>
+                                                            <MenuItem Header="Удалить" Click="DeleteEstimateNode_Click"/>
+                                                            <Separator/>
+                                                            <MenuItem Header="Вверх" Click="MoveEstimateNodeUp_Click"/>
+                                                            <MenuItem Header="Вниз" Click="MoveEstimateNodeDown_Click"/>
+                                                            <Separator/>
+                                                            <MenuItem Header="Открыть" Click="OpenEstimateNode_Click"/>
+                                                        </ContextMenu>
+                                                    </Button.ContextMenu>
+                                                </Button>
+
+                                                <ToggleButton x:Name="EstimateTreePinToggle"
+                                                              Grid.Column="2"
+                                                              Width="24"
+                                                              Height="24"
+                                                              HorizontalAlignment="Right"
+                                                              VerticalAlignment="Top"
+                                                              Margin="0"
+                                                              ToolTip="Закрепить дерево смет"
+                                                              Checked="EstimateTreePinToggle_Checked"
+                                                              Unchecked="EstimateTreePinToggle_Unchecked">📎</ToggleButton>
+                                            </Grid>
 
                                             <TreeView x:Name="EstimateTreeView"
                                                       Grid.Row="1"
