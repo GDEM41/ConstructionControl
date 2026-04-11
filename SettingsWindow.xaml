@@ -66,6 +66,14 @@
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"/>
 
+                    <CheckBox x:Name="SafeStartupModeCheckBox" FontWeight="SemiBold">
+                        <TextBlock Text="Безопасный старт (минимальная нагрузка)" TextWrapping="Wrap"/>
+                    </CheckBox>
+                    <TextBlock Text="Отключает предзагрузку тяжелых предпросмотров и включает загрузку вкладок по требованию."
+                               Margin="28,4,0,12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+
                     <Grid Margin="0,2,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

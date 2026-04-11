@@ -10,8 +10,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -152,6 +156,59 @@ namespace ConstructionControl
         private bool previewWarmupStarted;
         private string lastSavedStateSnapshot = string.Empty;
         private bool closeConfirmed;
+        private FileStream projectLockStream;
+        private string projectLockFilePath = string.Empty;
+        private string sessionMarkerFilePath = string.Empty;
+        private bool previousSessionCrashed;
+        private const int MaxAutoBackupFiles = 20;
+        private const int MaxChangeLogEntries = 5000;
+        private const int MaxSummaryMatrixCacheEntries = 16;
+        private bool timesheetInitialized;
+        private bool productionJournalInitialized;
+        private bool inspectionJournalInitialized;
+        private bool productionLookupsDirty = true;
+        private bool inspectionLookupsDirty = true;
+        private bool productionStateDirty = true;
+        private bool inspectionStateDirty = true;
+        private int summaryDataVersion = 1;
+        private readonly Dictionary<string, SummaryMatrixCacheEntry> summaryMatrixCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, TimeSpan> tabOpenDiagnostics = new(StringComparer.CurrentCultureIgnoreCase);
+        private readonly DispatcherTimer arrivalFilterDebounceTimer;
+        private readonly DispatcherTimer otSearchDebounceTimer;
+        private readonly DispatcherTimer summaryRefreshDebounceTimer;
+        private bool arrivalFilterRefreshRequested;
+        private bool otSearchRefreshRequested;
+        private bool summaryRefreshRequested;
+        private int summaryRefreshRequestVersion;
+        private int processingOverlayDepth;
+        private readonly DispatcherTimer processingOverlayDelayTimer;
+        private string processingOverlayPendingText = "Идет обработка...";
+
+        private sealed class SummaryMatrixCacheEntry
+        {
+            public List<SummaryMatrixGroupData> Groups { get; set; } = new();
+        }
+
+        private sealed class SummaryMatrixGroupData
+        {
+            public string GroupName { get; set; } = string.Empty;
+            public List<SummaryMatrixRowData> Rows { get; set; } = new();
+        }
+
+        private sealed class SummaryMatrixRowData
+        {
+            public string MaterialName { get; set; } = string.Empty;
+            public string Unit { get; set; } = string.Empty;
+            public string Position { get; set; } = string.Empty;
+            public double TotalArrival { get; set; }
+        }
+
+        private enum SaveTrigger
+        {
+            Manual,
+            Auto,
+            System
+        }
 
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;
@@ -552,8 +609,6 @@ namespace ConstructionControl
         {
             InitializeComponent();
             currentSaveFileName = ResolveDefaultSavePath();
-            EnsureReminderOverlayWindow();
-            InitializeEstimatePreviewHost();
             InitializeSpreadsheetEditorPreference();
             SizeChanged += MainWindow_SizeChanged;
             LocationChanged += MainWindow_LocationChanged;
@@ -582,6 +637,26 @@ namespace ConstructionControl
             };
             estimateLayoutGuardTimer.Tick += EstimateLayoutGuardTimer_Tick;
             estimateLayoutGuardTimer.Start();
+            arrivalFilterDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(220)
+            };
+            arrivalFilterDebounceTimer.Tick += ArrivalFilterDebounceTimer_Tick;
+            otSearchDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(180)
+            };
+            otSearchDebounceTimer.Tick += OtSearchDebounceTimer_Tick;
+            summaryRefreshDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(220)
+            };
+            summaryRefreshDebounceTimer.Tick += SummaryRefreshDebounceTimer_Tick;
+            processingOverlayDelayTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(120)
+            };
+            processingOverlayDelayTimer.Tick += ProcessingOverlayDelayTimer_Tick;
             autoSaveTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromMinutes(5)
@@ -591,11 +666,19 @@ namespace ConstructionControl
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
+            if (!TryAcquireProjectLock(currentSaveFileName))
+            {
+                closeConfirmed = true;
+                Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.ApplicationIdle);
+                return;
+            }
+
+            previousSessionCrashed = CheckIfPreviousSessionCrashed(currentSaveFileName, out var markerPath);
+            TryRecoverFromCrashIfNeeded(previousSessionCrashed);
+            WriteSessionMarker(markerPath);
+
             LoadState();
             InitializeOtJournal();
-            InitializeTimesheet();
-            InitializeProductionJournal();
-            InitializeInspectionJournal();
             filteredJournal = journal.ToList();
 
             ArrivalPanel.ArrivalAdded += OnArrivalAdded;
@@ -612,8 +695,8 @@ namespace ConstructionControl
 
             RefreshTreePreserveState();
             ApplyProjectUiSettings();
-            StartPreviewWarmupAsync();
-            lastSavedStateSnapshot = BuildCurrentStateJson();
+            EnsureSelectedTabInitialized();
+            lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
 
         }
 
@@ -718,6 +801,191 @@ namespace ConstructionControl
             }
         }
 
+        private static string BuildProjectInstanceKey(string saveFileName)
+        {
+            var normalized = string.IsNullOrWhiteSpace(saveFileName)
+                ? DefaultSaveFileName
+                : System.IO.Path.GetFullPath(saveFileName).Trim().ToLowerInvariant();
+
+            using var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(normalized));
+            return string.Concat(bytes.Select(x => x.ToString("x2"))).Substring(0, 24);
+        }
+
+        private static string GetProjectRuntimeDirectory(string saveFileName)
+        {
+            var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var root = System.IO.Path.Combine(appDataFolder, "ConstructionControl", "runtime");
+            Directory.CreateDirectory(root);
+            var projectFolder = System.IO.Path.Combine(root, BuildProjectInstanceKey(saveFileName));
+            Directory.CreateDirectory(projectFolder);
+            return projectFolder;
+        }
+
+        private string GetAutoBackupDirectory(string saveFileName)
+        {
+            var projectRuntimeDir = GetProjectRuntimeDirectory(saveFileName);
+            var backupDir = System.IO.Path.Combine(projectRuntimeDir, "autosave");
+            Directory.CreateDirectory(backupDir);
+            return backupDir;
+        }
+
+        private bool TryAcquireProjectLock(string saveFileName, bool showMessageOnFailure = true)
+        {
+            if (string.IsNullOrWhiteSpace(saveFileName))
+                return false;
+
+            var fullSavePath = System.IO.Path.GetFullPath(saveFileName);
+            var lockPath = $"{fullSavePath}.lock";
+
+            if (string.Equals(projectLockFilePath, lockPath, StringComparison.OrdinalIgnoreCase) && projectLockStream != null)
+                return true;
+
+            ReleaseProjectLock();
+
+            try
+            {
+                var lockDirectory = System.IO.Path.GetDirectoryName(lockPath);
+                if (!string.IsNullOrWhiteSpace(lockDirectory))
+                    Directory.CreateDirectory(lockDirectory);
+
+                projectLockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                projectLockFilePath = lockPath;
+
+                projectLockStream.SetLength(0);
+                using var writer = new StreamWriter(projectLockStream, Encoding.UTF8, 1024, leaveOpen: true);
+                writer.WriteLine($"pid={Environment.ProcessId}");
+                writer.WriteLine($"startedUtc={DateTime.UtcNow:O}");
+                writer.Flush();
+                projectLockStream.Flush(true);
+                projectLockStream.Position = 0;
+                return true;
+            }
+            catch
+            {
+                ReleaseProjectLock();
+                if (showMessageOnFailure)
+                {
+                    MessageBox.Show(
+                        "Этот файл проекта уже открыт в другом экземпляре программы. Закройте другой экземпляр и попробуйте снова.",
+                        "Файл занят",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return false;
+            }
+        }
+
+        private void ReleaseProjectLock()
+        {
+            if (projectLockStream != null)
+            {
+                try
+                {
+                    projectLockStream.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
+                projectLockStream = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(projectLockFilePath))
+            {
+                try
+                {
+                    if (File.Exists(projectLockFilePath))
+                        File.Delete(projectLockFilePath);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            projectLockFilePath = string.Empty;
+        }
+
+        private bool CheckIfPreviousSessionCrashed(string saveFileName, out string markerPath)
+        {
+            markerPath = System.IO.Path.Combine(GetProjectRuntimeDirectory(saveFileName), "session.marker");
+            return File.Exists(markerPath);
+        }
+
+        private void WriteSessionMarker(string markerPath)
+        {
+            if (string.IsNullOrWhiteSpace(markerPath))
+                return;
+
+            var markerDirectory = System.IO.Path.GetDirectoryName(markerPath);
+            if (!string.IsNullOrWhiteSpace(markerDirectory))
+                Directory.CreateDirectory(markerDirectory);
+
+            File.WriteAllText(markerPath, $"pid={Environment.ProcessId}{Environment.NewLine}startedUtc={DateTime.UtcNow:O}");
+            sessionMarkerFilePath = markerPath;
+        }
+
+        private void RemoveSessionMarker()
+        {
+            if (string.IsNullOrWhiteSpace(sessionMarkerFilePath))
+                return;
+
+            try
+            {
+                if (File.Exists(sessionMarkerFilePath))
+                    File.Delete(sessionMarkerFilePath);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void TryRecoverFromCrashIfNeeded(bool wasPreviousSessionCrashed)
+        {
+            if (!wasPreviousSessionCrashed)
+                return;
+
+            var latestBackup = GetLatestAutoBackupFile(currentSaveFileName);
+            if (string.IsNullOrWhiteSpace(latestBackup) || !File.Exists(latestBackup))
+                return;
+
+            var backupTimeLocal = File.GetLastWriteTime(latestBackup);
+            var answer = MessageBox.Show(
+                $"Обнаружено некорректное завершение предыдущего сеанса.{Environment.NewLine}Найдено автосохранение от {backupTimeLocal:dd.MM.yyyy HH:mm:ss}.{Environment.NewLine}{Environment.NewLine}Восстановить его?",
+                "Восстановление после сбоя",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                var backupJson = File.ReadAllText(latestBackup);
+                if (!TryDeserializeAppState(backupJson, out var _, out _))
+                    throw new InvalidDataException("Файл автосохранения повреждён.");
+
+                if (File.Exists(currentSaveFileName))
+                {
+                    var rescuePath = $"{currentSaveFileName}.before_recovery_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
+                    File.Copy(currentSaveFileName, rescuePath, overwrite: true);
+                }
+
+                SaveStateJsonTransactional(backupJson, currentSaveFileName);
+                MessageBox.Show("Данные восстановлены из автосохранения.", "Восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось восстановить автосохранение.{Environment.NewLine}{ex.Message}",
+                    "Ошибка восстановления",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
         private void InitializeSpreadsheetEditorPreference()
         {
             preferredSpreadsheetEditorPath = ResolvePlanMakerExecutablePath();
@@ -740,6 +1008,9 @@ namespace ConstructionControl
 
         private void StartPreviewWarmupAsync()
         {
+            if (IsSafeStartupEnabled())
+                return;
+
             if (previewWarmupStarted)
                 return;
 
@@ -1110,10 +1381,16 @@ namespace ConstructionControl
             reminderRefreshDebounceTimer?.Stop();
             timesheetRebuildDebounceTimer?.Stop();
             estimateLayoutGuardTimer?.Stop();
+            arrivalFilterDebounceTimer?.Stop();
+            otSearchDebounceTimer?.Stop();
+            summaryRefreshDebounceTimer?.Stop();
+            processingOverlayDelayTimer?.Stop();
             autoSaveTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             DisposeEstimateExcelApplication();
+            RemoveSessionMarker();
+            ReleaseProjectLock();
             if (reminderOverlayWindow != null)
             {
                 reminderOverlayWindow.Close();
@@ -1198,6 +1475,266 @@ namespace ConstructionControl
             timesheetOtSyncDirty = true;
         }
 
+        private bool IsSafeStartupEnabled()
+            => currentObject?.UiSettings?.SafeStartupMode == true;
+
+        private void EnsureSelectedTabInitialized()
+        {
+            if (MainTabs?.SelectedItem is TabItem selectedTab)
+                EnsureTabInitialized(selectedTab);
+        }
+
+        private void EnsureTabInitialized(TabItem tabItem)
+        {
+            if (tabItem == null)
+                return;
+
+            if (ReferenceEquals(tabItem, TimesheetTab))
+            {
+                if (!timesheetInitialized)
+                    InitializeTimesheet();
+                return;
+            }
+
+            if (ReferenceEquals(tabItem, ProductionTab))
+            {
+                if (!productionJournalInitialized)
+                    InitializeProductionJournal();
+                else if (productionStateDirty)
+                    RefreshProductionJournalState();
+                else
+                    RefreshProductionJournalLookups();
+                return;
+            }
+
+            if (ReferenceEquals(tabItem, InspectionTab))
+            {
+                if (!inspectionJournalInitialized)
+                    InitializeInspectionJournal();
+                else if (inspectionStateDirty)
+                    RefreshInspectionJournalState();
+                else
+                    RefreshInspectionLookups();
+            }
+        }
+
+        private void ArrivalFilterDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            arrivalFilterDebounceTimer.Stop();
+            if (!arrivalFilterRefreshRequested)
+                return;
+
+            arrivalFilterRefreshRequested = false;
+            ApplyAllFilters();
+        }
+
+        private void OtSearchDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            otSearchDebounceTimer.Stop();
+            if (!otSearchRefreshRequested)
+                return;
+
+            otSearchRefreshRequested = false;
+            CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+        }
+
+        private void SummaryRefreshDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            summaryRefreshDebounceTimer.Stop();
+            if (!summaryRefreshRequested)
+                return;
+
+            summaryRefreshRequested = false;
+            StartSummaryRefreshRequest();
+        }
+
+        private void ProcessingOverlayDelayTimer_Tick(object sender, EventArgs e)
+        {
+            processingOverlayDelayTimer.Stop();
+            if (processingOverlayDepth <= 0)
+                return;
+
+            if (ProcessingOverlayText != null)
+                ProcessingOverlayText.Text = processingOverlayPendingText;
+
+            if (ProcessingOverlay != null)
+                ProcessingOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void RequestArrivalFilterRefresh(bool immediate = false)
+        {
+            if (arrivalFilterDebounceTimer == null)
+            {
+                ApplyAllFilters();
+                return;
+            }
+
+            if (immediate)
+            {
+                arrivalFilterRefreshRequested = false;
+                arrivalFilterDebounceTimer.Stop();
+                ApplyAllFilters();
+                return;
+            }
+
+            arrivalFilterRefreshRequested = true;
+            arrivalFilterDebounceTimer.Stop();
+            arrivalFilterDebounceTimer.Start();
+        }
+
+        private void RequestOtSearchRefresh(bool immediate = false)
+        {
+            if (otSearchDebounceTimer == null)
+            {
+                CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+                return;
+            }
+
+            if (immediate)
+            {
+                otSearchRefreshRequested = false;
+                otSearchDebounceTimer.Stop();
+                CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+                return;
+            }
+
+            otSearchRefreshRequested = true;
+            otSearchDebounceTimer.Stop();
+            otSearchDebounceTimer.Start();
+        }
+
+        private void RequestSummaryRefresh(bool immediate = false)
+        {
+            if (summaryRefreshDebounceTimer == null)
+            {
+                StartSummaryRefreshRequest();
+                return;
+            }
+
+            if (immediate)
+            {
+                summaryRefreshRequested = false;
+                summaryRefreshDebounceTimer.Stop();
+                StartSummaryRefreshRequest();
+                return;
+            }
+
+            summaryRefreshRequested = true;
+            summaryRefreshDebounceTimer.Stop();
+            summaryRefreshDebounceTimer.Start();
+        }
+
+        private void StartSummaryRefreshRequest()
+        {
+            var requestId = Interlocked.Increment(ref summaryRefreshRequestVersion);
+            _ = RefreshSummaryTableAsync(requestId);
+        }
+
+        private void MarkSummaryDataDirty()
+        {
+            summaryDataVersion++;
+            summaryMatrixCache.Clear();
+            productionLookupsDirty = true;
+            inspectionLookupsDirty = true;
+            productionStateDirty = true;
+            inspectionStateDirty = true;
+        }
+
+        private string BuildSummaryMatrixCacheKey(IEnumerable<string> visibleGroups)
+        {
+            var groupsKey = string.Join("|", (visibleGroups ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
+
+            var subTypeKey = string.IsNullOrWhiteSpace(summarySelectedSubType)
+                ? "all"
+                : summarySelectedSubType.Trim().ToLowerInvariant();
+
+            return $"{summaryDataVersion}|{(summaryMountedMode ? "mounted" : "plan")}|{subTypeKey}|{groupsKey}";
+        }
+
+        private IDisposable BeginProcessingScope(string text)
+        {
+            processingOverlayDepth++;
+            processingOverlayPendingText = string.IsNullOrWhiteSpace(text) ? "Идет обработка..." : text;
+
+            if (processingOverlayDelayTimer == null)
+            {
+                if (ProcessingOverlayText != null)
+                    ProcessingOverlayText.Text = processingOverlayPendingText;
+                if (ProcessingOverlay != null)
+                    ProcessingOverlay.Visibility = Visibility.Visible;
+                return new ProcessingScope(this);
+            }
+
+            if (!processingOverlayDelayTimer.IsEnabled)
+            {
+                processingOverlayDelayTimer.Stop();
+                processingOverlayDelayTimer.Start();
+            }
+
+            return new ProcessingScope(this);
+        }
+
+        private void FinishProcessingScope()
+        {
+            if (processingOverlayDepth > 0)
+                processingOverlayDepth--;
+
+            if (processingOverlayDepth > 0)
+                return;
+
+            processingOverlayDelayTimer?.Stop();
+            if (ProcessingOverlay != null)
+                ProcessingOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private sealed class ProcessingScope : IDisposable
+        {
+            private MainWindow owner;
+
+            public ProcessingScope(MainWindow owner)
+            {
+                this.owner = owner;
+            }
+
+            public void Dispose()
+            {
+                var currentOwner = Interlocked.Exchange(ref owner, null);
+                currentOwner?.FinishProcessingScope();
+            }
+        }
+
+        private void UpdateTabOpenDiagnostics(string tabHeader, TimeSpan elapsed)
+        {
+            if (string.IsNullOrWhiteSpace(tabHeader))
+                return;
+
+            tabOpenDiagnostics[tabHeader.Trim()] = elapsed;
+            UpdateTabOpenDiagnosticsText();
+        }
+
+        private void UpdateTabOpenDiagnosticsText()
+        {
+            if (TabOpenDiagnosticsText == null)
+                return;
+
+            if (tabOpenDiagnostics.Count == 0)
+            {
+                TabOpenDiagnosticsText.Text = "Открытие вкладок: нет данных";
+                return;
+            }
+
+            var top = tabOpenDiagnostics
+                .OrderByDescending(x => x.Value.TotalMilliseconds)
+                .Take(3)
+                .Select(x => $"{x.Key}: {x.Value.TotalMilliseconds:0} мс");
+
+            TabOpenDiagnosticsText.Text = $"Открытие вкладок: {string.Join(" | ", top)}";
+        }
+
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             if (initialUiPrepared)
@@ -1206,10 +1743,13 @@ namespace ConstructionControl
             initialUiPrepared = true;
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                ApplyAllFilters();
+                RequestArrivalFilterRefresh(immediate: true);
                 Activate();
-                RequestReminderRefresh(immediate: true);
+                RequestSummaryRefresh(immediate: true);
+                if (!IsSafeStartupEnabled())
+                    RequestReminderRefresh(immediate: true);
                 UpdateReminderOverlayPlacement();
+                EnsureSelectedTabInitialized();
             }), DispatcherPriority.Background);
         }
 
@@ -2358,7 +2898,7 @@ namespace ConstructionControl
         {
             arrivalMatrixMode = false;
             UpdateArrivalViewMode();
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh(immediate: true);
         }
 
         private void ArrivalMatrixViewButton_Click(object sender, RoutedEventArgs e)
@@ -2375,13 +2915,15 @@ namespace ConstructionControl
             }
 
             UpdateArrivalViewMode();
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh(immediate: true);
         }
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (e.Source is not TabControl tab || tab.SelectedItem is not TabItem item)
                 return;
 
+            var tabStopwatch = Stopwatch.StartNew();
+            EnsureTabInitialized(item);
             UpdateTabButtons();
             UpdateTreePanelState(forceVisible: isTreePinned);
             UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
@@ -2435,14 +2977,25 @@ namespace ConstructionControl
                     RebuildTimesheetView(force: true);
             }
             if (item.Header?.ToString() == "ПР")
-                RefreshProductionJournalState();
+            {
+                RefreshProductionJournalLookups();
+                if (productionStateDirty || ProductionJournalGrid?.ItemsSource == null)
+                    RefreshProductionJournalState();
+            }
             if (item.Header?.ToString() == "Осмотры")
-                RefreshInspectionJournalState();
+            {
+                RefreshInspectionLookups();
+                if (inspectionStateDirty || InspectionJournalGrid?.ItemsSource == null)
+                    RefreshInspectionJournalState();
+            }
             if (ReferenceEquals(item, EstimateTab))
             {
                 UpdateEstimateSelectionInfo();
                 ScheduleEstimateEmbeddedLayout();
             }
+
+            tabStopwatch.Stop();
+            UpdateTabOpenDiagnostics(item.Header?.ToString() ?? string.Empty, tabStopwatch.Elapsed);
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -3379,7 +3932,7 @@ namespace ConstructionControl
         private void OtSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             otSearchText = OtSearchTextBox.Text?.Trim() ?? string.Empty;
-            CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+            RequestOtSearchRefresh();
         }
 
         private void OtJournalGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
@@ -3464,6 +4017,7 @@ namespace ConstructionControl
             EnsureTimesheetStorage();
             MarkTimesheetOtSyncDirty();
             RequestTimesheetRebuild();
+            timesheetInitialized = true;
         }
 
         private void EnsureTimesheetStorage()
@@ -4556,7 +5110,9 @@ namespace ConstructionControl
         private void InitializeProductionJournal()
         {
             EnsureProductionJournalStorage();
+            productionLookupsDirty = true;
             RefreshProductionJournalState();
+            productionJournalInitialized = true;
         }
 
         private void EnsureProductionJournalStorage()
@@ -4593,6 +5149,7 @@ namespace ConstructionControl
             if (selectedProductionRow != null && !productionJournalRows.Contains(selectedProductionRow))
                 selectedProductionRow = null;
             UpdateProductionFormState();
+            productionStateDirty = false;
         }
 
         private void ApplyProductionDisplayMerging()
@@ -4613,8 +5170,11 @@ namespace ConstructionControl
             }
         }
 
-        private void RefreshProductionJournalLookups()
+        private void RefreshProductionJournalLookups(bool force = false)
         {
+            if (!force && !productionLookupsDirty)
+                return;
+
             productionActions.Clear();
             foreach (var value in new[] { "Монтаж", "Кладка", "Устройство" }
                 .Concat(currentObject?.ProductionJournal?.Select(x => x.ActionName) ?? Enumerable.Empty<string>())
@@ -4657,6 +5217,7 @@ namespace ConstructionControl
                 .Concat(LevelMarkHelper.GetDefaultMarks(currentObject)));
 
             RefreshProductionElementOptions();
+            productionLookupsDirty = false;
         }
 
         private static void FillLookupCollection(ObservableCollection<string> target, IEnumerable<string> values)
@@ -4727,7 +5288,9 @@ namespace ConstructionControl
         private void InitializeInspectionJournal()
         {
             EnsureInspectionJournalStorage();
+            inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
+            inspectionJournalInitialized = true;
         }
 
         private void EnsureInspectionJournalStorage()
@@ -4768,12 +5331,17 @@ namespace ConstructionControl
 
             UpdateInspectionFormState();
             RequestReminderRefresh();
+            inspectionStateDirty = false;
         }
 
-        private void RefreshInspectionLookups()
+        private void RefreshInspectionLookups(bool force = false)
         {
+            if (!force && !inspectionLookupsDirty)
+                return;
+
             FillLookupCollection(inspectionJournalNames, currentObject?.InspectionJournal?.Select(x => x.JournalName));
             FillLookupCollection(inspectionNames, currentObject?.InspectionJournal?.Select(x => x.InspectionName));
+            inspectionLookupsDirty = false;
         }
 
         private void SaveInspectionForm_Click(object sender, RoutedEventArgs e)
@@ -4800,6 +5368,7 @@ namespace ConstructionControl
                 currentObject.InspectionJournal.Add(row);
 
             selectedInspectionRow = row;
+            inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
             InspectionJournalGrid.SelectedItem = row;
             InspectionJournalGrid.ScrollIntoView(row);
@@ -4817,6 +5386,7 @@ namespace ConstructionControl
 
             currentObject.InspectionJournal.Remove(row);
             selectedInspectionRow = null;
+            inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
             SaveState();
         }
@@ -4973,6 +5543,7 @@ namespace ConstructionControl
 
             currentObject?.InspectionJournal?.Add(completedRow);
             selectedInspectionRow = row;
+            inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
             if (InspectionJournalGrid != null)
                 InspectionJournalGrid.SelectedItem = row;
@@ -5000,6 +5571,7 @@ namespace ConstructionControl
                 currentObject.ProductionJournal.Add(row);
 
             selectedProductionRow = row;
+            productionLookupsDirty = true;
             RefreshProductionJournalState();
             ProductionJournalGrid.SelectedItem = row;
             ProductionJournalGrid.ScrollIntoView(row);
@@ -5017,6 +5589,7 @@ namespace ConstructionControl
 
             currentObject.ProductionJournal.Remove(row);
             selectedProductionRow = null;
+            productionLookupsDirty = true;
             RefreshProductionJournalState();
             SaveState();
             RefreshSummaryTable();
@@ -6409,6 +6982,165 @@ namespace ConstructionControl
 
         // ================= МЕНЮ =================
 
+        private void IntegrityCheck_Click(object sender, RoutedEventArgs e)
+        {
+            CommitOpenEdits();
+
+            var (issues, warnings) = ValidateDataIntegrity();
+            var sb = new StringBuilder();
+            sb.AppendLine("Проверка целостности завершена.");
+            sb.AppendLine($"Ошибок: {issues.Count}");
+            sb.AppendLine($"Предупреждений: {warnings.Count}");
+            sb.AppendLine();
+
+            if (issues.Count > 0)
+            {
+                sb.AppendLine("Ошибки:");
+                foreach (var item in issues.Take(40))
+                    sb.AppendLine($"• {item}");
+                if (issues.Count > 40)
+                    sb.AppendLine($"• ... и ещё {issues.Count - 40}");
+                sb.AppendLine();
+            }
+
+            if (warnings.Count > 0)
+            {
+                sb.AppendLine("Предупреждения:");
+                foreach (var item in warnings.Take(40))
+                    sb.AppendLine($"• {item}");
+                if (warnings.Count > 40)
+                    sb.AppendLine($"• ... и ещё {warnings.Count - 40}");
+            }
+
+            var title = issues.Count > 0 ? "Проверка целостности: найдены проблемы" : "Проверка целостности";
+            ShowLargeTextDialog(title, sb.ToString());
+
+            AppendChangeLog("Проверка целостности", $"Ошибок: {issues.Count}, предупреждений: {warnings.Count}");
+            SaveState(SaveTrigger.System);
+        }
+
+        private void ShowChangeLog_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+            if (currentObject.ChangeLog.Count == 0)
+            {
+                MessageBox.Show("Журнал изменений пока пуст.", "Журнал изменений", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var text = string.Join(
+                Environment.NewLine,
+                currentObject.ChangeLog
+                    .OrderByDescending(x => x.TimestampUtc)
+                    .Take(300)
+                    .Select(FormatChangeLogEntry));
+
+            ShowLargeTextDialog("Журнал изменений", text);
+        }
+
+        private void RestoreFromAutoBackup_Click(object sender, RoutedEventArgs e)
+        {
+            var latestBackup = GetLatestAutoBackupFile(currentSaveFileName);
+            if (string.IsNullOrWhiteSpace(latestBackup) || !File.Exists(latestBackup))
+            {
+                MessageBox.Show("Автосохранения не найдены.", "Восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var backupTimeLocal = File.GetLastWriteTime(latestBackup);
+            var result = MessageBox.Show(
+                $"Найдено последнее автосохранение от {backupTimeLocal:dd.MM.yyyy HH:mm:ss}.{Environment.NewLine}Восстановить его?",
+                "Восстановление из автосохранения",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                _ = CreateSafetyBackupBeforeOperation("before_restore_from_autosave");
+                var backupJson = File.ReadAllText(latestBackup);
+                if (!TryDeserializeAppState(backupJson, out _, out var parseError))
+                    throw new InvalidDataException($"Автосохранение повреждено: {parseError}");
+
+                SaveStateJsonTransactional(backupJson, currentSaveFileName);
+                LoadState();
+                ArrivalPanel.SetObject(currentObject, journal);
+                RefreshTreePreserveState();
+                RefreshSummaryTable();
+                RefreshArrivalTypes();
+                RefreshArrivalNames();
+                RefreshProductionJournalState();
+                RefreshInspectionJournalState();
+                ApplyAllFilters();
+                RequestReminderRefresh(immediate: true);
+
+                AppendChangeLog("Восстановление", $"Выполнено восстановление из автосохранения {System.IO.Path.GetFileName(latestBackup)}");
+                SaveState(SaveTrigger.System);
+                MessageBox.Show("Восстановление завершено.", "Восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось восстановить данные из автосохранения.{Environment.NewLine}{ex.Message}",
+                    "Ошибка восстановления",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private void ShowLargeTextDialog(string title, string text)
+        {
+            var viewer = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 860,
+                Height = 620,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                MinWidth = 640,
+                MinHeight = 420,
+                Background = (Brush)FindResource("AppBgBrush")
+            };
+
+            var root = new Grid { Margin = new Thickness(16) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var textBox = new TextBox
+            {
+                Text = text ?? string.Empty,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Padding = new Thickness(12)
+            };
+            Grid.SetRow(textBox, 0);
+            root.Children.Add(textBox);
+
+            var closeButton = new Button
+            {
+                Content = "Закрыть",
+                Width = 120,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            closeButton.Click += (_, _) => viewer.Close();
+            Grid.SetRow(closeButton, 1);
+            root.Children.Add(closeButton);
+
+            viewer.Content = root;
+            viewer.ShowDialog();
+        }
+
         private void CreateObject_Click(object sender, RoutedEventArgs e)
         {
             var w = new CreateObjectWindow { Owner = this };
@@ -6425,12 +7157,15 @@ namespace ConstructionControl
                 BindOtJournal();
                 ArrivalPanel.SetObject(currentObject, journal);
 
-
-
-                EnsureInspectionJournalStorage();
-                RefreshInspectionJournalState();
+                timesheetInitialized = false;
+                productionJournalInitialized = false;
+                inspectionJournalInitialized = false;
+                timesheetRows.Clear();
+                productionJournalRows.Clear();
+                inspectionJournalRows.Clear();
                 RefreshDocumentLibraries();
-                SaveState();
+                AppendChangeLog("Создание объекта", $"Создан новый объект: {currentObject.Name}");
+                SaveState(SaveTrigger.System);
                 RefreshTreePreserveState();
                 ApplyProjectUiSettings();
               
@@ -6452,7 +7187,8 @@ namespace ConstructionControl
 
             if (w.ShowDialog() == true)
             {
-                SaveState();
+                AppendChangeLog("Настройки объекта", "Изменены параметры объекта.");
+                SaveState(SaveTrigger.System);
                 RefreshTreePreserveState();
             }
         }
@@ -7410,7 +8146,7 @@ namespace ConstructionControl
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             SyncArrivalMatrixSelectionWithTree();
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh(immediate: true);
         }
 
         private void SyncArrivalMatrixSelectionWithTree()
@@ -7859,7 +8595,7 @@ namespace ConstructionControl
 
         private void ArrivalFilters_Changed(object sender, RoutedEventArgs e)
         {
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh();
         }
 
 
@@ -7975,7 +8711,7 @@ namespace ConstructionControl
                     RenderArrivalMatrixPlaceholder("Откройте фильтры и выберите один тип материала.");
                     if (ArrivalLegacyGrid != null)
                         ArrivalLegacyGrid.ItemsSource = filteredJournal;
-                    RefreshSummaryTable();
+                    RequestSummaryRefresh();
                     return;
                 }
 
@@ -8015,7 +8751,7 @@ namespace ConstructionControl
                 RenderArrivalMatrix();
             else
                 RenderArrivalMatrixPlaceholder();
-            RefreshSummaryTable();
+            RequestSummaryRefresh();
 
         }
         private void ArrivalClearFilters_Click(object sender, RoutedEventArgs e)
@@ -8035,7 +8771,7 @@ namespace ConstructionControl
 
             RefreshArrivalTypes();
             RefreshArrivalNames();
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh(immediate: true);
 
             ArrivalFiltersOverlay.Visibility = Visibility.Collapsed;
         }
@@ -8332,11 +9068,11 @@ namespace ConstructionControl
 
             try
             {
-                var snapshot = BuildCurrentStateJson();
+                var snapshot = BuildCurrentStateSnapshotJson();
                 if (string.Equals(snapshot, lastSavedStateSnapshot, StringComparison.Ordinal))
                     return;
 
-                SaveState();
+                SaveState(SaveTrigger.Auto);
             }
             catch
             {
@@ -8344,24 +9080,451 @@ namespace ConstructionControl
             }
         }
 
-        private void SaveState()
+        private void SaveState(SaveTrigger trigger = SaveTrigger.Manual)
         {
-            var json = BuildCurrentStateJson();
+            if (string.IsNullOrWhiteSpace(currentSaveFileName))
+                throw new InvalidOperationException("Не задан путь файла состояния.");
 
-            var tempFileName = $"{currentSaveFileName}.tmp";
-            File.WriteAllText(tempFileName, json);
-            File.Copy(tempFileName, currentSaveFileName, overwrite: true);
-            File.Delete(tempFileName);
-            lastSavedStateSnapshot = json;
+            if (!TryAcquireProjectLock(currentSaveFileName))
+                throw new InvalidOperationException("Файл проекта сейчас заблокирован другим экземпляром.");
+
+            MarkSummaryDataDirty();
+            var snapshotJson = BuildCurrentStateSnapshotJson();
+            var json = BuildCurrentStateJson();
+            SaveStateJsonTransactional(json, currentSaveFileName);
+            lastSavedStateSnapshot = snapshotJson;
+
+            if (trigger == SaveTrigger.Auto)
+            {
+                try
+                {
+                    WriteAutoBackupSnapshot(json);
+                }
+                catch
+                {
+                    // Ошибка автобэкапа не должна ломать основное сохранение.
+                }
+            }
+        }
+
+        private void SaveStateJsonTransactional(string json, string targetPath)
+        {
+            var targetDirectory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(targetPath));
+            if (!string.IsNullOrWhiteSpace(targetDirectory))
+                Directory.CreateDirectory(targetDirectory);
+
+            var tempFileName = $"{targetPath}.tmp";
+            try
+            {
+                File.WriteAllText(tempFileName, json);
+
+                var writtenTempJson = File.ReadAllText(tempFileName);
+                if (!TryDeserializeAppState(writtenTempJson, out _, out var tempValidationError))
+                    throw new InvalidDataException($"Временный файл состояния не прошёл проверку: {tempValidationError}");
+
+                File.Copy(tempFileName, targetPath, overwrite: true);
+
+                var writtenFinalJson = File.ReadAllText(targetPath);
+                if (!TryDeserializeAppState(writtenFinalJson, out _, out var finalValidationError))
+                    throw new InvalidDataException($"Файл состояния после записи повреждён: {finalValidationError}");
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempFileName))
+                        File.Delete(tempFileName);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
         }
 
         private string BuildCurrentStateJson()
         {
-            return JsonSerializer.Serialize(new AppState
+            return JsonSerializer.Serialize(BuildCurrentState(savedAtUtc: DateTime.UtcNow));
+        }
+
+        private string BuildCurrentStateSnapshotJson()
+        {
+            return JsonSerializer.Serialize(BuildCurrentState(savedAtUtc: DateTime.UnixEpoch));
+        }
+
+        private AppState BuildCurrentState(DateTime savedAtUtc)
+        {
+            return new AppState
             {
+                SchemaVersion = AppState.LatestSchemaVersion,
+                SavedAtUtc = savedAtUtc,
                 CurrentObject = currentObject,
                 Journal = journal
+            };
+        }
+
+        private bool TryDeserializeAppState(string json, out AppState state, out string errorMessage)
+        {
+            state = null;
+            errorMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                errorMessage = "Пустой JSON.";
+                return false;
+            }
+
+            try
+            {
+                state = JsonSerializer.Deserialize<AppState>(json);
+                if (state == null)
+                {
+                    errorMessage = "JSON не удалось преобразовать в состояние приложения.";
+                    return false;
+                }
+
+                ApplyStateMigrations(state);
+                return true;
+            }
+            catch (Exception primaryEx)
+            {
+                if (!TryDeserializeAppStateWithLegacyFixes(json, out state, out errorMessage))
+                {
+                    errorMessage = string.IsNullOrWhiteSpace(errorMessage) ? primaryEx.Message : errorMessage;
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        private bool TryDeserializeAppStateWithLegacyFixes(string json, out AppState state, out string errorMessage)
+        {
+            state = null;
+            errorMessage = string.Empty;
+
+            try
+            {
+                var rootNode = JsonNode.Parse(json) as JsonObject;
+                if (rootNode == null)
+                {
+                    errorMessage = "Не удалось разобрать JSON как объект.";
+                    return false;
+                }
+
+                if (!rootNode.ContainsKey(nameof(AppState.SchemaVersion)))
+                    rootNode[nameof(AppState.SchemaVersion)] = 1;
+
+                if (!rootNode.ContainsKey(nameof(AppState.SavedAtUtc)))
+                    rootNode[nameof(AppState.SavedAtUtc)] = DateTime.UtcNow;
+
+                var currentObjectNode = rootNode[nameof(AppState.CurrentObject)] as JsonObject;
+                var catalogNode = currentObjectNode?["MaterialCatalog"] as JsonArray;
+                if (catalogNode != null)
+                {
+                    foreach (var itemNode in catalogNode.OfType<JsonObject>())
+                    {
+                        NormalizeCatalogStringField(itemNode, "CategoryName");
+                        NormalizeCatalogStringField(itemNode, "TypeName");
+                        NormalizeCatalogStringField(itemNode, "SubTypeName");
+                        NormalizeCatalogStringField(itemNode, "MaterialName");
+                    }
+                }
+
+                var normalizedJson = rootNode.ToJsonString();
+                state = JsonSerializer.Deserialize<AppState>(normalizedJson);
+                if (state == null)
+                {
+                    errorMessage = "Нормализованный JSON не удалось десериализовать.";
+                    return false;
+                }
+
+                ApplyStateMigrations(state);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Не удалось применить миграции старого формата: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static void NormalizeCatalogStringField(JsonObject itemNode, string fieldName)
+        {
+            if (itemNode == null || !itemNode.TryGetPropertyValue(fieldName, out var node) || node == null)
+                return;
+
+            if (node is JsonValue)
+                return;
+
+            if (node is JsonObject objNode)
+            {
+                if (objNode.TryGetPropertyValue("Name", out var nameNode) && nameNode is JsonValue)
+                {
+                    itemNode[fieldName] = nameNode.GetValue<string>();
+                    return;
+                }
+
+                var firstStringValue = objNode
+                    .Where(x => x.Value is JsonValue)
+                    .Select(x => x.Value)
+                    .FirstOrDefault();
+                if (firstStringValue is JsonValue valueNode)
+                {
+                    itemNode[fieldName] = valueNode.GetValue<string>();
+                    return;
+                }
+
+                itemNode[fieldName] = objNode.ToJsonString();
+                return;
+            }
+
+            itemNode[fieldName] = node.ToJsonString();
+        }
+
+        private static void ApplyStateMigrations(AppState state)
+        {
+            if (state == null)
+                return;
+
+            if (state.SchemaVersion <= 0)
+                state.SchemaVersion = 1;
+
+            if (state.SchemaVersion < 2)
+            {
+                state.CurrentObject ??= new ProjectObject();
+                state.CurrentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+                state.SchemaVersion = 2;
+            }
+
+            state.SavedAtUtc = state.SavedAtUtc == default ? DateTime.UtcNow : state.SavedAtUtc;
+            state.Journal ??= new List<JournalRecord>();
+            state.CurrentObject ??= new ProjectObject();
+            state.CurrentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+        }
+
+        private void WriteAutoBackupSnapshot(string json)
+        {
+            var backupDir = GetAutoBackupDirectory(currentSaveFileName);
+            var backupFile = System.IO.Path.Combine(backupDir, $"autosave_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.json");
+            File.WriteAllText(backupFile, json);
+            TrimAutoBackups(backupDir, MaxAutoBackupFiles);
+        }
+
+        private static void TrimAutoBackups(string backupDir, int maxFiles)
+        {
+            if (string.IsNullOrWhiteSpace(backupDir) || !Directory.Exists(backupDir) || maxFiles <= 0)
+                return;
+
+            var files = new DirectoryInfo(backupDir)
+                .GetFiles("autosave_*.json", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(x => x.LastWriteTimeUtc)
+                .ToList();
+
+            foreach (var file in files.Skip(maxFiles))
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+
+        private string GetLatestAutoBackupFile(string saveFileName)
+        {
+            var backupDir = GetAutoBackupDirectory(saveFileName);
+            if (!Directory.Exists(backupDir))
+                return string.Empty;
+
+            return new DirectoryInfo(backupDir)
+                .GetFiles("autosave_*.json", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(x => x.LastWriteTimeUtc)
+                .Select(x => x.FullName)
+                .FirstOrDefault() ?? string.Empty;
+        }
+
+        private string CreateSafetyBackupBeforeOperation(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(currentSaveFileName))
+                return string.Empty;
+
+            var state = new AppState
+            {
+                SchemaVersion = AppState.LatestSchemaVersion,
+                SavedAtUtc = DateTime.UtcNow,
+                CurrentObject = currentObject,
+                Journal = journal
+            };
+
+            var stateJson = JsonSerializer.Serialize(state);
+            var backupRoot = System.IO.Path.Combine(GetProjectRuntimeDirectory(currentSaveFileName), "safety");
+            Directory.CreateDirectory(backupRoot);
+            var backupPath = System.IO.Path.Combine(
+                backupRoot,
+                $"safety_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{SanitizeFileName(reason)}.ccbak");
+
+            using var stream = new FileStream(backupPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+            var stateEntry = archive.CreateEntry("state.json", CompressionLevel.Optimal);
+            using (var entryStream = stateEntry.Open())
+            using (var writer = new StreamWriter(entryStream))
+            {
+                writer.Write(stateJson);
+            }
+
+            _ = ExportProjectStorageToArchive(archive);
+            return backupPath;
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "backup";
+
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var sanitized = new string(value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray()).Trim();
+            return string.IsNullOrWhiteSpace(sanitized) ? "backup" : sanitized;
+        }
+
+        private void AppendChangeLog(string action, string details = "")
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+            currentObject.ChangeLog.Add(new ProjectChangeLogEntry
+            {
+                TimestampUtc = DateTime.UtcNow,
+                UserName = Environment.UserName ?? string.Empty,
+                Action = action ?? string.Empty,
+                Details = details ?? string.Empty
             });
+
+            if (currentObject.ChangeLog.Count > MaxChangeLogEntries)
+            {
+                var removeCount = currentObject.ChangeLog.Count - MaxChangeLogEntries;
+                currentObject.ChangeLog.RemoveRange(0, removeCount);
+            }
+        }
+
+        private static string FormatChangeLogEntry(ProjectChangeLogEntry entry)
+        {
+            if (entry == null)
+                return string.Empty;
+
+            var localTime = entry.TimestampUtc.ToLocalTime();
+            var details = string.IsNullOrWhiteSpace(entry.Details) ? string.Empty : $" — {entry.Details}";
+            return $"{localTime:dd.MM.yyyy HH:mm:ss} | {entry.UserName} | {entry.Action}{details}";
+        }
+
+        private (List<string> issues, List<string> warnings) ValidateDataIntegrity()
+        {
+            var issues = new List<string>();
+            var warnings = new List<string>();
+
+            if (currentObject == null)
+            {
+                issues.Add("Объект не создан.");
+                return (issues, warnings);
+            }
+
+            if (journal == null)
+                issues.Add("Журнал прихода не инициализирован.");
+
+            currentObject.Demand ??= new Dictionary<string, MaterialDemand>(StringComparer.CurrentCultureIgnoreCase);
+            currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+
+            var arrivalKeys = (journal ?? new List<JournalRecord>())
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialGroup) && !string.IsNullOrWhiteSpace(x.MaterialName))
+                .Select(x => BuildDemandKey(x.MaterialGroup, x.MaterialName))
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var pair in currentObject.Demand)
+            {
+                var demandKey = pair.Key ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(demandKey))
+                {
+                    issues.Add("Обнаружен пустой ключ в таблице потребности.");
+                    continue;
+                }
+
+                if (!arrivalKeys.Contains(demandKey))
+                    warnings.Add($"Для потребности \"{demandKey}\" нет записей прихода.");
+
+                var demand = pair.Value;
+                if (demand?.Levels != null)
+                {
+                    foreach (var block in demand.Levels)
+                    {
+                        foreach (var mark in block.Value ?? new Dictionary<string, double>())
+                        {
+                            if (mark.Value < 0)
+                                issues.Add($"Отрицательная потребность: {demandKey}, блок {block.Key}, отметка {mark.Key}.");
+                        }
+                    }
+                }
+            }
+
+            foreach (var row in currentObject.ProductionJournal ?? new List<ProductionJournalEntry>())
+            {
+                if (string.IsNullOrWhiteSpace(row?.WorkName) || string.IsNullOrWhiteSpace(row?.ElementsText))
+                    continue;
+
+                var keys = ParseProductionItems(row.ElementsText)
+                    .Select(x => BuildDemandKey(row.WorkName, x.MaterialName))
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase);
+
+                foreach (var key in keys)
+                {
+                    if (!currentObject.Demand.ContainsKey(key))
+                        warnings.Add($"В ПР используется элемент без потребности в сводке: {key}.");
+                }
+            }
+
+            var timesheetNames = (currentObject.TimesheetPeople ?? new List<TimesheetPersonEntry>())
+                .Select(x => x?.FullName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var row in currentObject.OtJournal ?? new List<OtJournalEntry>())
+            {
+                var fullName = row?.FullName?.Trim();
+                if (string.IsNullOrWhiteSpace(fullName))
+                    continue;
+
+                if (!timesheetNames.Contains(fullName))
+                    warnings.Add($"В ОТ есть сотрудник \"{fullName}\", которого нет в табеле.");
+            }
+
+            void ValidateDocumentNodes(IEnumerable<DocumentTreeNode> nodes, string caption)
+            {
+                if (nodes == null)
+                    return;
+
+                foreach (var node in nodes)
+                {
+                    if (node == null)
+                        continue;
+
+                    if (!node.IsFolder)
+                    {
+                        var path = ResolveDocumentPath(node);
+                        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                            warnings.Add($"{caption}: не найден файл \"{node.Name}\".");
+                    }
+
+                    ValidateDocumentNodes(node.Children, caption);
+                }
+            }
+
+            ValidateDocumentNodes(currentObject.PdfDocuments, "ПДФ");
+            ValidateDocumentNodes(currentObject.EstimateDocuments, "Сметы");
+
+            return (issues, warnings);
         }
         private AppState CloneState()
         {
@@ -8422,7 +9585,7 @@ namespace ConstructionControl
             RefreshInspectionJournalState();
             RefreshDocumentLibraries();
             ApplyProjectUiSettings();
-            SaveState();
+            SaveState(SaveTrigger.System);
         }
 
         private void UpdateUndoRedoButtons()
@@ -8443,6 +9606,7 @@ namespace ConstructionControl
             currentObject.EstimateDocuments ??= new List<DocumentTreeNode>();
             currentObject.AutoSplitMaterialNames ??= new List<string>();
             currentObject.UiSettings ??= new ProjectUiSettings();
+            currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
 
             if (currentObject.Demand == null)
                 return;
@@ -8497,25 +9661,31 @@ namespace ConstructionControl
             if (!File.Exists(currentSaveFileName))
                 return;
 
-            AppState? state;
-            try
-            {
-                state = JsonSerializer.Deserialize<AppState>(
-                    File.ReadAllText(currentSaveFileName));
-            }
-            catch (Exception ex)
+            var json = File.ReadAllText(currentSaveFileName);
+            if (!TryDeserializeAppState(json, out var state, out var error))
             {
                 MessageBox.Show(
-                    $"Не удалось загрузить сохранённые данные. Файл состояния повреждён или имеет неверный формат.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                    $"Не удалось загрузить сохранённые данные. Файл состояния повреждён или имеет неверный формат.{Environment.NewLine}{Environment.NewLine}{error}",
                     "Ошибка загрузки",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
             }
 
-            currentObject = state?.CurrentObject;
-            journal = state?.Journal ?? new();
-            lastSavedStateSnapshot = File.ReadAllText(currentSaveFileName);
+            currentObject = state.CurrentObject;
+            journal = state.Journal ?? new();
+            MarkSummaryDataDirty();
+            timesheetInitialized = false;
+            productionJournalInitialized = false;
+            inspectionJournalInitialized = false;
+            productionStateDirty = true;
+            inspectionStateDirty = true;
+            timesheetRows.Clear();
+            productionJournalRows.Clear();
+            inspectionJournalRows.Clear();
+            tabOpenDiagnostics.Clear();
+            UpdateTabOpenDiagnosticsText();
+            lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
             MigrateDemandLevelsAndProductionJournal();
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
@@ -8611,7 +9781,7 @@ namespace ConstructionControl
 
         private bool HasUnsavedChanges()
         {
-            var currentSnapshot = BuildCurrentStateJson();
+            var currentSnapshot = BuildCurrentStateSnapshotJson();
             return !string.Equals(currentSnapshot, lastSavedStateSnapshot, StringComparison.Ordinal);
         }
 
@@ -8746,7 +9916,8 @@ namespace ConstructionControl
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
-            SaveState();
+            AppendChangeLog("Сохранение", "Пользователь сохранил проект.");
+            SaveState(SaveTrigger.Manual);
             MessageBox.Show("Данные сохранены");
         }
 
@@ -8765,9 +9936,22 @@ namespace ConstructionControl
 
             var previousSaveFileName = currentSaveFileName;
             currentSaveFileName = dlg.FileName;
+            if (!TryAcquireProjectLock(currentSaveFileName))
+            {
+                currentSaveFileName = previousSaveFileName;
+                _ = TryAcquireProjectLock(currentSaveFileName, showMessageOnFailure: false);
+                return;
+            }
+
+            RemoveSessionMarker();
+            previousSessionCrashed = false;
+            _ = CheckIfPreviousSessionCrashed(currentSaveFileName, out var markerPath);
+            WriteSessionMarker(markerPath);
+
             CopyProjectStorage(previousSaveFileName, currentSaveFileName);
             EnsureDocumentLibraries();
-            SaveState();
+            AppendChangeLog("Сохранить как", $"Проект сохранён как {currentSaveFileName}");
+            SaveState(SaveTrigger.Manual);
             MessageBox.Show("Проект сохранён в новый файл.");
         }
 
@@ -8831,7 +10015,8 @@ namespace ConstructionControl
 
             currentObject.UiSettings = window.ResultSettings ?? new ProjectUiSettings();
             ApplyProjectUiSettings();
-            SaveState();
+            AppendChangeLog("Настройки интерфейса", "Изменены настройки интерфейса проекта.");
+            SaveState(SaveTrigger.System);
         }
 
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -8839,15 +10024,15 @@ namespace ConstructionControl
             CommitOpenEdits();
             SaveState();
             LoadState();
+            InitializeOtJournal();
             if (currentObject != null)
                 ArrivalPanel.SetObject(currentObject, journal);
             RefreshTreePreserveState();
             RefreshSummaryTable();
             RefreshArrivalTypes();
             RefreshArrivalNames();
-            RefreshProductionJournalState();
-            RefreshInspectionJournalState();
-            ApplyAllFilters();
+            EnsureSelectedTabInitialized();
+            RequestArrivalFilterRefresh(immediate: true);
             RequestReminderRefresh(immediate: true);
         }
 
@@ -8880,6 +10065,8 @@ namespace ConstructionControl
                 exportedStorageFiles = ExportProjectStorageToArchive(archive);
             }
 
+            AppendChangeLog("Экспорт", $"Экспортированы данные проекта в {dlg.FileName}");
+            SaveState(SaveTrigger.System);
             MessageBox.Show($"Резервная копия сохранена. В архив добавлено файлов ПДФ/смет: {exportedStorageFiles}.");
         }
 
@@ -8893,6 +10080,19 @@ namespace ConstructionControl
             };
             if (dlg.ShowDialog() != true)
                 return;
+
+            try
+            {
+                _ = CreateSafetyBackupBeforeOperation("before_import_all");
+            }
+            catch (Exception backupEx)
+            {
+                MessageBox.Show(
+                    $"Не удалось создать предохранительный бэкап перед импортом.{Environment.NewLine}{backupEx.Message}",
+                    "Внимание",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
 
             if (!TryLoadBackupState(dlg.FileName, out var state, out var restoredStorageFiles, out var importError) || state == null)
             {
@@ -8909,7 +10109,8 @@ namespace ConstructionControl
             PushUndo();
             RestoreState(state);
             RebuildArchiveFromCurrentData();
-            SaveState();
+            AppendChangeLog("Импорт", $"Импортированы данные из {dlg.FileName}");
+            SaveState(SaveTrigger.System);
               RefreshTreePreserveState();
               RefreshArrivalTypes();
               RefreshArrivalNames();
@@ -8975,10 +10176,11 @@ namespace ConstructionControl
                         json = reader.ReadToEnd();
                     }
 
-                    state = JsonSerializer.Deserialize<AppState>(json);
-                    if (state == null)
+                    if (!TryDeserializeAppState(json, out state, out var parseError))
                     {
-                        errorMessage = "Файл состояния в резервной копии имеет неверный формат.";
+                        errorMessage = string.IsNullOrWhiteSpace(parseError)
+                            ? "Файл состояния в резервной копии имеет неверный формат."
+                            : parseError;
                         return false;
                     }
 
@@ -8998,10 +10200,12 @@ namespace ConstructionControl
 
             try
             {
-                state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(backupPath));
-                if (state == null)
+                var rawJson = File.ReadAllText(backupPath);
+                if (!TryDeserializeAppState(rawJson, out state, out var parseError))
                 {
-                    errorMessage = "Файл резервной копии имеет неверный формат.";
+                    errorMessage = string.IsNullOrWhiteSpace(parseError)
+                        ? "Файл резервной копии имеет неверный формат."
+                        : parseError;
                     return false;
                 }
 
@@ -9087,7 +10291,7 @@ namespace ConstructionControl
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
-            SaveState();
+            SaveState(SaveTrigger.Manual);
             Close();
         }
 
@@ -9127,9 +10331,23 @@ namespace ConstructionControl
                 return;
             }
 
+            try
+            {
+                _ = CreateSafetyBackupBeforeOperation("before_clear_object");
+            }
+            catch (Exception backupEx)
+            {
+                MessageBox.Show(
+                    $"Не удалось создать предохранительный бэкап перед очисткой.{Environment.NewLine}{backupEx.Message}",
+                    "Внимание",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
             PushUndo();
             ClearCurrentObjectData();
-            SaveState();
+            AppendChangeLog("Очистка объекта", "Выполнена полная очистка объекта.");
+            SaveState(SaveTrigger.System);
             MessageBox.Show("Объект полностью очищен.", "Очистка объекта", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -9159,6 +10377,7 @@ namespace ConstructionControl
             currentObject.InspectionJournal = new List<InspectionJournalEntry>();
             currentObject.PdfDocuments = new List<DocumentTreeNode>();
             currentObject.EstimateDocuments = new List<DocumentTreeNode>();
+            currentObject.ChangeLog = new List<ProjectChangeLogEntry>();
 
             EnsureProjectUiSettings();
             EnsureDocumentLibraries();
@@ -9266,7 +10485,8 @@ namespace ConstructionControl
 
 
             // ====== обновляем UI ======
-            SaveState();
+            AppendChangeLog("Импорт Excel", $"Импортировано строк: {importWindow.ImportedRecords?.Count ?? 0}");
+            SaveState(SaveTrigger.System);
             RefreshTreePreserveState();
 
             RefreshSummaryTable();
@@ -9314,7 +10534,8 @@ namespace ConstructionControl
             if (w.ShowDialog() == true)
             {
                 // после изменений — обновляем всё1
-                SaveState();
+                AppendChangeLog("Архив", "Внесены изменения через окно архива.");
+                SaveState(SaveTrigger.System);
                 RefreshTreePreserveState();
                 ApplyAllFilters();
                 RefreshSummaryTable();
@@ -9328,66 +10549,210 @@ namespace ConstructionControl
 
         public void RefreshSummaryTable()
         {
+            RequestSummaryRefresh(immediate: true);
+        }
+
+        private async Task RefreshSummaryTableAsync(int requestId)
+        {
             if (SummaryPanel == null)
                 return;
 
-            SummaryPanel.Items.Clear();
-
             if (currentObject == null)
+            {
+                SummaryPanel.Items.Clear();
                 return;
+            }
 
             var mainRecords = journal
-                .Where(j => j.Category == "Основные");
-
+                .Where(j => string.Equals(j.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
 
             var journalGroups = mainRecords
-                .Select(j => j.MaterialGroup)
-                .Distinct()
-                .ToHashSet();
-            var recordsByGroupAndMaterial = mainRecords
-                 .GroupBy(j => (j.MaterialGroup, j.MaterialName))
-                     .ToDictionary(g => g.Key, g => g.ToList());
-
+                .Select(j => j.MaterialGroup?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
 
             var groupOrder = currentObject.MaterialGroups
-                .Select(g => g.Name)
-                .Where(name => journalGroups.Contains(name))
+                .Select(g => g.Name?.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name) && journalGroups.Contains(name))
                 .ToList();
 
             if (groupOrder.Count == 0)
-                groupOrder = journalGroups.OrderBy(g => g).ToList();
+                groupOrder = journalGroups.OrderBy(g => g, StringComparer.CurrentCultureIgnoreCase).ToList();
 
+            if (currentObject.SummaryVisibleGroups == null)
+                currentObject.SummaryVisibleGroups = new List<string>();
+
+            var normalizedVisibleGroups = currentObject.SummaryVisibleGroups
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Where(x => groupOrder.Contains(x, StringComparer.CurrentCultureIgnoreCase))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .Take(1)
+                .ToList();
+
+            if (normalizedVisibleGroups.Count == 0 && groupOrder.Count > 0)
+                normalizedVisibleGroups.Add(groupOrder[0]);
+
+            currentObject.SummaryVisibleGroups = normalizedVisibleGroups;
             RenderSummaryFilters(groupOrder);
+            var visibleGroups = currentObject.SummaryVisibleGroups
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Where(x => groupOrder.Contains(x, StringComparer.CurrentCultureIgnoreCase))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
 
-            var visibleGroups = currentObject.SummaryVisibleGroups.Count == 0
-                ? new List<string>()
-                : groupOrder.Where(g => currentObject.SummaryVisibleGroups.Contains(g)).ToList();
+            var cacheKey = BuildSummaryMatrixCacheKey(visibleGroups);
+            if (!summaryMatrixCache.TryGetValue(cacheKey, out var cacheEntry))
+            {
+                var catalogSnapshot = (currentObject.MaterialCatalog ?? new List<MaterialCatalogItem>())
+                    .Where(x => x != null)
+                    .Select(x => new MaterialCatalogItem
+                    {
+                        CategoryName = x.CategoryName ?? string.Empty,
+                        TypeName = x.TypeName ?? string.Empty,
+                        SubTypeName = x.SubTypeName ?? string.Empty,
+                        MaterialName = x.MaterialName ?? string.Empty
+                    })
+                    .ToList();
 
+                var namesByGroupSnapshot = (currentObject.MaterialNamesByGroup ?? new Dictionary<string, List<string>>())
+                    .ToDictionary(
+                        pair => pair.Key ?? string.Empty,
+                        pair => pair.Value?.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList() ?? new List<string>(),
+                        StringComparer.CurrentCultureIgnoreCase);
+
+                using var scope = BeginProcessingScope("Идет обработка сводки...");
+                cacheEntry = await Task.Run(() => BuildSummaryMatrixCacheEntry(
+                    visibleGroups,
+                    mainRecords,
+                    catalogSnapshot,
+                    namesByGroupSnapshot,
+                    summarySelectedSubType));
+
+                if (requestId != summaryRefreshRequestVersion)
+                    return;
+
+                summaryMatrixCache[cacheKey] = cacheEntry;
+                while (summaryMatrixCache.Count > MaxSummaryMatrixCacheEntries)
+                {
+                    var oldestKey = summaryMatrixCache.Keys.FirstOrDefault();
+                    if (string.IsNullOrWhiteSpace(oldestKey))
+                        break;
+                    summaryMatrixCache.Remove(oldestKey);
+                }
+            }
+
+            if (requestId != summaryRefreshRequestVersion)
+                return;
+
+            SummaryPanel.Items.Clear();
             RenderSummaryHeader();
 
-            foreach (var g in visibleGroups)
+            foreach (var groupData in cacheEntry.Groups)
             {
-                RenderMaterialGroup(g);
-
-                var materialNames = GetMaterialsForGroup(g);
-
-                foreach (var mat in materialNames)
+                RenderMaterialGroup(groupData.GroupName);
+                foreach (var row in groupData.Rows)
                 {
-                    if (!recordsByGroupAndMaterial.TryGetValue((g, mat), out var records))
-                        records = new List<JournalRecord>();
-
-                    string unit = records.FirstOrDefault()?.Unit ?? string.Empty;
-                    string position = records
-                        .Select(r => r.Position)
-                        .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)) ?? string.Empty;
-
-                    double totalArrival = records.Sum(x => x.Quantity);
-
-                    RenderMaterialRow(g, mat, unit, totalArrival, position);
+                    RenderMaterialRow(groupData.GroupName, row.MaterialName, row.Unit, row.TotalArrival, row.Position);
                 }
             }
 
             RenderSummaryFooter();
+        }
+
+        private SummaryMatrixCacheEntry BuildSummaryMatrixCacheEntry(
+            IEnumerable<string> visibleGroups,
+            List<JournalRecord> mainRecords,
+            List<MaterialCatalogItem> catalogSnapshot,
+            Dictionary<string, List<string>> namesByGroupSnapshot,
+            string selectedSubType)
+        {
+            var cacheEntry = new SummaryMatrixCacheEntry();
+            var recordsByDemandKey = mainRecords
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialGroup) && !string.IsNullOrWhiteSpace(x.MaterialName))
+                .GroupBy(x => BuildDemandKey(x.MaterialGroup.Trim(), x.MaterialName.Trim()), StringComparer.CurrentCultureIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var group in visibleGroups.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                var rows = new List<SummaryMatrixRowData>();
+                var materials = GetMaterialsForGroupFromSnapshot(group, selectedSubType, catalogSnapshot, namesByGroupSnapshot, mainRecords);
+                foreach (var material in materials)
+                {
+                    var demandKey = BuildDemandKey(group, material);
+                    if (!recordsByDemandKey.TryGetValue(demandKey, out var records))
+                        records = new List<JournalRecord>();
+
+                    var unit = records
+                        .Select(r => r.Unit)
+                        .FirstOrDefault(u => !string.IsNullOrWhiteSpace(u)) ?? string.Empty;
+                    var position = records
+                        .Select(r => r.Position)
+                        .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)) ?? string.Empty;
+                    var totalArrival = records.Sum(r => r.Quantity);
+
+                    rows.Add(new SummaryMatrixRowData
+                    {
+                        MaterialName = material,
+                        Unit = unit,
+                        Position = position,
+                        TotalArrival = totalArrival
+                    });
+                }
+
+                cacheEntry.Groups.Add(new SummaryMatrixGroupData
+                {
+                    GroupName = group,
+                    Rows = rows
+                });
+            }
+
+            return cacheEntry;
+        }
+
+        private static List<string> GetMaterialsForGroupFromSnapshot(
+            string group,
+            string selectedSubType,
+            List<MaterialCatalogItem> catalogSnapshot,
+            Dictionary<string, List<string>> namesByGroupSnapshot,
+            List<JournalRecord> mainRecords)
+        {
+            var normalizedSubType = string.IsNullOrWhiteSpace(selectedSubType) ? "Все" : selectedSubType.Trim();
+            var catalogMaterials = (catalogSnapshot ?? new List<MaterialCatalogItem>())
+                .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                         && string.Equals(x.TypeName ?? string.Empty, group ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                         && (string.Equals(normalizedSubType, "Все", StringComparison.CurrentCultureIgnoreCase)
+                             || string.Equals(x.SubTypeName ?? string.Empty, normalizedSubType, StringComparison.CurrentCultureIgnoreCase)))
+                .Select(x => x.MaterialName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (catalogMaterials.Count > 0)
+                return catalogMaterials;
+
+            if (namesByGroupSnapshot != null
+                && namesByGroupSnapshot.TryGetValue(group ?? string.Empty, out var names)
+                && names?.Count > 0)
+            {
+                return names
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+            }
+
+            return (mainRecords ?? new List<JournalRecord>())
+                .Where(j => string.Equals(j.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                         && string.Equals(j.MaterialGroup ?? string.Empty, group ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+                .Select(j => j.MaterialName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
         }
         void RenderSummaryHeader()
         {
@@ -10418,7 +11783,10 @@ namespace ConstructionControl
         private void EnsureProjectUiSettings()
         {
             if (currentObject != null)
+            {
                 currentObject.UiSettings ??= new ProjectUiSettings();
+                currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+            }
 
             if (currentObject?.UiSettings != null && currentObject.UiSettings.ReminderSnoozeMinutes <= 0)
                 currentObject.UiSettings.ReminderSnoozeMinutes = 15;
@@ -10443,6 +11811,8 @@ namespace ConstructionControl
                 TreePinToggle.IsChecked = isTreePinned;
 
             UpdateTreePanelState(forceVisible: isTreePinned);
+            if (!IsSafeStartupEnabled())
+                StartPreviewWarmupAsync();
             RequestReminderRefresh(immediate: true);
         }
         private List<SummaryBlockInfo> BuildSummaryBlocks(string group)
@@ -11372,7 +12742,7 @@ namespace ConstructionControl
                         RefreshArrivalTypes();
                     }
                     RefreshArrivalNames();
-                    ApplyAllFilters();
+                    RequestArrivalFilterRefresh();
                 };
                 chip.Unchecked += (_, _) =>
                 {
@@ -11381,7 +12751,7 @@ namespace ConstructionControl
                     if (arrivalMatrixMode)
                         selectedArrivalNames.Clear();
                     RefreshArrivalNames();
-                    ApplyAllFilters();
+                    RequestArrivalFilterRefresh();
                 };
 
                 ArrivalTypesPanel.Children.Add(chip);
@@ -11412,12 +12782,12 @@ namespace ConstructionControl
                 chip.Checked += (_, _) =>
                 {
                     selectedArrivalNames.Add(n);
-                    ApplyAllFilters();
+                    RequestArrivalFilterRefresh();
                 };
                 chip.Unchecked += (_, _) =>
                 {
                     selectedArrivalNames.Remove(n);
-                    ApplyAllFilters();
+                    RequestArrivalFilterRefresh();
                 };
 
                 ArrivalNamesPanel.Children.Add(chip);
@@ -11425,7 +12795,7 @@ namespace ConstructionControl
         }
         private void ArrivalSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            ApplyAllFilters();
+            RequestArrivalFilterRefresh();
         }
         private void ExportArrival_Click(object sender, RoutedEventArgs e)
         {

@@ -67,6 +67,15 @@ namespace ConstructionControl
         public List<DocumentTreeNode> PdfDocuments { get; set; } = new();
         public List<DocumentTreeNode> EstimateDocuments { get; set; } = new();
         public ProjectUiSettings UiSettings { get; set; } = new();
+        public List<ProjectChangeLogEntry> ChangeLog { get; set; } = new();
+    }
+
+    public class ProjectChangeLogEntry
+    {
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+        public string UserName { get; set; } = string.Empty;
+        public string Action { get; set; } = string.Empty;
+        public string Details { get; set; } = string.Empty;
     }
 
     public class ProductionAutoFillSettings
@@ -92,6 +101,7 @@ namespace ConstructionControl
         public int ReminderSnoozeMinutes { get; set; } = 15;
         public int AutoSaveIntervalMinutes { get; set; } = 5;
         public bool HideReminderDetails { get; set; }
+        public bool SafeStartupMode { get; set; }
     }
 
     public class ReminderSectionViewModel

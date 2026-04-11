@@ -466,6 +466,11 @@
                     <MenuItem Header="Экспорт всего" Click="ExportAllData_Click"/>
                     <MenuItem Header="Импорт всего" Click="ImportAllData_Click"/>
                 </MenuItem>
+                <MenuItem Header="Надежность">
+                    <MenuItem Header="Проверка целостности данных" Click="IntegrityCheck_Click"/>
+                    <MenuItem Header="Показать журнал изменений" Click="ShowChangeLog_Click"/>
+                    <MenuItem Header="Восстановить из автосохранения" Click="RestoreFromAutoBackup_Click"/>
+                </MenuItem>
                 <MenuItem Header="Настройки" Click="AppSettings_Click"/>
         </Menu>
 
@@ -631,6 +636,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Orientation="Horizontal"
@@ -665,7 +671,21 @@
                                         Click="InspectionTabButton_Click"/>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1"
+                            <Border Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,12,0"
+                                    Background="{StaticResource SurfaceAltBrush}"
+                                    BorderBrush="{StaticResource StrokeBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="10,4">
+                                <TextBlock x:Name="TabOpenDiagnosticsText"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Text="Открытие вкладок: нет данных"/>
+                            </Border>
+
+                            <StackPanel Grid.Column="2"
                                         Orientation="Horizontal"
                                         VerticalAlignment="Center">
                                 <Button x:Name="PdfPinnedTabButton"
@@ -737,7 +757,9 @@
                                      HorizontalContentAlignment="Stretch"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                                                          ScrollViewer.CanContentScroll="False">
+                                     ScrollViewer.CanContentScroll="True"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Padding" Value="0"/>
@@ -760,7 +782,7 @@
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <StackPanel/>
+                                        <VirtualizingStackPanel/>
                                     </ItemsPanelTemplate>
                                 </ListBox.ItemsPanel>
                             </ListBox>
@@ -2301,6 +2323,29 @@
               </Border>
         </Grid>
         </DockPanel>
-        
+
+        <Grid x:Name="ProcessingOverlay"
+              Visibility="Collapsed"
+              Panel.ZIndex="999"
+              Background="{StaticResource OverlayBrush}">
+            <Border Width="300"
+                    Padding="16"
+                    CornerRadius="12"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource StrokeBrush}"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="ProcessingOverlayText"
+                               Text="Идет обработка..."
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,10"/>
+                    <ProgressBar Height="8"
+                                 IsIndeterminate="True"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
     </Grid>
 </Window>

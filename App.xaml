@@ -436,6 +436,14 @@
             <Setter Property="VerticalGridLinesBrush" Value="{StaticResource DividerBrush}"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
+            <Setter Property="EnableRowVirtualization" Value="True"/>
+            <Setter Property="EnableColumnVirtualization" Value="True"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizingWhenGrouping" Value="True"/>
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="VirtualizingPanel.CacheLengthUnit" Value="Item"/>
+            <Setter Property="VirtualizingPanel.CacheLength" Value="2"/>
             <Setter Property="local:DataGridSizingHelper.EnableSmartSizing" Value="True"/>
         </Style>
 

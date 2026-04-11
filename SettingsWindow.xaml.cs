@@ -21,6 +21,7 @@ namespace ConstructionControl
                 ? settings.AutoSaveIntervalMinutes.ToString()
                 : "5";
             HideReminderDetailsCheckBox.IsChecked = settings.HideReminderDetails;
+            SafeStartupModeCheckBox.IsChecked = settings.SafeStartupMode;
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -49,7 +50,8 @@ namespace ConstructionControl
                 ShowReminderPopup = ReminderPopupCheckBox.IsChecked != false,
                 ReminderSnoozeMinutes = snoozeMinutes,
                 AutoSaveIntervalMinutes = autoSaveMinutes,
-                HideReminderDetails = HideReminderDetailsCheckBox.IsChecked == true
+                HideReminderDetails = HideReminderDetailsCheckBox.IsChecked == true,
+                SafeStartupMode = SafeStartupModeCheckBox.IsChecked == true
             };
 
             DialogResult = true;
