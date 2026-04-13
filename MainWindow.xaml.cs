@@ -9,8 +9,10 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -29,6 +31,7 @@ using System.Windows.Navigation;
 using System.Windows.Threading;
 using WpfPath = System.Windows.Shapes.Path;
 using System.Text.RegularExpressions;
+using IOPath = System.IO.Path;
 
 public enum ExportMode
 {
@@ -133,6 +136,34 @@ namespace ConstructionControl
         private bool arrivalLegacyRefreshPending;
         private DocumentTreeNode selectedPdfNode;
         private DocumentTreeNode selectedEstimateNode;
+        private readonly ObservableCollection<DocumentTreeNode> openPdfTabs = new();
+        private readonly ObservableCollection<DocumentTreeNode> openEstimateTabs = new();
+        private DocumentTreeNode activePdfTab;
+        private DocumentTreeNode activeEstimateTab;
+        private DocumentTreeNode secondaryPdfTab;
+        private DocumentTreeNode secondaryEstimateTab;
+        private DocumentTreeNode pdfDraggedTab;
+        private DocumentTreeNode estimateDraggedTab;
+        private bool pdfSplitEnabled;
+        private bool estimateSplitEnabled;
+        private Process pdfEditorProcess;
+        private IntPtr pdfEditorWindowHandle = IntPtr.Zero;
+        private int pdfEmbeddedWindowX = int.MinValue;
+        private int pdfEmbeddedWindowY = int.MinValue;
+        private int pdfEmbeddedWindowWidth = -1;
+        private int pdfEmbeddedWindowHeight = -1;
+        private string pdfEmbeddedFilePath = string.Empty;
+        private string preferredPdfEditorPath = string.Empty;
+        private bool useExternalPdfEditor;
+        private Window pdfDetachedWindow;
+        private WebBrowser pdfDetachedBrowser;
+        private DocumentTreeNode pdfDetachedNode;
+        private Point pdfTabDragStart;
+        private Point estimateTabDragStart;
+        private string pdfPreviewCurrentPath = string.Empty;
+        private string estimatePreviewCurrentPath = string.Empty;
+        private string pdfSecondaryPreviewCurrentPath = string.Empty;
+        private string estimateSecondaryPreviewCurrentPath = string.Empty;
         private Point pdfTreeDragStart;
         private Point estimateTreeDragStart;
         private DocumentTreeNode pdfDragNode;
@@ -164,6 +195,19 @@ namespace ConstructionControl
         private int estimateEmbeddedWindowWidth = -1;
         private int estimateEmbeddedWindowHeight = -1;
         private string estimateEmbeddedFilePath = string.Empty;
+        private Process estimateSpreadsheetProcessSecondary;
+        private IntPtr estimateExcelWindowHandleSecondary = IntPtr.Zero;
+        private int estimateEmbeddedWindowXSecondary = int.MinValue;
+        private int estimateEmbeddedWindowYSecondary = int.MinValue;
+        private int estimateEmbeddedWindowWidthSecondary = -1;
+        private int estimateEmbeddedWindowHeightSecondary = -1;
+        private string estimateEmbeddedFilePathSecondary = string.Empty;
+        private bool estimateDetached;
+        private bool estimateSecondaryDetached;
+        private ExternalSpreadsheetInstance activeExternalSpreadsheetInstance;
+        private ExternalSpreadsheetInstance activeExternalSpreadsheetInstanceSecondary;
+        private readonly Dictionary<string, ExternalSpreadsheetInstance> externalSpreadsheetInstances = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ExternalSpreadsheetInstance> externalSpreadsheetInstancesSecondary = new(StringComparer.OrdinalIgnoreCase);
         private string preferredSpreadsheetEditorPath = string.Empty;
         private bool useExternalSpreadsheetEditor;
         private bool previewWarmupStarted;
@@ -179,6 +223,7 @@ namespace ConstructionControl
         private const int MaxAutoBackupFiles = 20;
         private const int MaxChangeLogEntries = 5000;
         private const int MaxSummaryMatrixCacheEntries = 16;
+        private const int EmbeddedPdfTopTrim = 0;
         private bool timesheetInitialized;
         private bool productionJournalInitialized;
         private bool inspectionJournalInitialized;
@@ -186,6 +231,7 @@ namespace ConstructionControl
         private bool inspectionLookupsDirty = true;
         private bool productionStateDirty = true;
         private bool inspectionStateDirty = true;
+        private static readonly HttpClient UpdateHttpClient = new();
         private bool isRefreshingProductionProfileSelection;
         private int summaryDataVersion = 1;
         private readonly Dictionary<string, SummaryMatrixCacheEntry> summaryMatrixCache = new(StringComparer.Ordinal);
@@ -230,6 +276,13 @@ namespace ConstructionControl
             public string Unit { get; set; } = string.Empty;
             public string Position { get; set; } = string.Empty;
             public double TotalArrival { get; set; }
+        }
+
+        private sealed class ExternalSpreadsheetInstance
+        {
+            public string FilePath { get; set; } = string.Empty;
+            public Process Process { get; set; }
+            public IntPtr Handle { get; set; }
         }
 
         private sealed class ColumnManagerRow : INotifyPropertyChanged
@@ -453,6 +506,27 @@ namespace ConstructionControl
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
         private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
@@ -915,10 +989,13 @@ namespace ConstructionControl
             InitializeComponent();
             if (PdfPreviewBrowser != null)
                 PdfPreviewBrowser.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
+            if (PdfPreviewBrowserSecondary != null)
+                PdfPreviewBrowserSecondary.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
             if (EstimatePreviewBrowser != null)
                 EstimatePreviewBrowser.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
             currentSaveFileName = ResolveDefaultSavePath();
             InitializeSpreadsheetEditorPreference();
+            InitializePdfEditorPreference();
             SizeChanged += MainWindow_SizeChanged;
             LocationChanged += MainWindow_LocationChanged;
             StateChanged += MainWindow_StateChanged;
@@ -1018,26 +1095,35 @@ namespace ConstructionControl
         {
             UpdateReminderOverlayPlacement();
             ScheduleEstimateEmbeddedLayout();
+            ScheduleEstimateEmbeddedLayoutSecondary();
+            SchedulePdfEmbeddedLayout();
         }
 
         private void MainWindow_LocationChanged(object sender, EventArgs e)
         {
             UpdateReminderOverlayPlacement();
             ScheduleEstimateEmbeddedLayout();
+            ScheduleEstimateEmbeddedLayoutSecondary();
+            SchedulePdfEmbeddedLayout();
         }
 
         private void EstimateLayoutGuardTimer_Tick(object sender, EventArgs e)
         {
-            if (estimateExcelWindowHandle == IntPtr.Zero)
-                return;
-
             if (!ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+            {
+                if (ReferenceEquals(MainTabs?.SelectedItem, PdfTab) && pdfEditorWindowHandle != IntPtr.Zero)
+                    LayoutEmbeddedPdfWindow();
                 return;
+            }
 
-            if (EstimateExcelHost?.Visibility != Visibility.Visible)
-                return;
+            if (estimateExcelWindowHandle != IntPtr.Zero && EstimateExcelHost?.Visibility == Visibility.Visible)
+                LayoutEmbeddedEstimateWindow();
 
-            LayoutEmbeddedEstimateWindow();
+            if (estimateExcelWindowHandleSecondary != IntPtr.Zero && estimateSplitEnabled)
+                LayoutEmbeddedEstimateWindowSecondary();
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, PdfTab) && pdfEditorWindowHandle != IntPtr.Zero)
+                LayoutEmbeddedPdfWindow();
         }
 
         private static string ResolveDefaultSavePath()
@@ -1421,6 +1507,33 @@ namespace ConstructionControl
             useExternalSpreadsheetEditor = true;
         }
 
+        private void InitializePdfEditorPreference()
+        {
+            preferredPdfEditorPath = ResolvePdfXChangeExecutablePath();
+            useExternalPdfEditor = !string.IsNullOrWhiteSpace(preferredPdfEditorPath);
+        }
+
+        private static string ResolvePdfXChangeExecutablePath()
+        {
+            string[] candidates =
+            {
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF Editor\\PDFXEdit.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF Editor\\PDFXEdit64.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\\Tracker Software\\PDF Editor\\PDFXEdit.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit64.exe"),
+                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit.exe")
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
+            return string.Empty;
+        }
+
         private static string ResolvePlanMakerExecutablePath()
         {
             var candidates = new[]
@@ -1446,6 +1559,18 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WarmupExcelInterop();
+                if (useExternalPdfEditor)
+                {
+                    try
+                    {
+                        EnsurePdfExternalProcess();
+                        HidePdfEmbeddedPreview();
+                    }
+                    catch
+                    {
+                        // Ignore PDF warmup errors to keep startup resilient.
+                    }
+                }
             }), DispatcherPriority.ApplicationIdle);
         }
 
@@ -1472,6 +1597,21 @@ namespace ConstructionControl
             try
             {
                 return !estimateSpreadsheetProcess.HasExited;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool IsEstimateSpreadsheetProcessAliveSecondary()
+        {
+            if (estimateSpreadsheetProcessSecondary == null)
+                return false;
+
+            try
+            {
+                return !estimateSpreadsheetProcessSecondary.HasExited;
             }
             catch
             {
@@ -1536,10 +1676,11 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath) || !File.Exists(preferredSpreadsheetEditorPath))
                 throw new InvalidOperationException("PlanMaker не найден. Перезапустите программу после установки редактора.");
 
-            if (string.Equals(estimateEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase)
-                && estimateExcelWindowHandle != IntPtr.Zero
-                && IsEstimateSpreadsheetProcessAlive())
+            var normalizedPath = NormalizeDocumentPathKey(filePath);
+            if (TryGetExternalSpreadsheetInstance(externalSpreadsheetInstances, normalizedPath, out var cached))
             {
+                HideActiveExternalSpreadsheetInstance(isSecondary: false);
+                ApplyExternalSpreadsheetInstance(cached, isSecondary: false);
                 EstimateExcelHost.Visibility = Visibility.Collapsed;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
@@ -1547,7 +1688,7 @@ namespace ConstructionControl
                 return;
             }
 
-            CloseEstimateWorkbook(saveChanges: false);
+            HideActiveExternalSpreadsheetInstance(isSecondary: false);
 
             Process process;
             try
@@ -1592,8 +1733,16 @@ namespace ConstructionControl
             }
 
             estimateSpreadsheetProcess = process;
-            estimateEmbeddedFilePath = filePath;
+            estimateEmbeddedFilePath = normalizedPath;
             estimateExcelWindowHandle = handle;
+            var instance = new ExternalSpreadsheetInstance
+            {
+                FilePath = estimateEmbeddedFilePath,
+                Process = process,
+                Handle = handle
+            };
+            externalSpreadsheetInstances[estimateEmbeddedFilePath] = instance;
+            activeExternalSpreadsheetInstance = instance;
 
             try
             {
@@ -1610,6 +1759,90 @@ namespace ConstructionControl
             EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
             EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
             ScheduleEstimateEmbeddedLayout();
+        }
+
+        private void ShowEmbeddedEstimateInExternalEditorSecondary(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath) || !File.Exists(preferredSpreadsheetEditorPath))
+                throw new InvalidOperationException("PlanMaker не найден. Перезапустите программу после установки редактора.");
+
+            var normalizedPath = NormalizeDocumentPathKey(filePath);
+            if (TryGetExternalSpreadsheetInstance(externalSpreadsheetInstancesSecondary, normalizedPath, out var cached))
+            {
+                HideActiveExternalSpreadsheetInstance(isSecondary: true);
+                ApplyExternalSpreadsheetInstance(cached, isSecondary: true);
+                ScheduleEstimateEmbeddedLayoutSecondary();
+                return;
+            }
+
+            HideActiveExternalSpreadsheetInstance(isSecondary: true);
+
+            Process process;
+            try
+            {
+                process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = preferredSpreadsheetEditorPath,
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
+                }) ?? throw new InvalidOperationException("Не удалось запустить PlanMaker.");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Не удалось запустить PlanMaker: {ex.Message}");
+            }
+
+            try
+            {
+                process.WaitForInputIdle(5000);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            var handle = WaitForMainWindowHandle(process, timeoutMs: 25000);
+            if (handle == IntPtr.Zero)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                throw new InvalidOperationException("PlanMaker не предоставил окно для предпросмотра.");
+            }
+
+            estimateSpreadsheetProcessSecondary = process;
+            estimateEmbeddedFilePathSecondary = normalizedPath;
+            estimateExcelWindowHandleSecondary = handle;
+            var instance = new ExternalSpreadsheetInstance
+            {
+                FilePath = estimateEmbeddedFilePathSecondary,
+                Process = process,
+                Handle = handle
+            };
+            externalSpreadsheetInstancesSecondary[estimateEmbeddedFilePathSecondary] = instance;
+            activeExternalSpreadsheetInstanceSecondary = instance;
+
+            try
+            {
+                ShowWindow(estimateExcelWindowHandleSecondary, SW_HIDE);
+            }
+            catch
+            {
+                // Ignore early visibility errors.
+            }
+
+            ConfigureFloatingEstimateWindow(estimateExcelWindowHandleSecondary);
+            ResetEstimateEmbeddedLayoutCacheSecondary();
+            ScheduleEstimateEmbeddedLayoutSecondary();
         }
 
         private dynamic EnsureEstimateExcelApplication()
@@ -1703,6 +1936,16 @@ namespace ConstructionControl
 
         private void CloseEstimateWorkbook(bool saveChanges)
         {
+            if (useExternalSpreadsheetEditor)
+            {
+                CloseAllExternalSpreadsheetInstances(externalSpreadsheetInstances, ref activeExternalSpreadsheetInstance);
+                estimateSpreadsheetProcess = null;
+                estimateExcelWindowHandle = IntPtr.Zero;
+                estimateEmbeddedFilePath = string.Empty;
+                ResetEstimateEmbeddedLayoutCache();
+                return;
+            }
+
             if (estimateSpreadsheetProcess != null)
             {
                 try
@@ -1757,9 +2000,56 @@ namespace ConstructionControl
             }
         }
 
+        private void CloseEstimateWorkbookSecondary(bool saveChanges)
+        {
+            if (useExternalSpreadsheetEditor)
+            {
+                CloseAllExternalSpreadsheetInstances(externalSpreadsheetInstancesSecondary, ref activeExternalSpreadsheetInstanceSecondary);
+                estimateSpreadsheetProcessSecondary = null;
+                estimateExcelWindowHandleSecondary = IntPtr.Zero;
+                estimateEmbeddedFilePathSecondary = string.Empty;
+                ResetEstimateEmbeddedLayoutCacheSecondary();
+                return;
+            }
+
+            if (estimateSpreadsheetProcessSecondary != null)
+            {
+                try
+                {
+                    if (!estimateSpreadsheetProcessSecondary.HasExited)
+                    {
+                        estimateSpreadsheetProcessSecondary.CloseMainWindow();
+                        if (!estimateSpreadsheetProcessSecondary.WaitForExit(1500))
+                            estimateSpreadsheetProcessSecondary.Kill();
+                    }
+                }
+                catch
+                {
+                    // Ignore shutdown errors.
+                }
+                finally
+                {
+                    try
+                    {
+                        estimateSpreadsheetProcessSecondary.Dispose();
+                    }
+                    catch
+                    {
+                        // Ignore dispose errors.
+                    }
+
+                    estimateSpreadsheetProcessSecondary = null;
+                    estimateExcelWindowHandleSecondary = IntPtr.Zero;
+                    ResetEstimateEmbeddedLayoutCacheSecondary();
+                    estimateEmbeddedFilePathSecondary = string.Empty;
+                }
+            }
+        }
+
         private void DisposeEstimateExcelApplication()
         {
             CloseEstimateWorkbook(saveChanges: true);
+            CloseEstimateWorkbookSecondary(saveChanges: true);
 
             if (estimateExcelApplication != null)
             {
@@ -1833,13 +2123,17 @@ namespace ConstructionControl
             {
                 reminderOverlayWindow?.Hide();
                 HideEstimateEmbeddedPreview();
+                HideEstimateEmbeddedSecondaryPreview();
                 return;
             }
 
             UpdateReminderOverlayPlacement();
 
             if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+            {
                 ScheduleEstimateEmbeddedLayout();
+                ScheduleEstimateEmbeddedLayoutSecondary();
+            }
         }
 
         private void MainWindow_Activated(object sender, EventArgs e)
@@ -1847,13 +2141,18 @@ namespace ConstructionControl
             UpdateReminderOverlayPlacement();
 
             if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+            {
                 ScheduleEstimateEmbeddedLayout();
+                ScheduleEstimateEmbeddedLayoutSecondary();
+            }
         }
 
         private void MainWindow_Deactivated(object sender, EventArgs e)
         {
             if (useExternalSpreadsheetEditor && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
                 HideEstimateEmbeddedPreview();
+            if (useExternalSpreadsheetEditor && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+                HideEstimateEmbeddedSecondaryPreview();
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -1869,13 +2168,152 @@ namespace ConstructionControl
             autoSaveTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
+            StopEstimateEmbeddedSecondaryPreview();
             DisposeEstimateExcelApplication();
+            ClosePdfExternalProcess();
             RemoveSessionMarker();
             ReleaseProjectLock();
             if (reminderOverlayWindow != null)
             {
                 reminderOverlayWindow.Close();
                 reminderOverlayWindow = null;
+            }
+        }
+
+        private async Task CheckForUpdatesAsync(bool showUpToDateMessage)
+        {
+            var settings = currentObject?.UiSettings;
+            var feedUrl = settings?.UpdateFeedUrl?.Trim();
+            if (string.IsNullOrWhiteSpace(feedUrl))
+            {
+                if (showUpToDateMessage)
+                    MessageBox.Show("URL обновлений не задан. Укажите его в настройках.", "Проверка обновлений", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                using var response = await UpdateHttpClient.GetAsync(feedUrl);
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException($"Сервер вернул {response.StatusCode}.");
+
+                var json = await response.Content.ReadAsStringAsync();
+                var node = JsonNode.Parse(json);
+                var versionText = node?["version"]?.ToString() ?? string.Empty;
+                var url = node?["url"]?.ToString() ?? string.Empty;
+                var zipUrl = node?["zipUrl"]?.ToString() ?? string.Empty;
+                var notes = node?["notes"]?.ToString() ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(versionText))
+                    throw new InvalidOperationException("В файле обновлений нет версии.");
+
+                if (!Version.TryParse(versionText, out var latestVersion))
+                    throw new InvalidOperationException("Неверный формат версии обновления.");
+
+                var currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0, 0);
+
+                if (latestVersion > currentVersion)
+                {
+                    var message = $"Доступна новая версия {latestVersion}.\nТекущая версия: {currentVersion}.";
+                    if (!string.IsNullOrWhiteSpace(notes))
+                        message += $"\n\nИзменения:\n{notes}";
+
+                    var hasZip = !string.IsNullOrWhiteSpace(zipUrl) && zipUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+                    var prompt = hasZip
+                        ? message + "\n\nСкачать и установить обновление?"
+                        : message + "\n\nОткрыть страницу загрузки?";
+
+                    var result = MessageBox.Show(prompt, "Обновление доступно", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        if (hasZip)
+                        {
+                            await DownloadAndApplyUpdateAsync(zipUrl);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            try
+                            {
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = url,
+                                    UseShellExecute = true
+                                });
+                            }
+                            catch
+                            {
+                                MessageBox.Show("Не удалось открыть ссылку обновления.", "Обновление", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            }
+                        }
+                    }
+
+                    return;
+                }
+
+                if (showUpToDateMessage)
+                {
+                    MessageBox.Show("Установлена последняя версия.", "Проверка обновлений", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (showUpToDateMessage)
+                    MessageBox.Show($"Не удалось проверить обновления.\n{ex.Message}", "Проверка обновлений", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void CheckUpdatesMenu_Click(object sender, RoutedEventArgs e)
+            => await CheckForUpdatesAsync(showUpToDateMessage: true);
+
+        private async Task DownloadAndApplyUpdateAsync(string zipUrl)
+        {
+            if (string.IsNullOrWhiteSpace(zipUrl))
+                return;
+
+            var updaterExe = IOPath.Combine(AppContext.BaseDirectory, "Updater.exe");
+            if (!File.Exists(updaterExe))
+            {
+                MessageBox.Show("Updater.exe не найден. Пересоберите приложение.", "Обновление", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var tempRoot = IOPath.Combine(IOPath.GetTempPath(), "MasterPRO_Update");
+            var zipPath = IOPath.Combine(tempRoot, "update.zip");
+            var extractPath = IOPath.Combine(tempRoot, "unpacked");
+
+            try
+            {
+                Directory.CreateDirectory(tempRoot);
+                if (Directory.Exists(extractPath))
+                    Directory.Delete(extractPath, true);
+
+                using (var response = await UpdateHttpClient.GetAsync(zipUrl))
+                {
+                    response.EnsureSuccessStatusCode();
+                    await using var fs = new System.IO.FileStream(zipPath, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
+                    await response.Content.CopyToAsync(fs);
+                }
+
+                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, extractPath, overwriteFiles: true);
+
+                var exeName = Environment.ProcessPath != null
+                    ? IOPath.GetFileName(Environment.ProcessPath)
+                    : "ConstructionControl.exe";
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = updaterExe,
+                    Arguments = $"--source \"{extractPath}\" --target \"{AppContext.BaseDirectory}\" --exe \"{exeName}\" --pid {Environment.ProcessId}",
+                    UseShellExecute = true,
+                    WorkingDirectory = AppContext.BaseDirectory
+                };
+
+                Process.Start(startInfo);
+                closeConfirmed = true;
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось установить обновление.\n{ex.Message}", "Обновление", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -2228,6 +2666,11 @@ namespace ConstructionControl
             if (initialUiPrepared)
                 return;
 
+            if (PdfTabStrip != null)
+                PdfTabStrip.ItemsSource = openPdfTabs;
+            if (EstimateTabStrip != null)
+                EstimateTabStrip.ItemsSource = openEstimateTabs;
+
             initialUiPrepared = true;
             Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -2240,6 +2683,35 @@ namespace ConstructionControl
                 EnsureSelectedTabInitialized();
                 UpdateStatusBar();
             }), DispatcherPriority.Background);
+
+            StartPreviewWarmupAsync();
+
+            if (currentObject?.UiSettings?.CheckUpdatesOnStart == true
+                && !string.IsNullOrWhiteSpace(currentObject.UiSettings.UpdateFeedUrl))
+            {
+                _ = CheckForUpdatesAsync(showUpToDateMessage: false);
+            }
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var screen = SystemParameters.WorkArea;
+                    if (Left < screen.Left - 50 || Top < screen.Top - 50 || Left > screen.Right - 50 || Top > screen.Bottom - 50)
+                    {
+                        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                        Left = screen.Left + (screen.Width - Width) / 2;
+                        Top = screen.Top + (screen.Height - Height) / 2;
+                    }
+
+                    if (!IsVisible)
+                        Show();
+                    if (WindowState == WindowState.Minimized)
+                        WindowState = WindowState.Normal;
+                    Activate();
+                }
+                catch { }
+            }), DispatcherPriority.ApplicationIdle);
         }
 
         private void EnsureDocumentLibraries()
@@ -2844,14 +3316,685 @@ namespace ConstructionControl
 
         private void UpdatePdfSelectionInfo()
         {
-            UpdateDocumentSelectionInfo(selectedPdfNode, PdfSelectedNameText, PdfSelectedPathText, PdfSelectedTypeText);
-            UpdateDocumentPreview(selectedPdfNode, PdfInfoPanel, PdfPreviewContainer, PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText);
+            if (selectedPdfNode != null && !selectedPdfNode.IsFolder)
+                activePdfTab = selectedPdfNode;
+            var active = activePdfTab ?? selectedPdfNode;
+            UpdateDocumentSelectionInfo(active, PdfSelectedNameText, PdfSelectedPathText, PdfSelectedTypeText);
+            UpdatePdfPreview(active);
+            UpdatePdfSecondaryPreview();
+        }
+
+        private void UpdatePdfPreview(DocumentTreeNode node)
+        {
+            if (PdfPreviewContainer == null || PdfPreviewPlaceholder == null || PdfPreviewStatusText == null)
+                return;
+
+            if (!useExternalPdfEditor)
+            {
+                var activePath = NormalizeDocumentPathKey(ResolveDocumentPath(node));
+                if (node == null
+                    || !string.Equals(pdfPreviewCurrentPath, activePath, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    UpdateDocumentPreview(node, PdfInfoPanel, PdfPreviewContainer, PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText);
+                    pdfPreviewCurrentPath = activePath;
+                }
+
+                return;
+            }
+
+            if (node == null)
+            {
+                HidePdfEmbeddedPreview();
+                PdfPreviewContainer.Visibility = Visibility.Visible;
+                pdfPreviewCurrentPath = string.Empty;
+                ShowDocumentPreviewPlaceholder(PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText, "Выберите PDF-файл в дереве слева, и он откроется здесь.");
+                return;
+            }
+
+            if (node.IsFolder)
+            {
+                HidePdfEmbeddedPreview();
+                PdfPreviewContainer.Visibility = Visibility.Visible;
+                pdfPreviewCurrentPath = string.Empty;
+                ShowDocumentPreviewPlaceholder(PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText, "Для папки предпросмотр не показывается. Выберите конкретный файл.");
+                return;
+            }
+
+            var resolvedPath = ResolveDocumentPath(node);
+            if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+            {
+                HidePdfEmbeddedPreview();
+                PdfPreviewContainer.Visibility = Visibility.Visible;
+                pdfPreviewCurrentPath = string.Empty;
+                ShowDocumentPreviewPlaceholder(PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText, "Файл не найден по сохраненному пути.");
+                return;
+            }
+
+            PdfPreviewContainer.Visibility = Visibility.Visible;
+            if (PdfExternalHost != null)
+                PdfExternalHost.Visibility = Visibility.Collapsed;
+            PdfPreviewBrowser.Visibility = Visibility.Collapsed;
+            PdfPreviewPlaceholder.Visibility = Visibility.Collapsed;
+
+            var normalizedPath = NormalizeDocumentPathKey(resolvedPath);
+            if (string.Equals(pdfPreviewCurrentPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+            {
+                SchedulePdfEmbeddedLayout();
+                return;
+            }
+
+            pdfPreviewCurrentPath = normalizedPath;
+            OpenPdfInExternalEditor(resolvedPath);
         }
 
         private void UpdateEstimateSelectionInfo()
         {
-            UpdateDocumentSelectionInfo(selectedEstimateNode, EstimateSelectedNameText, EstimateSelectedPathText, EstimateSelectedTypeText);
-            UpdateEstimatePreview(selectedEstimateNode);
+            if (activeEstimateTab == null && openEstimateTabs.Count > 0)
+                activeEstimateTab = openEstimateTabs[0];
+            var active = activeEstimateTab ?? selectedEstimateNode;
+            UpdateDocumentSelectionInfo(active, EstimateSelectedNameText, EstimateSelectedPathText, EstimateSelectedTypeText);
+            var activePath = NormalizeDocumentPathKey(ResolveDocumentPath(active));
+            if (active == null
+                || !string.Equals(estimatePreviewCurrentPath, activePath, StringComparison.CurrentCultureIgnoreCase))
+            {
+                UpdateEstimatePreview(active);
+                estimatePreviewCurrentPath = activePath;
+            }
+            UpdateEstimateSecondaryPreview();
+        }
+
+        private void OpenPdfTab(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return;
+
+            activePdfTab = node;
+            if (PdfTabStrip != null)
+                PdfTabStrip.SelectedItem = node;
+            UpdatePdfSelectionInfo();
+        }
+
+        private void OpenEstimateTab(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return;
+
+            var existing = FindOpenTab(openEstimateTabs, node);
+            if (existing == null)
+            {
+                openEstimateTabs.Add(node);
+                existing = node;
+            }
+
+            activeEstimateTab = existing;
+            if (EstimateTabStrip != null)
+                EstimateTabStrip.SelectedItem = existing;
+            UpdateEstimateSelectionInfo();
+        }
+
+        private static DocumentTreeNode FindOpenTab(ObservableCollection<DocumentTreeNode> list, DocumentTreeNode node)
+        {
+            if (list == null || node == null)
+                return null;
+
+            var target = node.FilePath ?? string.Empty;
+            foreach (var item in list)
+            {
+                if (ReferenceEquals(item, node))
+                    return item;
+                if (!string.IsNullOrWhiteSpace(target) && string.Equals(item?.FilePath, target, StringComparison.CurrentCultureIgnoreCase))
+                    return item;
+            }
+
+            return null;
+        }
+
+        private static string NormalizeDocumentPathKey(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                return System.IO.Path.GetFullPath(path).Trim();
+            }
+            catch
+            {
+                return path.Trim();
+            }
+        }
+
+        private void PdfTabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (PdfTabStrip?.SelectedItem is DocumentTreeNode node)
+            {
+                activePdfTab = node;
+                UpdatePdfSelectionInfo();
+            }
+        }
+
+        private void EstimateTabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (EstimateTabStrip?.SelectedItem is DocumentTreeNode node)
+            {
+                activeEstimateTab = node;
+                UpdateEstimateSelectionInfo();
+            }
+        }
+
+        private void PdfTabClose_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is DocumentTreeNode node)
+            {
+                openPdfTabs.Remove(node);
+                if (ReferenceEquals(activePdfTab, node))
+                    activePdfTab = openPdfTabs.FirstOrDefault();
+                if (ReferenceEquals(secondaryPdfTab, node))
+                    secondaryPdfTab = null;
+                if (PdfTabStrip != null)
+                    PdfTabStrip.SelectedItem = activePdfTab;
+                UpdatePdfSelectionInfo();
+            }
+        }
+
+        private void EstimateTabClose_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is DocumentTreeNode node)
+            {
+                openEstimateTabs.Remove(node);
+                if (ReferenceEquals(activeEstimateTab, node))
+                    activeEstimateTab = openEstimateTabs.FirstOrDefault();
+                if (ReferenceEquals(secondaryEstimateTab, node))
+                    secondaryEstimateTab = null;
+                if (EstimateTabStrip != null)
+                    EstimateTabStrip.SelectedItem = activeEstimateTab;
+                UpdateEstimateSelectionInfo();
+
+                if (useExternalSpreadsheetEditor && !string.IsNullOrWhiteSpace(node.FilePath))
+                {
+                    CloseExternalSpreadsheetInstance(externalSpreadsheetInstances, NormalizeDocumentPathKey(node.FilePath), ref activeExternalSpreadsheetInstance);
+                    CloseExternalSpreadsheetInstance(externalSpreadsheetInstancesSecondary, NormalizeDocumentPathKey(node.FilePath), ref activeExternalSpreadsheetInstanceSecondary);
+                }
+            }
+        }
+
+        private void PdfSplitToggle_Checked(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void PdfSplitToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void EstimateSplitToggle_Checked(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void EstimateSplitToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void UpdatePdfSecondaryPreview()
+        {
+            if (PdfSplitBar == null || PdfPreviewContainerSecondary == null || PdfPreviewBrowserSecondary == null || PdfPreviewPlaceholderSecondary == null || PdfPreviewStatusTextSecondary == null)
+                return;
+
+            pdfSplitEnabled = false;
+            secondaryPdfTab = null;
+            UpdatePdfSplitColumns();
+            PdfSplitBar.Visibility = Visibility.Collapsed;
+            PdfPreviewContainerSecondary.Visibility = Visibility.Collapsed;
+            if (PdfSplitDropOverlay != null)
+                PdfSplitDropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void UpdatePdfSplitColumns()
+        {
+            if (PdfSplitPrimaryColumn == null || PdfSplitDividerColumn == null || PdfSplitSecondaryColumn == null)
+                return;
+
+            if (pdfSplitEnabled)
+            {
+                PdfSplitPrimaryColumn.Width = new GridLength(1, GridUnitType.Star);
+                PdfSplitDividerColumn.Width = new GridLength(6, GridUnitType.Pixel);
+                PdfSplitSecondaryColumn.Width = new GridLength(1, GridUnitType.Star);
+            }
+            else
+            {
+                PdfSplitPrimaryColumn.Width = new GridLength(1, GridUnitType.Star);
+                PdfSplitDividerColumn.Width = new GridLength(0);
+                PdfSplitSecondaryColumn.Width = new GridLength(0);
+            }
+        }
+
+        private void UpdateEstimateSecondaryPreview()
+        {
+            if (EstimateSplitBar == null || EstimatePreviewContainerSecondary == null || EstimatePreviewStatusTextSecondary == null)
+                return;
+
+            if (secondaryEstimateTab == null)
+                estimateSplitEnabled = false;
+
+            UpdateEstimateSplitColumns();
+
+            if (!estimateSplitEnabled)
+            {
+                EstimateSplitBar.Visibility = Visibility.Collapsed;
+                EstimatePreviewContainerSecondary.Visibility = Visibility.Collapsed;
+                HideEstimateEmbeddedSecondaryPreview();
+                if (EstimateSplitDropOverlay != null)
+                    EstimateSplitDropOverlay.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            EstimateSplitBar.Visibility = Visibility.Visible;
+            EstimatePreviewContainerSecondary.Visibility = Visibility.Visible;
+
+            if (secondaryEstimateTab == null)
+            {
+                EstimatePreviewStatusTextSecondary.Text = "Перетащите вкладку сюда для открытия рядом.";
+                HideEstimateEmbeddedSecondaryPreview();
+                return;
+            }
+
+            UpdateEstimateSecondaryPreviewContent(secondaryEstimateTab);
+        }
+
+        private void UpdateEstimateSplitColumns()
+        {
+            if (EstimateSplitPrimaryColumn == null || EstimateSplitDividerColumn == null || EstimateSplitSecondaryColumn == null)
+                return;
+
+            if (estimateSplitEnabled)
+            {
+                EstimateSplitPrimaryColumn.Width = new GridLength(1, GridUnitType.Star);
+                EstimateSplitDividerColumn.Width = new GridLength(6, GridUnitType.Pixel);
+                EstimateSplitSecondaryColumn.Width = new GridLength(1, GridUnitType.Star);
+            }
+            else
+            {
+                EstimateSplitPrimaryColumn.Width = new GridLength(1, GridUnitType.Star);
+                EstimateSplitDividerColumn.Width = new GridLength(0);
+                EstimateSplitSecondaryColumn.Width = new GridLength(0);
+            }
+        }
+
+        private void PdfTabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            pdfTabDragStart = e.GetPosition(null);
+            pdfDraggedTab = GetTabNodeFromOriginalSource(e.OriginalSource);
+        }
+
+        private void PdfTabStrip_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || pdfDraggedTab == null)
+                return;
+
+            var position = e.GetPosition(null);
+            if (Math.Abs(position.X - pdfTabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(position.Y - pdfTabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            var result = DragDrop.DoDragDrop(PdfTabStrip, pdfDraggedTab, DragDropEffects.Move);
+            if (result == DragDropEffects.None)
+                TogglePdfDetach(pdfDraggedTab);
+            pdfDraggedTab = null;
+        }
+
+        private void PdfTabStrip_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode node)
+                return;
+
+            var target = GetTabNodeFromOriginalSource(e.OriginalSource);
+            if (target == null)
+            {
+                TogglePdfDetach(node);
+                return;
+            }
+
+            ReorderTab(openPdfTabs, node, target);
+        }
+
+        private void PdfSecondaryPane_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode node)
+                return;
+
+            OpenPdfTab(node);
+        }
+
+        private void EstimateTabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            estimateTabDragStart = e.GetPosition(null);
+            estimateDraggedTab = GetTabNodeFromOriginalSource(e.OriginalSource);
+        }
+
+        private void EstimateTabStrip_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || estimateDraggedTab == null)
+                return;
+
+            var position = e.GetPosition(null);
+            if (Math.Abs(position.X - estimateTabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(position.Y - estimateTabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            var result = DragDrop.DoDragDrop(EstimateTabStrip, estimateDraggedTab, DragDropEffects.Move);
+            if (result == DragDropEffects.None)
+                ToggleEstimateDetach(estimateDraggedTab);
+            estimateDraggedTab = null;
+        }
+
+        private void EstimateTabStrip_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode node)
+                return;
+
+            var target = GetTabNodeFromOriginalSource(e.OriginalSource);
+            if (target == null)
+            {
+                ToggleEstimateDetach(node);
+                return;
+            }
+
+            ReorderTab(openEstimateTabs, node, target);
+        }
+
+        private void EstimateSecondaryPane_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(DocumentTreeNode)) is not DocumentTreeNode node)
+                return;
+
+            if (FindOpenTab(openEstimateTabs, node) == null)
+                openEstimateTabs.Add(node);
+            secondaryEstimateTab = node;
+            estimateSplitEnabled = true;
+            UpdateEstimateSelectionInfo();
+        }
+
+        private void PdfSplitGrid_DragEnter(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out _))
+                return;
+
+            e.Effects = DragDropEffects.Move;
+            UpdatePdfSplitDropOverlay(e);
+            e.Handled = true;
+        }
+
+        private void PdfSplitGrid_DragOver(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out _))
+                return;
+
+            e.Effects = DragDropEffects.Move;
+            UpdatePdfSplitDropOverlay(e);
+            e.Handled = true;
+        }
+
+        private void PdfSplitGrid_DragLeave(object sender, DragEventArgs e)
+        {
+            HidePdfSplitDropOverlay();
+        }
+
+        private void PdfSplitGrid_Drop(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out var node))
+                return;
+
+            if (node.IsFolder)
+                return;
+
+            HidePdfSplitDropOverlay();
+            OpenPdfTab(node);
+
+            e.Handled = true;
+        }
+
+        private void EstimateSplitGrid_DragEnter(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out _))
+                return;
+
+            e.Effects = DragDropEffects.Move;
+            UpdateEstimateSplitDropOverlay(e);
+            e.Handled = true;
+        }
+
+        private void EstimateSplitGrid_DragOver(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out _))
+                return;
+
+            e.Effects = DragDropEffects.Move;
+            UpdateEstimateSplitDropOverlay(e);
+            e.Handled = true;
+        }
+
+        private void EstimateSplitGrid_DragLeave(object sender, DragEventArgs e)
+        {
+            HideEstimateSplitDropOverlay();
+        }
+
+        private void EstimateSplitGrid_Drop(object sender, DragEventArgs e)
+        {
+            if (!TryGetDragDocumentNode(e, out var node))
+                return;
+
+            if (node.IsFolder)
+                return;
+
+            var side = GetSplitDropSide(EstimateSplitGrid, e);
+            HideEstimateSplitDropOverlay();
+
+            if (side == SplitDropSide.Right)
+            {
+                if (FindOpenTab(openEstimateTabs, node) == null)
+                    openEstimateTabs.Add(node);
+                secondaryEstimateTab = node;
+                estimateSplitEnabled = true;
+                UpdateEstimateSelectionInfo();
+            }
+            else
+            {
+                OpenEstimateTab(node);
+            }
+
+            e.Handled = true;
+        }
+
+        private enum SplitDropSide
+        {
+            Left,
+            Right
+        }
+
+        private static bool TryGetDragDocumentNode(DragEventArgs e, out DocumentTreeNode node)
+        {
+            node = e.Data.GetData(typeof(DocumentTreeNode)) as DocumentTreeNode;
+            return node != null;
+        }
+
+        private static SplitDropSide GetSplitDropSide(FrameworkElement target, DragEventArgs e)
+        {
+            if (target == null)
+                return SplitDropSide.Left;
+
+            var position = e.GetPosition(target);
+            return position.X <= target.ActualWidth / 2
+                ? SplitDropSide.Left
+                : SplitDropSide.Right;
+        }
+
+        private void UpdatePdfSplitDropOverlay(DragEventArgs e)
+        {
+            if (PdfSplitDropOverlay == null || PdfSplitDropLeft == null || PdfSplitDropRight == null)
+                return;
+
+            PdfSplitDropOverlay.Visibility = Visibility.Visible;
+            var side = GetSplitDropSide(PdfSplitGrid, e);
+            PdfSplitDropLeft.Opacity = side == SplitDropSide.Left ? 0.55 : 0.15;
+            PdfSplitDropRight.Opacity = side == SplitDropSide.Right ? 0.55 : 0.15;
+        }
+
+        private void HidePdfSplitDropOverlay()
+        {
+            if (PdfSplitDropOverlay != null)
+                PdfSplitDropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void UpdateEstimateSplitDropOverlay(DragEventArgs e)
+        {
+            if (EstimateSplitDropOverlay == null || EstimateSplitDropLeft == null || EstimateSplitDropRight == null)
+                return;
+
+            EstimateSplitDropOverlay.Visibility = Visibility.Visible;
+            var side = GetSplitDropSide(EstimateSplitGrid, e);
+            EstimateSplitDropLeft.Opacity = side == SplitDropSide.Left ? 0.55 : 0.15;
+            EstimateSplitDropRight.Opacity = side == SplitDropSide.Right ? 0.55 : 0.15;
+        }
+
+        private void HideEstimateSplitDropOverlay()
+        {
+            if (EstimateSplitDropOverlay != null)
+                EstimateSplitDropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private static DocumentTreeNode GetTabNodeFromOriginalSource(object source)
+        {
+            if (source is FrameworkElement fe && fe.DataContext is DocumentTreeNode direct)
+                return direct;
+
+            var current = source as DependencyObject;
+            while (current != null)
+            {
+                if (current is FrameworkElement element && element.DataContext is DocumentTreeNode node)
+                    return node;
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
+        }
+
+        private static void ReorderTab(ObservableCollection<DocumentTreeNode> list, DocumentTreeNode dragged, DocumentTreeNode target)
+        {
+            if (list == null || dragged == null)
+                return;
+
+            var oldIndex = list.IndexOf(dragged);
+            if (oldIndex < 0)
+                return;
+
+            var newIndex = target == null ? list.Count - 1 : list.IndexOf(target);
+            if (newIndex < 0)
+                newIndex = list.Count - 1;
+            if (newIndex == oldIndex)
+                return;
+
+            list.Move(oldIndex, newIndex);
+        }
+
+        private void PdfDetachButton_Click(object sender, RoutedEventArgs e)
+        {
+            var node = activePdfTab ?? selectedPdfNode;
+            if (node == null || node.IsFolder)
+                return;
+
+            if (pdfDetachedWindow != null)
+            {
+                try { pdfDetachedWindow.Close(); } catch { }
+                pdfDetachedWindow = null;
+                pdfDetachedBrowser = null;
+                pdfDetachedNode = null;
+                return;
+            }
+
+            var path = ResolveDocumentPath(node);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                MessageBox.Show("Файл не найден.");
+                return;
+            }
+
+            pdfDetachedNode = node;
+            pdfDetachedBrowser = new WebBrowser();
+            pdfDetachedWindow = new Window
+            {
+                Title = node.Name,
+                Owner = this,
+                Width = 1200,
+                Height = 800,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = pdfDetachedBrowser
+            };
+            pdfDetachedWindow.Closed += (_, _) =>
+            {
+                pdfDetachedWindow = null;
+                pdfDetachedBrowser = null;
+                pdfDetachedNode = null;
+            };
+            pdfDetachedBrowser.Navigate(path);
+            pdfDetachedWindow.Show();
+        }
+
+        private void TogglePdfDetach(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return;
+
+            if (pdfDetachedWindow != null && ReferenceEquals(pdfDetachedNode, node))
+            {
+                try { pdfDetachedWindow.Close(); } catch { }
+                pdfDetachedWindow = null;
+                pdfDetachedBrowser = null;
+                pdfDetachedNode = null;
+                return;
+            }
+
+            PdfDetachButton_Click(this, new RoutedEventArgs());
+        }
+
+        private void EstimateDetachButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero)
+                return;
+
+            estimateDetached = !estimateDetached;
+            if (estimateDetached)
+            {
+                ConfigureDetachedEstimateWindow(estimateExcelWindowHandle);
+                ShowWindow(estimateExcelWindowHandle, SW_SHOW);
+            }
+            else
+            {
+                ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
+                ScheduleEstimateEmbeddedLayout();
+            }
+        }
+
+        private void ToggleEstimateDetach(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return;
+
+            if (estimateExcelWindowHandle == IntPtr.Zero || !string.Equals(estimateEmbeddedFilePath, node.FilePath ?? string.Empty, StringComparison.CurrentCultureIgnoreCase))
+            {
+                OpenEstimateTab(node);
+            }
+
+            estimateDetached = !estimateDetached;
+            if (estimateDetached)
+            {
+                ConfigureDetachedEstimateWindow(estimateExcelWindowHandle);
+                ShowWindow(estimateExcelWindowHandle, SW_SHOW);
+            }
+            else
+            {
+                ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
+                ScheduleEstimateEmbeddedLayout();
+            }
         }
 
         private void UpdateDocumentSelectionInfo(DocumentTreeNode node, TextBlock nameText, TextBlock pathText, TextBlock typeText)
@@ -2879,6 +4022,11 @@ namespace ConstructionControl
                 return;
 
             InitializeEstimatePreviewHost();
+
+            if (useExternalSpreadsheetEditor && estimateDetached)
+            {
+                return;
+            }
 
             if (node == null)
             {
@@ -2951,6 +4099,54 @@ namespace ConstructionControl
             }
         }
 
+        private void UpdateEstimateSecondaryPreviewContent(DocumentTreeNode node)
+        {
+            if (EstimatePreviewContainerSecondary == null || EstimatePreviewStatusTextSecondary == null)
+                return;
+
+            if (node == null || node.IsFolder)
+            {
+                EstimatePreviewStatusTextSecondary.Text = "Выберите файл сметы.";
+                HideEstimateEmbeddedSecondaryPreview();
+                return;
+            }
+
+            var resolvedPath = ResolveDocumentPath(node);
+            if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+            {
+                EstimatePreviewStatusTextSecondary.Text = "Файл не найден по сохраненному пути.";
+                HideEstimateEmbeddedSecondaryPreview();
+                return;
+            }
+
+            var extension = System.IO.Path.GetExtension(resolvedPath)?.ToLowerInvariant() ?? string.Empty;
+            if (!IsEstimateExcelExtension(extension))
+            {
+                EstimatePreviewStatusTextSecondary.Text = "Формат не поддерживается для разделенного просмотра.";
+                HideEstimateEmbeddedSecondaryPreview();
+                return;
+            }
+
+            if (!useExternalSpreadsheetEditor)
+            {
+                EstimatePreviewStatusTextSecondary.Text = "Разделенный просмотр доступен только во внешнем режиме.";
+                HideEstimateEmbeddedSecondaryPreview();
+                return;
+            }
+
+            try
+            {
+                ShowEmbeddedEstimateInExternalEditorSecondary(resolvedPath);
+                EstimatePreviewStatusTextSecondary.Text = string.Empty;
+                ScheduleEstimateEmbeddedLayoutSecondary();
+            }
+            catch (Exception ex)
+            {
+                HideEstimateEmbeddedSecondaryPreview();
+                EstimatePreviewStatusTextSecondary.Text = $"Не удалось открыть смету: {ex.Message}";
+            }
+        }
+
         private static bool IsEstimateExcelExtension(string extension)
             => extension is ".xlsx" or ".xlsm" or ".xls";
 
@@ -2964,12 +4160,13 @@ namespace ConstructionControl
 
         private void UpdateDocumentPreview(DocumentTreeNode node, FrameworkElement infoPanel, Border previewContainer, WebBrowser browser, Border placeholder, TextBlock statusText)
         {
-            if (infoPanel == null || previewContainer == null || browser == null || placeholder == null || statusText == null)
+            if (previewContainer == null || browser == null || placeholder == null || statusText == null)
                 return;
 
             if (node == null)
             {
-                infoPanel.Visibility = Visibility.Visible;
+                if (infoPanel != null)
+                    infoPanel.Visibility = Visibility.Visible;
                 previewContainer.Visibility = Visibility.Collapsed;
                 ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Выберите файл в дереве слева, и он откроется здесь.");
                 return;
@@ -2977,7 +4174,8 @@ namespace ConstructionControl
 
             if (node.IsFolder)
             {
-                infoPanel.Visibility = Visibility.Visible;
+                if (infoPanel != null)
+                    infoPanel.Visibility = Visibility.Visible;
                 previewContainer.Visibility = Visibility.Collapsed;
                 ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Для папки предпросмотр не показывается. Выберите конкретный файл.");
                 return;
@@ -2986,13 +4184,15 @@ namespace ConstructionControl
             var resolvedPath = ResolveDocumentPath(node);
             if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
             {
-                infoPanel.Visibility = Visibility.Visible;
+                if (infoPanel != null)
+                    infoPanel.Visibility = Visibility.Visible;
                 previewContainer.Visibility = Visibility.Collapsed;
                 ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, "Файл не найден по сохраненному пути.");
                 return;
             }
 
-            infoPanel.Visibility = Visibility.Collapsed;
+            if (infoPanel != null)
+                infoPanel.Visibility = Visibility.Collapsed;
             previewContainer.Visibility = Visibility.Visible;
 
             var extension = System.IO.Path.GetExtension(resolvedPath)?.ToLowerInvariant() ?? string.Empty;
@@ -3100,6 +4300,12 @@ namespace ConstructionControl
             if (ReferenceEquals(sender, PdfPreviewBrowser))
             {
                 RestoreBrowserPreviewState(selectedPdfNode, PdfPreviewBrowser);
+                return;
+            }
+
+            if (ReferenceEquals(sender, PdfPreviewBrowserSecondary))
+            {
+                RestoreBrowserPreviewState(secondaryPdfTab, PdfPreviewBrowserSecondary);
                 return;
             }
 
@@ -3224,7 +4430,7 @@ namespace ConstructionControl
                     new object[] { filePath, Type.Missing, false });
 
                 estimateExcelWorkbook = workbook;
-                estimateEmbeddedFilePath = filePath;
+                estimateEmbeddedFilePath = NormalizeDocumentPathKey(filePath);
                 estimateExcelWindowHandle = new IntPtr((int)excelApp.Hwnd);
                 if (estimateExcelWindowHandle == IntPtr.Zero)
                     throw new InvalidOperationException("Excel не предоставил окно для встраивания.");
@@ -3258,7 +4464,8 @@ namespace ConstructionControl
 
         private void SaveEstimatePreviewState()
         {
-            if (selectedEstimateNode == null || estimateExcelApplication == null || estimateExcelWorkbook == null)
+            var targetNode = activeEstimateTab ?? selectedEstimateNode;
+            if (targetNode == null || estimateExcelApplication == null || estimateExcelWorkbook == null)
                 return;
 
             try
@@ -3267,16 +4474,16 @@ namespace ConstructionControl
                 dynamic window = excelApp.ActiveWindow;
                 if (window != null)
                 {
-                    selectedEstimateNode.PreviewZoom = SafeToDouble(window.Zoom, selectedEstimateNode.PreviewZoom);
-                    selectedEstimateNode.PreviewScrollY = Math.Max(0, SafeToInt(window.ScrollRow, selectedEstimateNode.PreviewScrollY));
-                    selectedEstimateNode.PreviewScrollX = Math.Max(0, SafeToInt(window.ScrollColumn, selectedEstimateNode.PreviewScrollX));
+                targetNode.PreviewZoom = SafeToDouble(window.Zoom, targetNode.PreviewZoom);
+                targetNode.PreviewScrollY = Math.Max(0, SafeToInt(window.ScrollRow, targetNode.PreviewScrollY));
+                targetNode.PreviewScrollX = Math.Max(0, SafeToInt(window.ScrollColumn, targetNode.PreviewScrollX));
                 }
 
                 dynamic activeSheet = excelApp.ActiveSheet;
                 if (activeSheet != null)
-                    selectedEstimateNode.PreviewSheetName = activeSheet.Name?.ToString() ?? string.Empty;
+                    targetNode.PreviewSheetName = activeSheet.Name?.ToString() ?? string.Empty;
 
-                selectedEstimateNode.HashVerifiedAtUtc ??= DateTime.UtcNow;
+                targetNode.HashVerifiedAtUtc ??= DateTime.UtcNow;
             }
             catch
             {
@@ -3330,8 +4537,26 @@ namespace ConstructionControl
             if (EstimateExcelHost != null)
                 EstimateExcelHost.Visibility = Visibility.Collapsed;
 
+            if (useExternalSpreadsheetEditor)
+            {
+                HideActiveExternalSpreadsheetInstance(isSecondary: false);
+                return;
+            }
+
             CloseEstimateWorkbook(saveChanges: true);
             ResetEstimateEmbeddedLayoutCache();
+        }
+
+        private void StopEstimateEmbeddedSecondaryPreview()
+        {
+            if (useExternalSpreadsheetEditor)
+            {
+                HideActiveExternalSpreadsheetInstance(isSecondary: true);
+                return;
+            }
+
+            CloseEstimateWorkbookSecondary(saveChanges: true);
+            ResetEstimateEmbeddedLayoutCacheSecondary();
         }
 
         private void HideEstimateEmbeddedPreview()
@@ -3345,13 +4570,176 @@ namespace ConstructionControl
 
                 try
                 {
-                    ShowWindow(estimateExcelWindowHandle, SW_HIDE);
+                    if (!estimateDetached)
+                        ShowWindow(estimateExcelWindowHandle, SW_HIDE);
                 }
                 catch
                 {
                     // Ignore visibility errors for the detached estimate window.
                 }
             }
+        }
+
+        private void HideEstimateEmbeddedSecondaryPreview()
+        {
+            if (useExternalSpreadsheetEditor && estimateExcelWindowHandleSecondary != IntPtr.Zero)
+            {
+                try
+                {
+                    if (!estimateSecondaryDetached)
+                        ShowWindow(estimateExcelWindowHandleSecondary, SW_HIDE);
+                }
+                catch
+                {
+                    // Ignore visibility errors.
+                }
+            }
+        }
+
+        private void ApplyExternalSpreadsheetInstance(ExternalSpreadsheetInstance instance, bool isSecondary)
+        {
+            if (instance == null)
+                return;
+
+            if (isSecondary)
+            {
+                estimateSpreadsheetProcessSecondary = instance.Process;
+                estimateExcelWindowHandleSecondary = instance.Handle;
+                estimateEmbeddedFilePathSecondary = instance.FilePath;
+                activeExternalSpreadsheetInstanceSecondary = instance;
+            }
+            else
+            {
+                estimateSpreadsheetProcess = instance.Process;
+                estimateExcelWindowHandle = instance.Handle;
+                estimateEmbeddedFilePath = instance.FilePath;
+                activeExternalSpreadsheetInstance = instance;
+            }
+
+            ConfigureFloatingEstimateWindow(instance.Handle);
+            if (isSecondary)
+                ResetEstimateEmbeddedLayoutCacheSecondary();
+            else
+                ResetEstimateEmbeddedLayoutCache();
+        }
+
+        private bool TryGetExternalSpreadsheetInstance(Dictionary<string, ExternalSpreadsheetInstance> cache, string filePath, out ExternalSpreadsheetInstance instance)
+        {
+            instance = null;
+            if (cache == null || string.IsNullOrWhiteSpace(filePath))
+                return false;
+
+            if (!cache.TryGetValue(filePath, out var cached))
+                return false;
+
+            if (cached == null || cached.Handle == IntPtr.Zero)
+            {
+                cache.Remove(filePath);
+                return false;
+            }
+
+            try
+            {
+                cached.Process?.Refresh();
+                if (cached.Process != null && cached.Process.HasExited)
+                {
+                    cache.Remove(filePath);
+                    return false;
+                }
+            }
+            catch
+            {
+                cache.Remove(filePath);
+                return false;
+            }
+
+            instance = cached;
+            return true;
+        }
+
+        private void HideActiveExternalSpreadsheetInstance(bool isSecondary)
+        {
+            var instance = isSecondary ? activeExternalSpreadsheetInstanceSecondary : activeExternalSpreadsheetInstance;
+            if (instance == null || instance.Handle == IntPtr.Zero)
+                return;
+
+            try
+            {
+                if (!isSecondary && estimateDetached)
+                    return;
+                if (isSecondary && estimateSecondaryDetached)
+                    return;
+
+                ShowWindow(instance.Handle, SW_HIDE);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void CloseAllExternalSpreadsheetInstances(Dictionary<string, ExternalSpreadsheetInstance> cache, ref ExternalSpreadsheetInstance activeInstance)
+        {
+            if (cache == null || cache.Count == 0)
+                return;
+
+            foreach (var instance in cache.Values.ToList())
+            {
+                if (instance?.Process == null)
+                    continue;
+
+                try
+                {
+                    if (!instance.Process.HasExited)
+                    {
+                        instance.Process.CloseMainWindow();
+                        if (!instance.Process.WaitForExit(1500))
+                            instance.Process.Kill();
+                    }
+                }
+                catch
+                {
+                    // ignore shutdown errors
+                }
+                finally
+                {
+                    try { instance.Process.Dispose(); } catch { }
+                }
+            }
+
+            cache.Clear();
+            activeInstance = null;
+        }
+
+        private void CloseExternalSpreadsheetInstance(Dictionary<string, ExternalSpreadsheetInstance> cache, string filePath, ref ExternalSpreadsheetInstance activeInstance)
+        {
+            if (cache == null || string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            if (!cache.TryGetValue(filePath, out var instance) || instance?.Process == null)
+                return;
+
+            try
+            {
+                if (!instance.Process.HasExited)
+                {
+                    instance.Process.CloseMainWindow();
+                    if (!instance.Process.WaitForExit(1500))
+                        instance.Process.Kill();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                try { instance.Process.Dispose(); } catch { }
+            }
+
+            cache.Remove(filePath);
+            if (ReferenceEquals(activeInstance, instance))
+                activeInstance = null;
         }
 
         private void ReleaseStuckModifierKeys()
@@ -3448,6 +4836,14 @@ namespace ConstructionControl
             estimateEmbeddedWindowHeight = -1;
         }
 
+        private void ResetEstimateEmbeddedLayoutCacheSecondary()
+        {
+            estimateEmbeddedWindowXSecondary = int.MinValue;
+            estimateEmbeddedWindowYSecondary = int.MinValue;
+            estimateEmbeddedWindowWidthSecondary = -1;
+            estimateEmbeddedWindowHeightSecondary = -1;
+        }
+
         private void ScheduleEstimateEmbeddedLayout()
         {
             if (estimateExcelWindowHandle == IntPtr.Zero)
@@ -3466,9 +4862,30 @@ namespace ConstructionControl
             }), DispatcherPriority.ApplicationIdle);
         }
 
+        private void ScheduleEstimateEmbeddedLayoutSecondary()
+        {
+            if (estimateExcelWindowHandleSecondary == IntPtr.Zero)
+                return;
+
+            LayoutEmbeddedEstimateWindowSecondary(force: true);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (estimateExcelWindowHandleSecondary != IntPtr.Zero)
+                    LayoutEmbeddedEstimateWindowSecondary();
+            }), DispatcherPriority.Render);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (estimateExcelWindowHandleSecondary != IntPtr.Zero)
+                    LayoutEmbeddedEstimateWindowSecondary();
+            }), DispatcherPriority.ApplicationIdle);
+        }
+
         private void LayoutEmbeddedEstimateWindow(bool force = false)
         {
             if (estimateExcelWindowHandle == IntPtr.Zero)
+                return;
+
+            if (estimateDetached)
                 return;
 
             int width;
@@ -3564,6 +4981,63 @@ namespace ConstructionControl
                 ShowWindow(estimateExcelWindowHandle, SW_SHOW);
         }
 
+        private void LayoutEmbeddedEstimateWindowSecondary(bool force = false)
+        {
+            if (estimateExcelWindowHandleSecondary == IntPtr.Zero)
+                return;
+
+            if (estimateSecondaryDetached)
+                return;
+
+            int width;
+            int height;
+            int x;
+            int y;
+
+            if (EstimatePreviewContainerSecondary == null)
+                return;
+
+            if (!IsVisible
+                || WindowState == WindowState.Minimized
+                || !ReferenceEquals(MainTabs?.SelectedItem, EstimateTab)
+                || EstimatePreviewContainerSecondary.Visibility != Visibility.Visible
+                || !estimateSplitEnabled)
+            {
+                try { ShowWindow(estimateExcelWindowHandleSecondary, SW_HIDE); } catch { }
+                return;
+            }
+
+            EstimatePreviewContainerSecondary.UpdateLayout();
+            var screenBounds = GetScreenBounds(EstimatePreviewContainerSecondary);
+            width = screenBounds.Width;
+            height = screenBounds.Height;
+            x = screenBounds.X;
+            y = screenBounds.Y;
+
+            if (!force
+                && x == estimateEmbeddedWindowXSecondary
+                && y == estimateEmbeddedWindowYSecondary
+                && width == estimateEmbeddedWindowWidthSecondary
+                && height == estimateEmbeddedWindowHeightSecondary)
+                return;
+
+            estimateEmbeddedWindowXSecondary = x;
+            estimateEmbeddedWindowYSecondary = y;
+            estimateEmbeddedWindowWidthSecondary = width;
+            estimateEmbeddedWindowHeightSecondary = height;
+
+            SetWindowPos(
+                estimateExcelWindowHandleSecondary,
+                IntPtr.Zero,
+                x,
+                y,
+                width,
+                height,
+                SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+
+            try { ShowWindow(estimateExcelWindowHandleSecondary, SW_SHOW); } catch { }
+        }
+
         private void ConfigureFloatingEstimateWindow(IntPtr windowHandle)
         {
             if (windowHandle == IntPtr.Zero)
@@ -3600,6 +5074,33 @@ namespace ConstructionControl
                 0,
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+
+        private void ConfigureDetachedEstimateWindow(IntPtr windowHandle)
+        {
+            if (windowHandle == IntPtr.Zero)
+                return;
+
+            var style = GetWindowLongPtr(windowHandle, GWL_STYLE).ToInt64();
+            style &= ~WS_CHILD;
+            style &= ~WS_POPUP;
+            style |= WS_CAPTION | WS_DLGFRAME | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
+            SetWindowLongPtr(windowHandle, GWL_STYLE, new IntPtr(style));
+
+            var exStyle = GetWindowLongPtr(windowHandle, GWL_EXSTYLE).ToInt64();
+            exStyle |= WS_EX_APPWINDOW;
+            exStyle &= ~WS_EX_TOOLWINDOW;
+            SetWindowLongPtr(windowHandle, GWL_EXSTYLE, new IntPtr(exStyle));
+
+            SetWindowLongPtr(windowHandle, GWLP_HWNDPARENT, IntPtr.Zero);
+            SetWindowPos(
+                windowHandle,
+                IntPtr.Zero,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
         }
 
         private static (int X, int Y, int Width, int Height) GetScreenBounds(FrameworkElement element)
@@ -3747,7 +5248,10 @@ namespace ConstructionControl
         {
             SaveBrowserPreviewState(selectedPdfNode, PdfPreviewBrowser);
             selectedPdfNode = e.NewValue as DocumentTreeNode;
-            UpdatePdfSelectionInfo();
+            if (selectedPdfNode != null && !selectedPdfNode.IsFolder)
+                OpenPdfTab(selectedPdfNode);
+            else
+                UpdatePdfSelectionInfo();
         }
 
         private void EstimateTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -3755,7 +5259,10 @@ namespace ConstructionControl
             SaveEstimatePreviewState();
             SaveBrowserPreviewState(selectedEstimateNode, EstimatePreviewBrowser);
             selectedEstimateNode = e.NewValue as DocumentTreeNode;
-            UpdateEstimateSelectionInfo();
+            if (selectedEstimateNode != null && !selectedEstimateNode.IsFolder)
+                OpenEstimateTab(selectedEstimateNode);
+            else
+                UpdateEstimateSelectionInfo();
         }
 
         private void AddPdfFiles_Click(object sender, RoutedEventArgs e)
@@ -3989,7 +5496,10 @@ namespace ConstructionControl
             {
                 selectedPdfNode = node;
                 SelectMainTab(PdfTab);
-                UpdatePdfSelectionInfo();
+                if (node != null && !node.IsFolder)
+                    OpenPdfTab(node);
+                else
+                    UpdatePdfSelectionInfo();
             });
 
         private void SearchEstimateNodes_Click(object sender, RoutedEventArgs e)
@@ -3997,8 +5507,77 @@ namespace ConstructionControl
             {
                 selectedEstimateNode = node;
                 SelectMainTab(EstimateTab);
-                UpdateEstimateSelectionInfo();
+                if (node != null && !node.IsFolder)
+                    OpenEstimateTab(node);
+                else
+                    UpdateEstimateSelectionInfo();
             });
+
+        private void PdfTreeSearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                OpenDocumentTreeSearchFromInline(true);
+                e.Handled = true;
+            }
+        }
+
+        private void PdfTreeSearchButton_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentTreeSearchFromInline(true);
+
+        private void PdfTreeSearchClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (PdfTreeSearchBox != null)
+                PdfTreeSearchBox.Text = string.Empty;
+        }
+
+        private void EstimateTreeSearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                OpenDocumentTreeSearchFromInline(false);
+                e.Handled = true;
+            }
+        }
+
+        private void EstimateTreeSearchButton_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentTreeSearchFromInline(false);
+
+        private void EstimateTreeSearchClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (EstimateTreeSearchBox != null)
+                EstimateTreeSearchBox.Text = string.Empty;
+        }
+
+        private void OpenDocumentTreeSearchFromInline(bool isPdf)
+        {
+            var query = (isPdf ? PdfTreeSearchBox?.Text : EstimateTreeSearchBox?.Text)?.Trim() ?? string.Empty;
+            var title = isPdf ? "Поиск по PDF" : "Поиск по сметам";
+            var libraryName = isPdf ? "PDF" : "Сметы";
+            var root = isPdf ? currentObject?.PdfDocuments : currentObject?.EstimateDocuments;
+
+            ShowDocumentTreeSearchDialog(title, root, libraryName, node =>
+            {
+                if (isPdf)
+                {
+                    selectedPdfNode = node;
+                    SelectMainTab(PdfTab);
+                    if (node != null && !node.IsFolder)
+                        OpenPdfTab(node);
+                    else
+                        UpdatePdfSelectionInfo();
+                }
+                else
+                {
+                    selectedEstimateNode = node;
+                    SelectMainTab(EstimateTab);
+                    if (node != null && !node.IsFolder)
+                        OpenEstimateTab(node);
+                    else
+                        UpdateEstimateSelectionInfo();
+                }
+            }, query);
+        }
 
         private void BatchRenamePdfNodes_Click(object sender, RoutedEventArgs e)
             => BatchRenameDocumentNodes(currentObject?.PdfDocuments, selectedPdfNode, true);
@@ -4250,7 +5829,7 @@ namespace ConstructionControl
             }
         }
 
-        private void ShowDocumentTreeSearchDialog(string title, List<DocumentTreeNode> root, string libraryName, Action<DocumentTreeNode> navigate)
+        private void ShowDocumentTreeSearchDialog(string title, List<DocumentTreeNode> root, string libraryName, Action<DocumentTreeNode> navigate, string initialQuery = null)
         {
             if (root == null || root.Count == 0)
             {
@@ -4265,7 +5844,9 @@ namespace ConstructionControl
                 return;
             }
 
-            var resultRows = new ObservableCollection<DocumentTreeSearchRow>(sourceRows);
+            var querySeed = initialQuery?.Trim() ?? string.Empty;
+            var filteredSeed = FilterDocumentSearchRows(sourceRows, querySeed);
+            var resultRows = new ObservableCollection<DocumentTreeSearchRow>(filteredSeed);
             var dialog = new Window
             {
                 Title = title,
@@ -4284,7 +5865,8 @@ namespace ConstructionControl
             var searchBox = new TextBox
             {
                 Tag = "Введите часть названия узла или файла",
-                Margin = new Thickness(0, 0, 0, 8)
+                Margin = new Thickness(0, 0, 0, 8),
+                Text = querySeed
             };
             rootGrid.Children.Add(searchBox);
 
@@ -4323,13 +5905,7 @@ namespace ConstructionControl
             void ApplyFilter()
             {
                 var query = searchBox.Text?.Trim() ?? string.Empty;
-                var filtered = string.IsNullOrWhiteSpace(query)
-                    ? sourceRows
-                    : sourceRows.Where(x =>
-                        (x.Name?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false)
-                        || (x.Path?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false)
-                        || (x.FilePath?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false))
-                        .ToList();
+                var filtered = FilterDocumentSearchRows(sourceRows, query);
 
                 resultRows.Clear();
                 foreach (var row in filtered)
@@ -4351,6 +5927,22 @@ namespace ConstructionControl
             grid.MouseDoubleClick += (_, _) => NavigateSelected();
             ApplyFilter();
             dialog.ShowDialog();
+        }
+
+        private static List<DocumentTreeSearchRow> FilterDocumentSearchRows(IEnumerable<DocumentTreeSearchRow> sourceRows, string query)
+        {
+            if (sourceRows == null)
+                return new List<DocumentTreeSearchRow>();
+
+            var trimmed = query?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return sourceRows.ToList();
+
+            return sourceRows.Where(x =>
+                    (x.Name?.Contains(trimmed, StringComparison.CurrentCultureIgnoreCase) ?? false)
+                    || (x.Path?.Contains(trimmed, StringComparison.CurrentCultureIgnoreCase) ?? false)
+                    || (x.FilePath?.Contains(trimmed, StringComparison.CurrentCultureIgnoreCase) ?? false))
+                .ToList();
         }
 
         private List<DocumentTreeSearchRow> BuildDocumentTreeSearchRows(IEnumerable<DocumentTreeNode> nodes, string libraryName)
@@ -4788,6 +6380,12 @@ namespace ConstructionControl
         private void EstimatePreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
             => LayoutEmbeddedEstimateWindow();
 
+        private void EstimatePreviewContainerSecondary_SizeChanged(object sender, SizeChangedEventArgs e)
+            => LayoutEmbeddedEstimateWindowSecondary();
+
+        private void PdfPreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+            => LayoutEmbeddedPdfWindow();
+
         private void PdfTreeView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             pdfTreeDragStart = e.GetPosition(null);
@@ -4931,7 +6529,24 @@ namespace ConstructionControl
             UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
 
             if (!ReferenceEquals(item, EstimateTab))
+            {
                 HideEstimateEmbeddedPreview();
+                HideEstimateEmbeddedSecondaryPreview();
+            }
+            else
+            {
+                ScheduleEstimateEmbeddedLayout();
+                ScheduleEstimateEmbeddedLayoutSecondary();
+            }
+
+            if (!ReferenceEquals(item, PdfTab))
+            {
+                HidePdfEmbeddedPreview();
+            }
+            else
+            {
+                SchedulePdfEmbeddedLayout();
+            }
 
             if (item.Header?.ToString() == "Приход")
             {
@@ -16721,6 +18336,7 @@ namespace ConstructionControl
                 currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
                 currentObject.UiSettings.TabDisplayModes ??= new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
                 currentObject.UiSettings.GridColumnPreferences ??= new Dictionary<string, List<GridColumnPreference>>(StringComparer.CurrentCultureIgnoreCase);
+                currentObject.UiSettings.GridColumnPresets ??= new Dictionary<string, Dictionary<string, List<GridColumnPreference>>>(StringComparer.CurrentCultureIgnoreCase);
                 EnsureReferenceMappingsStorage();
             }
 
@@ -17029,6 +18645,82 @@ namespace ConstructionControl
             currentObject.UiSettings.GridColumnPreferences[key] = list;
         }
 
+        private Dictionary<string, List<GridColumnPreference>> GetGridPresetStore(DataGrid grid)
+        {
+            if (grid == null)
+                return null;
+
+            var key = GetGridPreferenceKey(grid);
+            if (string.IsNullOrWhiteSpace(key))
+                return null;
+
+            EnsureProjectUiSettings();
+            currentObject.UiSettings.GridColumnPresets ??= new Dictionary<string, Dictionary<string, List<GridColumnPreference>>>(StringComparer.CurrentCultureIgnoreCase);
+            if (!currentObject.UiSettings.GridColumnPresets.TryGetValue(key, out var store) || store == null)
+            {
+                store = new Dictionary<string, List<GridColumnPreference>>(StringComparer.CurrentCultureIgnoreCase);
+                currentObject.UiSettings.GridColumnPresets[key] = store;
+            }
+
+            return store;
+        }
+
+        private List<string> GetGridPresetNames(DataGrid grid)
+        {
+            var store = GetGridPresetStore(grid);
+            if (store == null)
+                return new List<string>();
+
+            return store.Keys.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+        }
+
+        private void SaveGridColumnPreset(DataGrid grid, string presetName)
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(presetName))
+                return;
+
+            var store = GetGridPresetStore(grid);
+            if (store == null)
+                return;
+
+            var list = grid.Columns
+                .OrderBy(x => x.DisplayIndex)
+                .Select(x => new GridColumnPreference
+                {
+                    Header = GetColumnHeaderKey(x),
+                    IsVisible = x.Visibility == Visibility.Visible,
+                    DisplayIndex = x.DisplayIndex,
+                    Width = GetColumnWidthValue(x)
+                })
+                .ToList();
+
+            store[presetName.Trim()] = list;
+        }
+
+        private void ApplyGridColumnPreset(DataGrid grid, string presetName)
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(presetName))
+                return;
+
+            var store = GetGridPresetStore(grid);
+            if (store == null || !store.TryGetValue(presetName.Trim(), out var prefs) || prefs == null || prefs.Count == 0)
+                return;
+
+            ApplyGridColumnPreferences(grid, prefs);
+        }
+
+        private void RemoveGridColumnPreset(DataGrid grid, string presetName)
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(presetName))
+                return;
+
+            var store = GetGridPresetStore(grid);
+            if (store == null)
+                return;
+
+            store.Remove(presetName.Trim());
+        }
+
         private void ApplyGridColumnPreferencesForAll()
         {
             foreach (var grid in GetManagedGridMap().Values)
@@ -17045,6 +18737,14 @@ namespace ConstructionControl
                 return;
 
             if (!currentObject.UiSettings.GridColumnPreferences.TryGetValue(key, out var prefs) || prefs == null || prefs.Count == 0)
+                return;
+
+            ApplyGridColumnPreferences(grid, prefs);
+        }
+
+        private void ApplyGridColumnPreferences(DataGrid grid, List<GridColumnPreference> prefs)
+        {
+            if (grid == null || prefs == null || prefs.Count == 0)
                 return;
 
             var prefByHeader = prefs
@@ -17095,6 +18795,136 @@ namespace ConstructionControl
                 return null;
 
             return GetGridByTabHeader(tab.Header?.ToString());
+        }
+
+        private void UiDensityStandard_Click(object sender, RoutedEventArgs e)
+            => SetUiDensityMode("Стандартный");
+
+        private void UiDensityCompact_Click(object sender, RoutedEventArgs e)
+            => SetUiDensityMode("Компактный");
+
+        private void AutoSizeCurrentGridColumns_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            DataGridSizingHelper.SetEnableSmartSizing(grid, false);
+            DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+            SaveGridColumnPreferences(grid);
+            SaveState(SaveTrigger.System);
+            SetLastOperationStatus("Колонки подогнаны");
+        }
+
+        private void ResetCurrentGridColumns_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            var key = GetGridPreferenceKey(grid);
+            if (!string.IsNullOrWhiteSpace(key))
+                currentObject?.UiSettings?.GridColumnPreferences?.Remove(key);
+
+            isApplyingColumnPreferences = true;
+            try
+            {
+                foreach (var column in grid.Columns)
+                {
+                    column.MinWidth = 0;
+                    column.Width = DataGridLength.Auto;
+                }
+            }
+            finally
+            {
+                isApplyingColumnPreferences = false;
+            }
+
+            DataGridSizingHelper.SetEnableSmartSizing(grid, false);
+            DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+            SaveState(SaveTrigger.System);
+            SetLastOperationStatus("Ширины колонок сброшены");
+        }
+
+        private void SaveCurrentGridPreset_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            var name = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите название пресета:",
+                "Пресет колонок",
+                "Новый пресет");
+
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            SaveGridColumnPreset(grid, name.Trim());
+            SaveState(SaveTrigger.System);
+            SetLastOperationStatus($"Пресет колонок сохранен: {name.Trim()}");
+        }
+
+        private void ApplyCurrentGridPreset_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            var names = GetGridPresetNames(grid);
+            if (names.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет сохраненных пресетов.");
+                return;
+            }
+
+            var selected = PromptSelectOption("Выберите пресет колонок", "Пресет", names);
+            if (string.IsNullOrWhiteSpace(selected))
+                return;
+
+            ApplyGridColumnPreset(grid, selected);
+            SaveState(SaveTrigger.System);
+            SetLastOperationStatus($"Пресет колонок применен: {selected}");
+        }
+
+        private void DeleteCurrentGridPreset_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            var names = GetGridPresetNames(grid);
+            if (names.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет сохраненных пресетов.");
+                return;
+            }
+
+            var selected = PromptSelectOption("Удалить пресет колонок", "Пресет", names);
+            if (string.IsNullOrWhiteSpace(selected))
+                return;
+
+            if (MessageBox.Show($"Удалить пресет \"{selected}\"?", "Пресеты колонок", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            RemoveGridColumnPreset(grid, selected);
+            SaveState(SaveTrigger.System);
+            SetLastOperationStatus($"Пресет колонок удален: {selected}");
         }
 
         private DataGrid GetGridByTabHeader(string header)
@@ -17156,6 +18986,8 @@ namespace ConstructionControl
             if (grid == null)
                 return;
 
+            EnsureProjectUiSettings();
+
             var rows = new ObservableCollection<ColumnManagerRow>(
                 grid.Columns
                     .OrderBy(x => x.DisplayIndex)
@@ -17181,6 +19013,7 @@ namespace ConstructionControl
 
             var root = new Grid { Margin = new Thickness(14) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -17193,10 +19026,65 @@ namespace ConstructionControl
             Grid.SetRow(hint, 0);
             root.Children.Add(hint);
 
+            var presetPanel = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            presetPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            presetPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+            presetPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            presetPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            presetPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var presetNameBox = new TextBox
+            {
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(presetNameBox, 0);
+
+            var presetCombo = new ComboBox
+            {
+                Margin = new Thickness(0, 0, 8, 0),
+                MinWidth = 200,
+                ItemsSource = new ObservableCollection<string>(GetGridPresetNames(grid))
+            };
+            if (presetCombo.Items.Count > 0)
+                presetCombo.SelectedIndex = 0;
+            Grid.SetColumn(presetCombo, 1);
+
+            var savePresetButton = new Button
+            {
+                Content = "Сохранить пресет",
+                MinWidth = 140,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(savePresetButton, 2);
+
+            var applyPresetButton = new Button
+            {
+                Content = "Применить",
+                MinWidth = 110,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            Grid.SetColumn(applyPresetButton, 3);
+
+            var deletePresetButton = new Button
+            {
+                Content = "Удалить",
+                MinWidth = 90
+            };
+            Grid.SetColumn(deletePresetButton, 4);
+
+            presetPanel.Children.Add(presetNameBox);
+            presetPanel.Children.Add(presetCombo);
+            presetPanel.Children.Add(savePresetButton);
+            presetPanel.Children.Add(applyPresetButton);
+            presetPanel.Children.Add(deletePresetButton);
+            Grid.SetRow(presetPanel, 1);
+            root.Children.Add(presetPanel);
+
             var body = new Grid();
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetRow(body, 1);
+            Grid.SetRow(body, 2);
             root.Children.Add(body);
 
             var rowsGrid = new DataGrid
@@ -17268,7 +19156,7 @@ namespace ConstructionControl
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0)
             };
-            Grid.SetRow(footer, 2);
+            Grid.SetRow(footer, 3);
             root.Children.Add(footer);
 
             var cancelButton = new Button { Content = "Отмена", MinWidth = 120, Style = FindResource("SecondaryButton") as Style, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
@@ -17309,6 +19197,61 @@ namespace ConstructionControl
                 SaveGridColumnPreferences(grid);
                 SaveState(SaveTrigger.System);
                 dialog.DialogResult = true;
+            };
+
+            void RefreshPresetList(string selectName = null)
+            {
+                var names = new ObservableCollection<string>(GetGridPresetNames(grid));
+                presetCombo.ItemsSource = names;
+                if (!string.IsNullOrWhiteSpace(selectName) && names.Contains(selectName))
+                    presetCombo.SelectedItem = selectName;
+                else if (names.Count > 0)
+                    presetCombo.SelectedIndex = 0;
+            }
+
+            savePresetButton.Click += (_, _) =>
+            {
+                var name = presetNameBox.Text?.Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    MessageBox.Show("Введите название пресета.");
+                    return;
+                }
+
+                SaveGridColumnPreset(grid, name);
+                RefreshPresetList(name);
+                SaveState(SaveTrigger.System);
+                SetLastOperationStatus($"Пресет колонок сохранен: {name}");
+            };
+
+            applyPresetButton.Click += (_, _) =>
+            {
+                if (presetCombo.SelectedItem is not string presetName || string.IsNullOrWhiteSpace(presetName))
+                {
+                    MessageBox.Show("Выберите пресет.");
+                    return;
+                }
+
+                ApplyGridColumnPreset(grid, presetName);
+                SaveState(SaveTrigger.System);
+                SetLastOperationStatus($"Пресет колонок применен: {presetName}");
+            };
+
+            deletePresetButton.Click += (_, _) =>
+            {
+                if (presetCombo.SelectedItem is not string presetName || string.IsNullOrWhiteSpace(presetName))
+                {
+                    MessageBox.Show("Выберите пресет.");
+                    return;
+                }
+
+                if (MessageBox.Show($"Удалить пресет \"{presetName}\"?", "Пресеты колонок", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                    return;
+
+                RemoveGridColumnPreset(grid, presetName);
+                RefreshPresetList();
+                SaveState(SaveTrigger.System);
+                SetLastOperationStatus($"Пресет колонок удален: {presetName}");
             };
 
             dialog.Content = root;
@@ -19637,6 +21580,227 @@ namespace ConstructionControl
                 return checkBox.IsChecked == true ? "Да" : "Нет";
 
             return string.Empty;
+        }
+
+        private bool IsPdfEditorProcessAlive()
+        {
+            if (pdfEditorProcess == null)
+                return false;
+
+            try
+            {
+                return !pdfEditorProcess.HasExited;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool EnsurePdfExternalProcess()
+        {
+            if (!useExternalPdfEditor || string.IsNullOrWhiteSpace(preferredPdfEditorPath) || !File.Exists(preferredPdfEditorPath))
+                return false;
+
+            if (IsPdfEditorProcessAlive() && pdfEditorWindowHandle != IntPtr.Zero)
+                return true;
+
+            Process process;
+            try
+            {
+                process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = preferredPdfEditorPath,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Minimized
+                }) ?? throw new InvalidOperationException("Не удалось запустить PDF-XChange Editor.");
+            }
+            catch
+            {
+                return false;
+            }
+
+            try
+            {
+                process.WaitForInputIdle(5000);
+            }
+            catch
+            {
+                // ignore input idle errors
+            }
+
+            var handle = WaitForMainWindowHandle(process, timeoutMs: 25000);
+            if (handle == IntPtr.Zero)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill();
+                }
+                catch
+                {
+                    // ignore kill errors
+                }
+
+                return false;
+            }
+
+            pdfEditorProcess = process;
+            pdfEditorWindowHandle = handle;
+            ConfigureFloatingEstimateWindow(pdfEditorWindowHandle);
+            ResetPdfEmbeddedLayoutCache();
+            SchedulePdfEmbeddedLayout();
+            return true;
+        }
+
+        private void OpenPdfInExternalEditor(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            if (!EnsurePdfExternalProcess())
+                return;
+
+            if (string.Equals(pdfEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase))
+            {
+                SchedulePdfEmbeddedLayout();
+                return;
+            }
+
+            pdfEmbeddedFilePath = filePath;
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = preferredPdfEditorPath,
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false
+                });
+            }
+            catch
+            {
+                // Ignore open errors, keep the embedded window alive.
+            }
+
+            try { ShowWindow(pdfEditorWindowHandle, SW_SHOW); } catch { }
+            SchedulePdfEmbeddedLayout();
+        }
+
+        private void ResetPdfEmbeddedLayoutCache()
+        {
+            pdfEmbeddedWindowX = int.MinValue;
+            pdfEmbeddedWindowY = int.MinValue;
+            pdfEmbeddedWindowWidth = -1;
+            pdfEmbeddedWindowHeight = -1;
+        }
+
+        private void SchedulePdfEmbeddedLayout()
+        {
+            if (pdfEditorWindowHandle == IntPtr.Zero)
+                return;
+
+            LayoutEmbeddedPdfWindow(force: true);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (pdfEditorWindowHandle != IntPtr.Zero)
+                    LayoutEmbeddedPdfWindow();
+            }), DispatcherPriority.Render);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (pdfEditorWindowHandle != IntPtr.Zero)
+                    LayoutEmbeddedPdfWindow();
+            }), DispatcherPriority.ApplicationIdle);
+        }
+
+        private void LayoutEmbeddedPdfWindow(bool force = false)
+        {
+            if (pdfEditorWindowHandle == IntPtr.Zero)
+                return;
+
+            if (!IsVisible
+                || WindowState == WindowState.Minimized
+                || !ReferenceEquals(MainTabs?.SelectedItem, PdfTab)
+                || PdfPreviewContainer == null
+                || PdfPreviewContainer.Visibility != Visibility.Visible)
+            {
+                try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
+                return;
+            }
+
+            PdfPreviewContainer.UpdateLayout();
+            var screenBounds = GetScreenBounds(PdfPreviewContainer);
+            var width = screenBounds.Width;
+            var height = screenBounds.Height;
+            if (width <= 0 || height <= 0)
+            {
+                try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
+                return;
+            }
+
+            var x = screenBounds.X;
+            var y = screenBounds.Y;
+
+            if (!force
+                && x == pdfEmbeddedWindowX
+                && y == pdfEmbeddedWindowY
+                && width == pdfEmbeddedWindowWidth
+                && height == pdfEmbeddedWindowHeight)
+            {
+                return;
+            }
+
+            pdfEmbeddedWindowX = x;
+            pdfEmbeddedWindowY = y;
+            pdfEmbeddedWindowWidth = width;
+            pdfEmbeddedWindowHeight = height;
+
+            SetWindowPos(
+                pdfEditorWindowHandle,
+                IntPtr.Zero,
+                x,
+                y,
+                width,
+                height,
+                SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+
+            SetWindowRgn(pdfEditorWindowHandle, IntPtr.Zero, true);
+        }
+
+        private void HidePdfEmbeddedPreview()
+        {
+            if (pdfEditorWindowHandle == IntPtr.Zero)
+                return;
+
+            try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
+        }
+
+        private void ClosePdfExternalProcess()
+        {
+            if (pdfEditorProcess != null)
+            {
+                try
+                {
+                    if (!pdfEditorProcess.HasExited)
+                    {
+                        pdfEditorProcess.CloseMainWindow();
+                        if (!pdfEditorProcess.WaitForExit(1500))
+                            pdfEditorProcess.Kill();
+                    }
+                }
+                catch
+                {
+                    // Ignore shutdown errors.
+                }
+                finally
+                {
+                    pdfEditorProcess.Dispose();
+                    pdfEditorProcess = null;
+                }
+            }
+
+            pdfEditorWindowHandle = IntPtr.Zero;
+            pdfEmbeddedFilePath = string.Empty;
+            ResetPdfEmbeddedLayoutCache();
         }
         void ExportArrival(IXLWorkbook wb)
         {

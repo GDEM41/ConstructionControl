@@ -34,6 +34,8 @@ namespace ConstructionControl
             SummaryReminderOverageCheckBox.IsChecked = settings.SummaryReminderOnOverage;
             SummaryReminderDeficitCheckBox.IsChecked = settings.SummaryReminderOnDeficit;
             SummaryReminderMainOnlyCheckBox.IsChecked = settings.SummaryReminderOnlyMain;
+            CheckUpdatesOnStartCheckBox.IsChecked = settings.CheckUpdatesOnStart;
+            UpdateFeedUrlBox.Text = settings.UpdateFeedUrl ?? string.Empty;
             RequireCodeForCriticalOperationsCheckBox.IsChecked = settings.RequireCodeForCriticalOperations;
 
             SelectDensityMode(NormalizeDensityMode(settings.UiDensityMode));
@@ -58,6 +60,8 @@ namespace ConstructionControl
                 SummaryReminderOnDeficit = SummaryReminderDeficitCheckBox.IsChecked == true,
                 SummaryReminderOnlyMain = SummaryReminderMainOnlyCheckBox.IsChecked != false,
                 DataRootDirectory = ResolveDataRootPath(DataRootPathBox.Text),
+                CheckUpdatesOnStart = CheckUpdatesOnStartCheckBox.IsChecked == true,
+                UpdateFeedUrl = (UpdateFeedUrlBox.Text ?? string.Empty).Trim(),
                 UiDensityMode = GetSelectedDensityMode(),
                 AccessRole = GetSelectedAccessRole(),
                 RequireCodeForCriticalOperations = RequireCodeForCriticalOperationsCheckBox.IsChecked != false

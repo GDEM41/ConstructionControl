@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace ConstructionControl
@@ -28,6 +29,9 @@ namespace ConstructionControl
                 {
                     File.AppendAllText(logPath, text, Encoding.UTF8);
                 }
+
+                var tempLog = Path.Combine(Path.GetTempPath(), "ConstructionControl_startup.log");
+                File.AppendAllText(tempLog, text, Encoding.UTF8);
             }
             catch
             {
@@ -35,7 +39,7 @@ namespace ConstructionControl
             }
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
             {
@@ -56,9 +60,30 @@ namespace ConstructionControl
 
             try
             {
-                var mainWindow = new MainWindow();
+                // Пока показывается splash, не позволяем приложению завершиться
+                // из-за временного отсутствия главного окна.
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+                var splash = new SplashWindow();
+                splash.Show();
+
+                await Task.Delay(TimeSpan.FromSeconds(5));
+
+                var mainWindow = new MainWindow
+                {
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                    ShowInTaskbar = true,
+                    WindowState = WindowState.Normal
+                };
+
                 MainWindow = mainWindow;
                 mainWindow.Show();
+                mainWindow.Activate();
+                mainWindow.Focus();
+
+                ShutdownMode = ShutdownMode.OnMainWindowClose;
+
+                try { splash.Close(); } catch { }
             }
             catch (Exception ex)
             {

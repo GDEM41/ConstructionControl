@@ -487,7 +487,6 @@
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
             <Setter Property="VirtualizingPanel.CacheLengthUnit" Value="Item"/>
             <Setter Property="VirtualizingPanel.CacheLength" Value="2"/>
-            <Setter Property="local:DataGridSizingHelper.EnableSmartSizing" Value="True"/>
         </Style>
 
         <Style TargetType="DataGridColumnHeader">

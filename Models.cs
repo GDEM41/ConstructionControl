@@ -147,11 +147,15 @@ namespace ConstructionControl
         public bool SummaryReminderOnDeficit { get; set; }
         public bool SummaryReminderOnlyMain { get; set; } = true;
         public string DataRootDirectory { get; set; } = string.Empty;
+        public bool CheckUpdatesOnStart { get; set; }
+        public string UpdateFeedUrl { get; set; } = string.Empty;
         public string OtStatusFilter { get; set; } = "Все";
         public string OtSpecialtyFilter { get; set; } = "Все";
         public string OtBrigadeFilter { get; set; } = "Все";
         public Dictionary<string, string> TabDisplayModes { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
         public Dictionary<string, List<GridColumnPreference>> GridColumnPreferences { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
+        public Dictionary<string, Dictionary<string, List<GridColumnPreference>>> GridColumnPresets { get; set; }
+            = new(StringComparer.CurrentCultureIgnoreCase);
     }
 
     public static class ProjectAccessRoles

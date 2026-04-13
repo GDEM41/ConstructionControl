@@ -165,11 +165,11 @@
                                   Text="5"/>
                     </Grid>
 
-                    <Grid Margin="0,2,0,12">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                      <Grid Margin="0,2,0,12">
+                          <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                          </Grid.RowDefinitions>
                         <TextBlock Text="Папка данных (кэш, автосохранение, служебные файлы)"
                                    VerticalAlignment="Center"
                                    FontWeight="SemiBold"
@@ -185,15 +185,45 @@
                                      Padding="10,2"
                                      VerticalContentAlignment="Center"
                                      Tag="Путь к папке данных"/>
-                            <Button Grid.Column="1"
-                                    Margin="8,0,0,0"
-                                    MinWidth="110"
-                                    Style="{StaticResource AppSecondaryButton}"
-                                    Click="BrowseDataRootButton_Click">Обзор...</Button>
-                        </Grid>
-                    </Grid>
+                              <Button Grid.Column="1"
+                                      Margin="8,0,0,0"
+                                      MinWidth="110"
+                                      Style="{StaticResource AppSecondaryButton}"
+                                      Click="BrowseDataRootButton_Click">Обзор...</Button>
+                          </Grid>
+                      </Grid>
 
-                    <Separator Margin="0,4,0,10"/>
+                      <Separator Margin="0,4,0,10"/>
+
+                      <TextBlock Text="Обновления"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}"
+                                 Margin="0,0,0,8"/>
+
+                      <CheckBox x:Name="CheckUpdatesOnStartCheckBox" FontWeight="SemiBold">
+                          <TextBlock Text="Проверять обновления при запуске" TextWrapping="Wrap"/>
+                      </CheckBox>
+
+                      <Grid Margin="0,6,0,12">
+                          <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                          </Grid.RowDefinitions>
+                          <TextBlock Text="URL файла обновлений (JSON)"
+                                     VerticalAlignment="Center"
+                                     FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextBrush}"
+                                     TextWrapping="Wrap"/>
+                          <TextBox x:Name="UpdateFeedUrlBox"
+                                   Grid.Row="1"
+                                   Height="40"
+                                   Margin="0,8,0,0"
+                                   Padding="10,2"
+                                   VerticalContentAlignment="Center"
+                                   Tag="https://example.com/masterpro/latest.json"/>
+                      </Grid>
+
+                      <Separator Margin="0,4,0,10"/>
 
                     <TextBlock Text="Уведомления по сводке"
                                FontWeight="SemiBold"

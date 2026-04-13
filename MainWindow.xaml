@@ -4,6 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ConstructionControl"
         Title="Журнал входного контроля"
+        Icon="/installer/assets/MasterPRO.ico"
         Height="700"
         Width="1300"
         MinWidth="1360"
@@ -16,6 +17,7 @@
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
+        <SolidColorBrush x:Key="HoverBrush" Color="#EEF4FF"/>
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Height" Value="{DynamicResource ControlHeight}"/>
             <Setter Property="MinWidth" Value="118"/>
@@ -312,6 +314,11 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="AlternatingRowBackground" Value="{StaticResource SurfaceAltBrush}"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="EnableRowVirtualization" Value="True"/>
+            <Setter Property="EnableColumnVirtualization" Value="True"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
         </Style>
         <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
             <Setter Property="Padding" Value="8,6"/>
@@ -547,6 +554,21 @@
                 <MenuItem Header="Справочники" Click="ReferenceCatalogs_Click"/>
                 <MenuItem Header="Настройки">
                     <MenuItem Header="Параметры интерфейса" Click="AppSettings_Click"/>
+                    <MenuItem Header="Проверить обновления" Click="CheckUpdatesMenu_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Вид таблиц">
+                        <MenuItem Header="Стандартный режим" Click="UiDensityStandard_Click"/>
+                        <MenuItem Header="Компактный режим" Click="UiDensityCompact_Click"/>
+                        <Separator/>
+                        <MenuItem Header="Подогнать колонки текущей вкладки" Click="AutoSizeCurrentGridColumns_Click"/>
+                        <MenuItem Header="Сбросить ширины текущей вкладки" Click="ResetCurrentGridColumns_Click"/>
+                        <Separator/>
+                        <MenuItem Header="Пресеты колонок">
+                            <MenuItem Header="Сохранить текущий..." Click="SaveCurrentGridPreset_Click"/>
+                            <MenuItem Header="Применить..." Click="ApplyCurrentGridPreset_Click"/>
+                            <MenuItem Header="Удалить..." Click="DeleteCurrentGridPreset_Click"/>
+                        </MenuItem>
+                    </MenuItem>
                     <Separator/>
                     <MenuItem Header="Менеджер колонок" Click="OpenColumnManager_Click" InputGestureText="Ctrl+Shift+M"/>
                     <MenuItem Header="Глобальный поиск" Click="OpenGlobalSearch_Click" InputGestureText="Ctrl+F"/>
@@ -1675,7 +1697,6 @@
                                       CanUserDeleteRows="False"
                                       ColumnWidth="Auto"
                                       HeadersVisibility="Column"
-                                      local:DataGridSizingHelper.EnableSmartSizing="False"
                                       EnableRowVirtualization="True"
                                       EnableColumnVirtualization="True"
                                       VirtualizingPanel.IsVirtualizing="True"
@@ -2346,6 +2367,7 @@
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
@@ -2400,18 +2422,48 @@
                                                               Unchecked="PdfTreePinToggle_Unchecked">📎</ToggleButton>
                                             </Grid>
 
+                                            <Grid Grid.Row="1" Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox x:Name="PdfTreeSearchBox"
+                                                         Grid.Column="0"
+                                                         Height="28"
+                                                         Margin="0,0,6,0"
+                                                         Padding="8,0"
+                                                         VerticalContentAlignment="Center"
+                                                         ToolTip="Поиск по PDF"
+                                                         KeyDown="PdfTreeSearchBox_KeyDown"/>
+                                                <Button Grid.Column="1"
+                                                        Content="Найти"
+                                                        Height="28"
+                                                        MinWidth="72"
+                                                        Margin="0,0,6,0"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Click="PdfTreeSearchButton_Click"/>
+                                                <Button Grid.Column="2"
+                                                        Content="Очистить"
+                                                        Height="28"
+                                                        MinWidth="86"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Click="PdfTreeSearchClear_Click"/>
+                                            </Grid>
+
                                             <TreeView x:Name="PdfTreeView"
-                                                      Grid.Row="1"
+                                                      Grid.Row="2"
                                                       AllowDrop="True"
                                                       SelectedItemChanged="PdfTreeView_SelectedItemChanged"
                                                       PreviewMouseLeftButtonDown="PdfTreeView_PreviewMouseLeftButtonDown"
                                                       MouseMove="PdfTreeView_MouseMove"
                                                       Drop="PdfTreeView_Drop">
-                                                <TreeView.Resources>
-                                                    <HierarchicalDataTemplate DataType="{x:Type local:DocumentTreeNode}" ItemsSource="{Binding Children}">
+                                                <TreeView.ItemTemplate>
+                                                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                                         <TextBlock Text="{Binding Name}"/>
                                                     </HierarchicalDataTemplate>
-                                                </TreeView.Resources>
+                                                </TreeView.ItemTemplate>
                                             </TreeView>
                                         </Grid>
                                     </Border>
@@ -2422,61 +2474,217 @@
                                             CornerRadius="0"
                                             MouseEnter="PdfPreviewArea_MouseEnter">
                                         <Grid>
-                                            <StackPanel x:Name="PdfInfoPanel"
-                                                        Margin="14">
-                                                <TextBlock Text="ПДФ-документы" FontSize="20" FontWeight="SemiBold"/>
-                                                <TextBlock Text="Выберите один или несколько PDF-файлов, затем разложите их по своему дереву. Папки, названия и расположение узлов можно менять в любой момент."
-                                                           Margin="0,8,0,16"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           TextWrapping="Wrap"/>
-                                                <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="PdfSelectedNameText"
-                                                           Margin="0,6,0,10"
-                                                           FontSize="16"
-                                                           Text="Ничего не выбрано"/>
-                                                <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="PdfSelectedPathText"
-                                                           Margin="0,6,0,10"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           TextWrapping="Wrap"
-                                                           Text="—"/>
-                                                <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="PdfSelectedTypeText"
-                                                           Margin="0,6,0,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           Text="—"/>
-                                            </StackPanel>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
 
-                                            <Border x:Name="PdfPreviewContainer"
-                                                    Background="{StaticResource SurfaceAltBrush}"
-                                                    BorderBrush="{StaticResource StrokeBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="0"
-                                                    Padding="0"
-                                                    Margin="0"
-                                                    Visibility="Collapsed">
-                                                <Grid>
-                                                    <WebBrowser x:Name="PdfPreviewBrowser"
-                                                                Visibility="Collapsed"/>
-                                                    <Border x:Name="PdfPreviewPlaceholder"
-                                                            Background="Transparent">
-                                                        <StackPanel HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    MaxWidth="420">
-                                                            <TextBlock Text="Предпросмотр"
-                                                                       FontWeight="SemiBold"
-                                                                       FontSize="18"
-                                                                       HorizontalAlignment="Center"/>
-                                                            <TextBlock x:Name="PdfPreviewStatusText"
-                                                                       Margin="0,10,0,0"
+                                            <Grid Grid.Row="0"
+                                                  Margin="10,8,10,6"
+                                                  Visibility="Collapsed"
+                                                  Height="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <ListBox x:Name="PdfTabStrip"
+                                                         Grid.Column="0"
+                                                         Height="32"
+                                                         Margin="0,0,8,0"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                                         SelectionChanged="PdfTabStrip_SelectionChanged"
+                                                         PreviewMouseLeftButtonDown="PdfTabStrip_PreviewMouseLeftButtonDown"
+                                                         MouseMove="PdfTabStrip_MouseMove"
+                                                         AllowDrop="True"
+                                                         Drop="PdfTabStrip_Drop">
+                                                    <ListBox.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ListBox.ItemsPanel>
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,6,0"
+                                                                    Padding="8,4"
+                                                                    CornerRadius="10"
+                                                                    Background="{StaticResource SurfaceAltBrush}"
+                                                                    BorderBrush="{StaticResource StrokeBrush}"
+                                                                    BorderThickness="1">
+                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Name}"
+                                                                               Margin="0,0,6,0"
+                                                                               VerticalAlignment="Center"/>
+                                                                    <Button Content="×"
+                                                                            Width="10"
+                                                                            Height="10"
+                                                                            Padding="0"
+                                                                            Margin="2,0,0,0"
+                                                                            MinWidth="10"
+                                                                            FontSize="8"
+                                                                            Background="Transparent"
+                                                                            BorderThickness="0"
+                                                                            Tag="{Binding}"
+                                                                            Click="PdfTabClose_Click"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Margin="0"
+                                                           Visibility="Collapsed"/>
+                                                <TextBlock Grid.Column="2"
+                                                           Margin="0"
+                                                           Visibility="Collapsed"/>
+                                            </Grid>
+
+                                            <Grid Grid.Row="1" x:Name="PdfSplitGrid"
+                                                  AllowDrop="True"
+                                                  DragEnter="PdfSplitGrid_DragEnter"
+                                                  DragLeave="PdfSplitGrid_DragLeave"
+                                                  DragOver="PdfSplitGrid_DragOver"
+                                                  Drop="PdfSplitGrid_Drop">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition x:Name="PdfSplitPrimaryColumn" Width="*"/>
+                                                    <ColumnDefinition x:Name="PdfSplitDividerColumn" Width="6"/>
+                                                    <ColumnDefinition x:Name="PdfSplitSecondaryColumn" Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border x:Name="PdfPrimaryPane" Grid.Column="0">
+                                                    <Grid>
+                                                        <StackPanel x:Name="PdfInfoPanel"
+                                                                    Margin="14">
+                                                            <TextBlock Text="ПДФ-документы" FontSize="20" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="Выберите один или несколько PDF-файлов, затем разложите их по своему дереву. Папки, названия и расположение узлов можно менять в любой момент."
+                                                                       Margin="0,8,0,16"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       TextAlignment="Center"
+                                                                       TextWrapping="Wrap"/>
+                                                            <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="PdfSelectedNameText"
+                                                                       Margin="0,6,0,10"
+                                                                       FontSize="16"
+                                                                       Text="Ничего не выбрано"/>
+                                                            <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="PdfSelectedPathText"
+                                                                       Margin="0,6,0,10"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"
-                                                                       Text="Выберите PDF-файл в дереве слева, и он откроется здесь."/>
+                                                                       Text="—"/>
+                                                            <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="PdfSelectedTypeText"
+                                                                       Margin="0,6,0,0"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Text="—"/>
                                                         </StackPanel>
-                                                    </Border>
+
+                                                <Border x:Name="PdfPreviewContainer"
+                                                        Background="{StaticResource SurfaceAltBrush}"
+                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="0"
+                                                        Padding="0"
+                                                        Margin="0"
+                                                        Visibility="Collapsed"
+                                                        SizeChanged="PdfPreviewContainer_SizeChanged">
+                                                    <Grid>
+                                                        <local:NativeChildHost x:Name="PdfExternalHost"
+                                                                               Visibility="Collapsed"/>
+                                                        <WebBrowser x:Name="PdfPreviewBrowser"
+                                                                    Visibility="Collapsed"/>
+                                                        <Border x:Name="PdfPreviewPlaceholder"
+                                                                Background="Transparent">
+                                                                    <StackPanel HorizontalAlignment="Center"
+                                                                                VerticalAlignment="Center"
+                                                                                MaxWidth="420">
+                                                                        <TextBlock Text="Предпросмотр"
+                                                                                   FontWeight="SemiBold"
+                                                                                   FontSize="18"
+                                                                                   HorizontalAlignment="Center"/>
+                                                                        <TextBlock x:Name="PdfPreviewStatusText"
+                                                                                   Margin="0,10,0,0"
+                                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                   TextAlignment="Center"
+                                                                                   TextWrapping="Wrap"
+                                                                                   Text="Выберите PDF-файл в дереве слева, и он откроется здесь."/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </Grid>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <GridSplitter x:Name="PdfSplitBar"
+                                                              Grid.Column="1"
+                                                              Width="6"
+                                                              Background="{StaticResource StrokeBrush}"
+                                                              HorizontalAlignment="Stretch"
+                                                              VerticalAlignment="Stretch"
+                                                              Visibility="Collapsed"/>
+
+                                                <Border x:Name="PdfPreviewContainerSecondary"
+                                                        Grid.Column="2"
+                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        BorderThickness="1"
+                                                        Background="{StaticResource SurfaceAltBrush}"
+                                                        Visibility="Collapsed"
+                                                        AllowDrop="True"
+                                                        Drop="PdfSecondaryPane_Drop">
+                                                    <Grid>
+                                                        <WebBrowser x:Name="PdfPreviewBrowserSecondary"
+                                                                    Visibility="Collapsed"/>
+                                                        <Border x:Name="PdfPreviewPlaceholderSecondary"
+                                                                Background="Transparent">
+                                                            <StackPanel HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center"
+                                                                        MaxWidth="420">
+                                                                <TextBlock Text="Второй файл"
+                                                                           FontWeight="SemiBold"
+                                                                           FontSize="16"
+                                                                           HorizontalAlignment="Center"/>
+                                                                <TextBlock x:Name="PdfPreviewStatusTextSecondary"
+                                                                           Margin="0,10,0,0"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           TextAlignment="Center"
+                                                                           TextWrapping="Wrap"
+                                                                           Text="Перетащите вкладку сюда для открытия рядом."/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <Grid x:Name="PdfSplitDropOverlay"
+                                                      Grid.ColumnSpan="3"
+                                                      Panel.ZIndex="5"
+                                                      Visibility="Collapsed"
+                                                      IsHitTestVisible="False">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border x:Name="PdfSplitDropLeft"
+                                                            Grid.Column="0"
+                                                            Margin="6"
+                                                            CornerRadius="10"
+                                                            BorderThickness="2"
+                                                            Opacity="0.35"
+                                                            BorderBrush="{StaticResource StrokeBrush}"
+                                                            Background="{StaticResource SelectedBrush}"/>
+                                                    <Border x:Name="PdfSplitDropRight"
+                                                            Grid.Column="1"
+                                                            Margin="6"
+                                                            CornerRadius="10"
+                                                            BorderThickness="2"
+                                                            Opacity="0.35"
+                                                            BorderBrush="{StaticResource StrokeBrush}"
+                                                            Background="{StaticResource SelectedBrush}"/>
                                                 </Grid>
-                                            </Border>
+                                            </Grid>
                                         </Grid>
                                     </Border>
                                 </Grid>
@@ -2526,6 +2734,7 @@
                                             MouseLeave="EstimateTreePanel_MouseLeave">
                                         <Grid>
                                             <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
@@ -2581,18 +2790,48 @@
                                                               Unchecked="EstimateTreePinToggle_Unchecked">📎</ToggleButton>
                                             </Grid>
 
+                                            <Grid Grid.Row="1" Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox x:Name="EstimateTreeSearchBox"
+                                                         Grid.Column="0"
+                                                         Height="28"
+                                                         Margin="0,0,6,0"
+                                                         Padding="8,0"
+                                                         VerticalContentAlignment="Center"
+                                                         ToolTip="Поиск по сметам"
+                                                         KeyDown="EstimateTreeSearchBox_KeyDown"/>
+                                                <Button Grid.Column="1"
+                                                        Content="Найти"
+                                                        Height="28"
+                                                        MinWidth="72"
+                                                        Margin="0,0,6,0"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Click="EstimateTreeSearchButton_Click"/>
+                                                <Button Grid.Column="2"
+                                                        Content="Очистить"
+                                                        Height="28"
+                                                        MinWidth="86"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Click="EstimateTreeSearchClear_Click"/>
+                                            </Grid>
+
                                             <TreeView x:Name="EstimateTreeView"
-                                                      Grid.Row="1"
+                                                      Grid.Row="2"
                                                       AllowDrop="True"
                                                       SelectedItemChanged="EstimateTreeView_SelectedItemChanged"
                                                       PreviewMouseLeftButtonDown="EstimateTreeView_PreviewMouseLeftButtonDown"
                                                       MouseMove="EstimateTreeView_MouseMove"
                                                       Drop="EstimateTreeView_Drop">
-                                                <TreeView.Resources>
-                                                    <HierarchicalDataTemplate DataType="{x:Type local:DocumentTreeNode}" ItemsSource="{Binding Children}">
+                                                <TreeView.ItemTemplate>
+                                                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                                         <TextBlock Text="{Binding Name}"/>
                                                     </HierarchicalDataTemplate>
-                                                </TreeView.Resources>
+                                                </TreeView.ItemTemplate>
                                             </TreeView>
                                         </Grid>
                                     </Border>
@@ -2603,63 +2842,216 @@
                                             CornerRadius="0"
                                             MouseEnter="EstimatePreviewArea_MouseEnter">
                                         <Grid>
-                                            <StackPanel x:Name="EstimateInfoPanel"
-                                                        Margin="14">
-                                                <TextBlock Text="Сметы" FontSize="20" FontWeight="SemiBold"/>
-                                                <TextBlock Text="Выберите файлы смет и соберите для них свою структуру дерева. Можно создавать папки, переименовывать узлы и перемещать их мышкой."
-                                                           Margin="0,8,0,16"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           TextWrapping="Wrap"/>
-                                                <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="EstimateSelectedNameText"
-                                                           Margin="0,6,0,10"
-                                                           FontSize="16"
-                                                           Text="Ничего не выбрано"/>
-                                                <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="EstimateSelectedPathText"
-                                                           Margin="0,6,0,10"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           TextWrapping="Wrap"
-                                                           Text="—"/>
-                                                <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="EstimateSelectedTypeText"
-                                                           Margin="0,6,0,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           Text="—"/>
-                                            </StackPanel>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
 
-                                            <Border x:Name="EstimatePreviewContainer"
-                                                    Background="{StaticResource SurfaceBrush}"
-                                                    BorderThickness="0"
-                                                    CornerRadius="0"
-                                                    Padding="0"
-                                                    Margin="0"
-                                                    SizeChanged="EstimatePreviewContainer_SizeChanged"
-                                                    Visibility="Collapsed">
-                                                <Grid>
-                                                    <local:NativeChildHost x:Name="EstimateExcelHost"
-                                                                           Visibility="Collapsed"/>
-                                                    <WebBrowser x:Name="EstimatePreviewBrowser"
-                                                                Visibility="Collapsed"/>
-                                                    <Border x:Name="EstimatePreviewPlaceholder"
-                                                            Background="Transparent">
-                                                        <StackPanel HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    MaxWidth="420">
-                                                            <TextBlock Text="Предпросмотр"
-                                                                       FontWeight="SemiBold"
-                                                                       FontSize="18"
-                                                                       HorizontalAlignment="Center"/>
-                                                            <TextBlock x:Name="EstimatePreviewStatusText"
-                                                                       Margin="0,10,0,0"
+                                            <Grid Grid.Row="0"
+                                                  Margin="10,8,10,6"
+                                                  Visibility="Collapsed"
+                                                  Height="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <ListBox x:Name="EstimateTabStrip"
+                                                         Grid.Column="0"
+                                                         Height="32"
+                                                         Margin="0,0,8,0"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         Visibility="Collapsed"
+                                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                                         SelectionChanged="EstimateTabStrip_SelectionChanged"
+                                                         PreviewMouseLeftButtonDown="EstimateTabStrip_PreviewMouseLeftButtonDown"
+                                                         MouseMove="EstimateTabStrip_MouseMove"
+                                                         AllowDrop="True"
+                                                         Drop="EstimateTabStrip_Drop">
+                                                    <ListBox.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ListBox.ItemsPanel>
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,6,0"
+                                                                    Padding="8,4"
+                                                                    CornerRadius="10"
+                                                                    Background="{StaticResource SurfaceAltBrush}"
+                                                                    BorderBrush="{StaticResource StrokeBrush}"
+                                                                    BorderThickness="1">
+                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Name}"
+                                                                               Margin="0,0,6,0"
+                                                                               VerticalAlignment="Center"/>
+                                                                    <Button Content="×"
+                                                                            Width="10"
+                                                                            Height="10"
+                                                                            Padding="0"
+                                                                            Margin="2,0,0,0"
+                                                                            MinWidth="10"
+                                                                            FontSize="8"
+                                                                            Background="Transparent"
+                                                                            BorderThickness="0"
+                                                                            Tag="{Binding}"
+                                                                            Click="EstimateTabClose_Click"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Margin="0"
+                                                           Visibility="Collapsed"/>
+                                                <TextBlock Grid.Column="2"
+                                                           Margin="0"
+                                                           Visibility="Collapsed"/>
+                                            </Grid>
+
+                                            <Grid Grid.Row="1" x:Name="EstimateSplitGrid"
+                                                  AllowDrop="True"
+                                                  DragEnter="EstimateSplitGrid_DragEnter"
+                                                  DragLeave="EstimateSplitGrid_DragLeave"
+                                                  DragOver="EstimateSplitGrid_DragOver"
+                                                  Drop="EstimateSplitGrid_Drop">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition x:Name="EstimateSplitPrimaryColumn" Width="*"/>
+                                                    <ColumnDefinition x:Name="EstimateSplitDividerColumn" Width="6"/>
+                                                    <ColumnDefinition x:Name="EstimateSplitSecondaryColumn" Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border x:Name="EstimatePrimaryPane" Grid.Column="0">
+                                                    <Grid>
+                                                        <StackPanel x:Name="EstimateInfoPanel"
+                                                                    Margin="14">
+                                                            <TextBlock Text="Сметы" FontSize="20" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="Выберите файлы смет и соберите для них свою структуру дерева. Можно создавать папки, переименовывать узлы и перемещать их мышкой."
+                                                                       Margin="0,8,0,16"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       TextAlignment="Center"
+                                                                       TextWrapping="Wrap"/>
+                                                            <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="EstimateSelectedNameText"
+                                                                       Margin="0,6,0,10"
+                                                                       FontSize="16"
+                                                                       Text="Ничего не выбрано"/>
+                                                            <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="EstimateSelectedPathText"
+                                                                       Margin="0,6,0,10"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"
-                                                                       Text="Выберите файл сметы в дереве слева, и он откроется здесь."/>
+                                                                       Text="—"/>
+                                                            <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="EstimateSelectedTypeText"
+                                                                       Margin="0,6,0,0"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Text="—"/>
                                                         </StackPanel>
-                                                    </Border>
+
+                                                        <Border x:Name="EstimatePreviewContainer"
+                                                                Background="{StaticResource SurfaceBrush}"
+                                                                BorderThickness="0"
+                                                                CornerRadius="0"
+                                                                Padding="0"
+                                                                Margin="0"
+                                                                SizeChanged="EstimatePreviewContainer_SizeChanged"
+                                                                Visibility="Collapsed">
+                                                            <Grid>
+                                                                <local:NativeChildHost x:Name="EstimateExcelHost"
+                                                                                       Visibility="Collapsed"/>
+                                                                <WebBrowser x:Name="EstimatePreviewBrowser"
+                                                                            Visibility="Collapsed"/>
+                                                                <Border x:Name="EstimatePreviewPlaceholder"
+                                                                        Background="Transparent">
+                                                                    <StackPanel HorizontalAlignment="Center"
+                                                                                VerticalAlignment="Center"
+                                                                                MaxWidth="420">
+                                                                        <TextBlock Text="Предпросмотр"
+                                                                                   FontWeight="SemiBold"
+                                                                                   FontSize="18"
+                                                                                   HorizontalAlignment="Center"/>
+                                                                        <TextBlock x:Name="EstimatePreviewStatusText"
+                                                                                   Margin="0,10,0,0"
+                                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                   TextAlignment="Center"
+                                                                                   TextWrapping="Wrap"
+                                                                                   Text="Выберите файл сметы в дереве слева, и он откроется здесь."/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </Grid>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <GridSplitter x:Name="EstimateSplitBar"
+                                                              Grid.Column="1"
+                                                              Width="6"
+                                                              Background="{StaticResource StrokeBrush}"
+                                                              HorizontalAlignment="Stretch"
+                                                              VerticalAlignment="Stretch"
+                                                              Visibility="Collapsed"/>
+
+                                                <Border x:Name="EstimatePreviewContainerSecondary"
+                                                        Grid.Column="2"
+                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        BorderThickness="1"
+                                                        Background="{StaticResource SurfaceAltBrush}"
+                                                        Visibility="Collapsed"
+                                                        SizeChanged="EstimatePreviewContainerSecondary_SizeChanged"
+                                                        AllowDrop="True"
+                                                        Drop="EstimateSecondaryPane_Drop">
+                                                    <Grid>
+                                                        <Border x:Name="EstimatePreviewPlaceholderSecondary"
+                                                                Background="Transparent">
+                                                            <StackPanel HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center"
+                                                                        MaxWidth="420">
+                                                                <TextBlock Text="Второй файл"
+                                                                           FontWeight="SemiBold"
+                                                                           FontSize="16"
+                                                                           HorizontalAlignment="Center"/>
+                                                                <TextBlock x:Name="EstimatePreviewStatusTextSecondary"
+                                                                           Margin="0,10,0,0"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           TextAlignment="Center"
+                                                                           TextWrapping="Wrap"
+                                                                           Text="Перетащите вкладку сюда для открытия рядом."/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <Grid x:Name="EstimateSplitDropOverlay"
+                                                      Grid.ColumnSpan="3"
+                                                      Panel.ZIndex="5"
+                                                      Visibility="Collapsed"
+                                                      IsHitTestVisible="False">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border x:Name="EstimateSplitDropLeft"
+                                                            Grid.Column="0"
+                                                            Margin="6"
+                                                            CornerRadius="10"
+                                                            BorderThickness="2"
+                                                            Opacity="0.35"
+                                                            BorderBrush="{StaticResource StrokeBrush}"
+                                                            Background="{StaticResource SelectedBrush}"/>
+                                                    <Border x:Name="EstimateSplitDropRight"
+                                                            Grid.Column="1"
+                                                            Margin="6"
+                                                            CornerRadius="10"
+                                                            BorderThickness="2"
+                                                            Opacity="0.35"
+                                                            BorderBrush="{StaticResource StrokeBrush}"
+                                                            Background="{StaticResource SelectedBrush}"/>
                                                 </Grid>
-                                            </Border>
+                                            </Grid>
                                         </Grid>
                                     </Border>
                                 </Grid>
