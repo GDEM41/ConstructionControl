@@ -67,7 +67,7 @@ namespace ConstructionControl
                 var splash = new SplashWindow();
                 splash.Show();
 
-                await Task.Delay(TimeSpan.FromSeconds(5));
+                await Task.Delay(TimeSpan.FromSeconds(3));
 
                 var mainWindow = new MainWindow
                 {

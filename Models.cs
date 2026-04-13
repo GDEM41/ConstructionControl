@@ -146,6 +146,7 @@ namespace ConstructionControl
         public bool SummaryReminderOnOverage { get; set; } = true;
         public bool SummaryReminderOnDeficit { get; set; }
         public bool SummaryReminderOnlyMain { get; set; } = true;
+        public bool AutoFitCurrentTabColumns { get; set; } = true;
         public string DataRootDirectory { get; set; } = string.Empty;
         public bool CheckUpdatesOnStart { get; set; }
         public string UpdateFeedUrl { get; set; } = string.Empty;

@@ -74,6 +74,14 @@
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"/>
 
+                    <CheckBox x:Name="AutoFitCurrentTabColumnsCheckBox" FontWeight="SemiBold">
+                        <TextBlock Text="Подгонять колонки текущей вкладки автоматически" TextWrapping="Wrap"/>
+                    </CheckBox>
+                    <TextBlock Text="При открытии вкладки ширина колонок таблицы пересчитывается под содержимое."
+                               Margin="28,4,0,12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+
                     <Grid Margin="0,2,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

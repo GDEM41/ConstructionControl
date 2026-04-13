@@ -31,6 +31,7 @@ namespace ConstructionControl
             DataRootPathBox.Text = ResolveDataRootPath(settings.DataRootDirectory);
             HideReminderDetailsCheckBox.IsChecked = settings.HideReminderDetails;
             SafeStartupModeCheckBox.IsChecked = settings.SafeStartupMode;
+            AutoFitCurrentTabColumnsCheckBox.IsChecked = settings.AutoFitCurrentTabColumns;
             SummaryReminderOverageCheckBox.IsChecked = settings.SummaryReminderOnOverage;
             SummaryReminderDeficitCheckBox.IsChecked = settings.SummaryReminderOnDeficit;
             SummaryReminderMainOnlyCheckBox.IsChecked = settings.SummaryReminderOnlyMain;
@@ -56,6 +57,7 @@ namespace ConstructionControl
                 AutoSaveIntervalMinutes = autoSaveMinutes,
                 HideReminderDetails = HideReminderDetailsCheckBox.IsChecked == true,
                 SafeStartupMode = SafeStartupModeCheckBox.IsChecked == true,
+                AutoFitCurrentTabColumns = AutoFitCurrentTabColumnsCheckBox.IsChecked != false,
                 SummaryReminderOnOverage = SummaryReminderOverageCheckBox.IsChecked == true,
                 SummaryReminderOnDeficit = SummaryReminderDeficitCheckBox.IsChecked == true,
                 SummaryReminderOnlyMain = SummaryReminderMainOnlyCheckBox.IsChecked != false,

@@ -987,6 +987,11 @@ namespace ConstructionControl
         public MainWindow()
         {
             InitializeComponent();
+            if (OtJournalGrid != null)
+            {
+                OtJournalGrid.RowHeight = double.NaN;
+                OtJournalGrid.MinRowHeight = 42;
+            }
             if (PdfPreviewBrowser != null)
                 PdfPreviewBrowser.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
             if (PdfPreviewBrowserSecondary != null)
@@ -1559,18 +1564,6 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WarmupExcelInterop();
-                if (useExternalPdfEditor)
-                {
-                    try
-                    {
-                        EnsurePdfExternalProcess();
-                        HidePdfEmbeddedPreview();
-                    }
-                    catch
-                    {
-                        // Ignore PDF warmup errors to keep startup resilient.
-                    }
-                }
             }), DispatcherPriority.ApplicationIdle);
         }
 
@@ -3339,6 +3332,12 @@ namespace ConstructionControl
                     pdfPreviewCurrentPath = activePath;
                 }
 
+                return;
+            }
+
+            if (!ReferenceEquals(MainTabs?.SelectedItem, PdfTab))
+            {
+                HidePdfEmbeddedPreview();
                 return;
             }
 
@@ -6545,6 +6544,7 @@ namespace ConstructionControl
             }
             else
             {
+                UpdatePdfSelectionInfo();
                 SchedulePdfEmbeddedLayout();
             }
 
@@ -6620,9 +6620,30 @@ namespace ConstructionControl
             }
 
             ApplyGridColumnPreferences(GetGridByTabHeader(item.Header?.ToString()));
+            ScheduleAutoFitCurrentTabColumns(item);
 
             tabStopwatch.Stop();
             UpdateTabOpenDiagnostics(item.Header?.ToString() ?? string.Empty, tabStopwatch.Elapsed);
+        }
+
+        private void ScheduleAutoFitCurrentTabColumns(TabItem item)
+        {
+            if (item == null || currentObject?.UiSettings?.AutoFitCurrentTabColumns != true)
+                return;
+
+            var tabHeader = item.Header?.ToString();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!ReferenceEquals(MainTabs?.SelectedItem, item))
+                    return;
+
+                var grid = GetGridByTabHeader(tabHeader);
+                if (grid == null || grid.Columns.Count == 0)
+                    return;
+
+                DataGridSizingHelper.SetEnableSmartSizing(grid, false);
+                DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+            }), DispatcherPriority.Background);
         }
 
         private void ShowArrivalButton_Click(object sender, RoutedEventArgs e)
@@ -8322,7 +8343,7 @@ namespace ConstructionControl
                 };
                 var style = new Style(typeof(DataGridCell));
                 if (isWeekend)
-                    style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(245, 245, 245))));
+                    style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(230, 238, 252))));
                 style.Setters.Add(new Setter(DataGridCell.ToolTipProperty, new Binding { Converter = new TimesheetDayCommentToolTipConverter(day) }));
                 column.CellStyle = style;
                 TimesheetGrid.Columns.Add(column);
@@ -8384,7 +8405,8 @@ namespace ConstructionControl
                 && day > 0)
             {
                 affectedRow = row;
-                var shouldMarkPresent = row.GetPresenceChecked(day);
+                var shouldMarkPresent = sender is ToggleButton toggle && toggle.IsChecked == true;
+                row.SetPresenceChecked(day, shouldMarkPresent);
                 var autoValue = shouldMarkPresent
                     ? Math.Clamp(row.DailyWorkHours, 1, 24).ToString(CultureInfo.CurrentCulture)
                     : "Н";
@@ -8416,6 +8438,8 @@ namespace ConstructionControl
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
             });
             editor.SetBinding(TextBox.BackgroundProperty, new Binding { Converter = new TimesheetDayBackgroundConverter(day) });
+            editor.SetBinding(TextBox.ForegroundProperty, new Binding { Converter = new TimesheetDayForegroundConverter(day) });
+            editor.SetBinding(TextBox.FontWeightProperty, new Binding { Converter = new TimesheetDayFontWeightConverter(day) });
             grid.AppendChild(editor);
 
             var marker = new FrameworkElementFactory(typeof(TextBlock));
@@ -8440,6 +8464,42 @@ namespace ConstructionControl
                                => value is TimesheetRowViewModel row ? row.GetDayBackground(day) : Brushes.Transparent;
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
                                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayForegroundConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayForegroundConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                if (value is not TimesheetRowViewModel row)
+                    return Brushes.Black;
+
+                return row.IsNonHourCode(day)
+                    ? new SolidColorBrush(Color.FromRgb(127, 29, 29))
+                    : Brushes.Black;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayFontWeightConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayFontWeightConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                if (value is not TimesheetRowViewModel row)
+                    return FontWeights.Normal;
+
+                return row.IsNonHourCode(day) ? FontWeights.SemiBold : FontWeights.Normal;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
         }
 
         private sealed class TimesheetDayCommentVisibilityConverter : IValueConverter
@@ -9321,6 +9381,37 @@ namespace ConstructionControl
             doc.Blocks.Add(new Paragraph(new Run($"Табель за {timesheetMonth:MMMM yyyy}")) { FontSize = 14, FontWeight = FontWeights.Bold });
             doc.Blocks.Add(new Paragraph(new Run($"Фильтр: {selectedTimesheetBrigade}")));
 
+            var gridBrush = new SolidColorBrush(Color.FromRgb(203, 213, 225));
+            var weekendBrush = new SolidColorBrush(Color.FromRgb(230, 238, 252));
+            var nonHourBrush = new SolidColorBrush(Color.FromRgb(254, 226, 226));
+            var acceptedDocBrush = new SolidColorBrush(Color.FromRgb(254, 240, 138));
+
+            TableCell CreateCell(string text, bool center = true, Brush background = null, Brush foreground = null, bool bold = false)
+            {
+                var paragraph = new Paragraph(new Run(text ?? string.Empty))
+                {
+                    Margin = new Thickness(0),
+                    TextAlignment = center ? TextAlignment.Center : TextAlignment.Left
+                };
+
+                if (foreground != null)
+                    paragraph.Foreground = foreground;
+                if (bold)
+                    paragraph.FontWeight = FontWeights.SemiBold;
+
+                var cell = new TableCell(paragraph)
+                {
+                    BorderBrush = gridBrush,
+                    BorderThickness = new Thickness(0.5),
+                    Padding = new Thickness(3, 2, 3, 2)
+                };
+
+                if (background != null)
+                    cell.Background = background;
+
+                return cell;
+            }
+
             var table = new Table();
             doc.Blocks.Add(table);
             table.Columns.Add(new TableColumn { Width = new GridLength(25) });
@@ -9336,13 +9427,17 @@ namespace ConstructionControl
             table.RowGroups.Add(group);
             var header = new TableRow { FontWeight = FontWeights.Bold, Background = Brushes.LightGray };
             group.Rows.Add(header);
-            header.Cells.Add(new TableCell(new Paragraph(new Run("№"))));
-            header.Cells.Add(new TableCell(new Paragraph(new Run("ФИО"))));
-            header.Cells.Add(new TableCell(new Paragraph(new Run("Спец."))));
-            header.Cells.Add(new TableCell(new Paragraph(new Run("Раз."))));
+            header.Cells.Add(CreateCell("№"));
+            header.Cells.Add(CreateCell("ФИО"));
+            header.Cells.Add(CreateCell("Спец."));
+            header.Cells.Add(CreateCell("Раз."));
             for (var i = 1; i <= daysInMonth; i++)
-                header.Cells.Add(new TableCell(new Paragraph(new Run(i.ToString()))));
-            header.Cells.Add(new TableCell(new Paragraph(new Run("Итого"))));
+            {
+                var date = new DateTime(timesheetMonth.Year, timesheetMonth.Month, i);
+                var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+                header.Cells.Add(CreateCell(i.ToString(), background: isWeekend ? weekendBrush : null));
+            }
+            header.Cells.Add(CreateCell("Итого"));
 
             foreach (var row in timesheetRows)
             {
@@ -9351,13 +9446,28 @@ namespace ConstructionControl
                     tr.FontWeight = FontWeights.Bold;
                 group.Rows.Add(tr);
 
-                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Number.ToString()))));
-                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.FullName))));
-                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Specialty))));
-                tr.Cells.Add(new TableCell(new Paragraph(new Run(row.Rank))));
+                tr.Cells.Add(CreateCell(row.Number.ToString()));
+                tr.Cells.Add(CreateCell(row.FullName, center: false));
+                tr.Cells.Add(CreateCell(row.Specialty, center: false));
+                tr.Cells.Add(CreateCell(row.Rank));
                 for (var i = 1; i <= daysInMonth; i++)
-                    tr.Cells.Add(new TableCell(new Paragraph(new Run(blank ? string.Empty : row.GetDayValue(i)))));
-                tr.Cells.Add(new TableCell(new Paragraph(new Run(blank ? string.Empty : row.MonthTotalHours.ToString("0.##")))));
+                {
+                    var date = new DateTime(timesheetMonth.Year, timesheetMonth.Month, i);
+                    var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+                    var dayValue = blank ? string.Empty : row.GetDayValue(i);
+                    Brush background = isWeekend ? weekendBrush : null;
+                    Brush foreground = null;
+                    var isNonHourCode = !blank && row.IsNonHourCode(i);
+                    if (isNonHourCode)
+                    {
+                        background = row.IsDocumentAccepted(i) == true ? acceptedDocBrush : nonHourBrush;
+                        foreground = new SolidColorBrush(Color.FromRgb(127, 29, 29));
+                    }
+
+                    tr.Cells.Add(CreateCell(dayValue, background: background, foreground: foreground, bold: isNonHourCode));
+                }
+
+                tr.Cells.Add(CreateCell(blank ? string.Empty : row.MonthTotalHours.ToString("0.##")));
             }
 
             return doc;
@@ -9532,6 +9642,82 @@ namespace ConstructionControl
 
             ProductionAutoFillProfileBox.SelectedItem = productionAutoFillProfileNames.FirstOrDefault();
             isRefreshingProductionProfileSelection = false;
+        }
+
+        private void ProductionAutoMasterButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.ContextMenu == null)
+                return;
+
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.Placement = PlacementMode.Bottom;
+            button.ContextMenu.IsOpen = true;
+        }
+
+        private void ProductionAutoMasterMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu menu)
+                return;
+
+            EnsureProductionJournalStorage();
+            EnsureProductionAutoFillProfilesStorage();
+            RefreshProductionAutoFillProfileOptions();
+
+            var profilesRoot = menu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(x => string.Equals(x.Tag?.ToString(), "AutoMasterProfilesRoot", StringComparison.CurrentCulture));
+
+            if (profilesRoot == null)
+                return;
+
+            profilesRoot.Items.Clear();
+            var selectedProfile = currentObject?.SelectedProductionAutoFillProfileName?.Trim() ?? string.Empty;
+            var profileNames = productionAutoFillProfileNames.ToList();
+            if (profileNames.Count == 0)
+            {
+                profilesRoot.Items.Add(new MenuItem
+                {
+                    Header = "Профили отсутствуют",
+                    IsEnabled = false
+                });
+                return;
+            }
+
+            foreach (var profileName in profileNames)
+            {
+                var item = new MenuItem
+                {
+                    Header = profileName,
+                    Tag = profileName,
+                    IsCheckable = true,
+                    IsChecked = string.Equals(profileName, selectedProfile, StringComparison.CurrentCultureIgnoreCase)
+                };
+                item.Click += ProductionAutoMasterProfileItem_Click;
+                profilesRoot.Items.Add(item);
+            }
+        }
+
+        private void ProductionAutoMasterProfileItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item || currentObject == null)
+                return;
+
+            var profileName = item.Tag?.ToString()?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(profileName))
+                return;
+
+            if (string.Equals(currentObject.SelectedProductionAutoFillProfileName ?? string.Empty, profileName, StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            currentObject.SelectedProductionAutoFillProfileName = profileName;
+            isRefreshingProductionProfileSelection = true;
+            if (ProductionAutoFillProfileBox != null)
+            {
+                ProductionAutoFillProfileBox.SelectedItem = productionAutoFillProfileNames
+                    .FirstOrDefault(x => string.Equals(x, profileName, StringComparison.CurrentCultureIgnoreCase));
+            }
+            isRefreshingProductionProfileSelection = false;
+            SaveState();
         }
 
         private void ProductionAutoFillProfileBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -17210,7 +17396,7 @@ namespace ConstructionControl
             var warningHighlight = new SolidColorBrush(Color.FromRgb(254, 243, 199));
 
             AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, noWrap: true, minWidth: 60);
-            AddCell(summaryGrid, summaryRowIndex, 1, mat, noWrap: true, minWidth: 220);
+            AddCell(summaryGrid, summaryRowIndex, 1, mat, noWrap: false, minWidth: 280);
 
             foreach (var col in summaryColumns)
             {
@@ -17497,12 +17683,12 @@ namespace ConstructionControl
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.52, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.48, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var title = new TextBlock
@@ -17513,7 +17699,7 @@ namespace ConstructionControl
                 Margin = new Thickness(0, 0, 0, 12)
             };
             Grid.SetRow(title, 0);
-            Grid.SetColumnSpan(title, 5);
+            Grid.SetColumnSpan(title, 4);
             root.Children.Add(title);
 
             FrameworkElement BuildSelectionPanel(string caption, ObservableCollection<SelectableOption> options, int column)
@@ -17576,8 +17762,10 @@ namespace ConstructionControl
             previewGrid.Columns.Add(new DataGridTextColumn { Header = "Отметка", Binding = new Binding(nameof(SummaryReorderPreviewRow.Mark)) });
             previewGrid.Columns.Add(new DataGridTextColumn { Header = "Количество", Binding = new Binding(nameof(SummaryReorderPreviewRow.Quantity)) { StringFormat = "0.##" } });
             previewGrid.Columns.Add(new DataGridTextColumn { Header = "Ед.", Binding = new Binding(nameof(SummaryReorderPreviewRow.Unit)) });
-            Grid.SetRow(previewGrid, 1);
-            Grid.SetColumn(previewGrid, 4);
+            Grid.SetRow(previewGrid, 2);
+            Grid.SetColumn(previewGrid, 0);
+            Grid.SetColumnSpan(previewGrid, 4);
+            previewGrid.Margin = new Thickness(0, 12, 0, 0);
             DataGridSizingHelper.SetEnableSmartSizing(previewGrid, true);
             root.Children.Add(previewGrid);
 
@@ -17652,8 +17840,8 @@ namespace ConstructionControl
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 14, 0, 0)
             };
-            Grid.SetRow(footer, 2);
-            Grid.SetColumnSpan(footer, 5);
+            Grid.SetRow(footer, 3);
+            Grid.SetColumnSpan(footer, 4);
             root.Children.Add(footer);
 
             var exportButton = new Button { Content = "Экспорт в Word", MinWidth = 140 };
@@ -17819,31 +18007,124 @@ namespace ConstructionControl
                 new DocumentFormat.OpenXml.Wordprocessing.Run(
                     new DocumentFormat.OpenXml.Wordprocessing.Text(string.Empty))));
 
-            foreach (var groupRows in rows
-                         .OrderBy(x => x.Group, StringComparer.CurrentCultureIgnoreCase)
-                         .ThenBy(x => x.Material, StringComparer.CurrentCultureIgnoreCase)
-                         .ThenBy(x => x.Block)
-                         .ThenBy(x => x.Mark)
-                         .GroupBy(x => x.Group))
-            {
-                body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
-                    new DocumentFormat.OpenXml.Wordprocessing.Run(
-                        new DocumentFormat.OpenXml.Wordprocessing.Text(groupRows.Key))));
+            var orderedRows = (rows ?? new List<SummaryReorderPreviewRow>())
+                .Where(x => x != null && x.Quantity > 0)
+                .OrderBy(x => x.Group, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.Material, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.Block)
+                .ThenBy(x => x.Mark, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
 
-                foreach (var row in groupRows)
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text("Подробно по блокам и отметкам"))));
+
+            var detailedRows = orderedRows
+                .Select(x => (IReadOnlyList<string>)new[]
                 {
-                    var line = $"• {row.Material}: Блок {row.Block}, отметка {row.Mark}, количество {FormatNumberByUnit(row.Quantity, row.Unit)} {row.Unit}";
-                    body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
-                        new DocumentFormat.OpenXml.Wordprocessing.Run(
-                            new DocumentFormat.OpenXml.Wordprocessing.Text(line))));
-                }
+                    x.Group ?? string.Empty,
+                    x.Material ?? string.Empty,
+                    $"Блок {x.Block}",
+                    x.Mark ?? string.Empty,
+                    FormatNumberByUnit(x.Quantity, x.Unit),
+                    x.Unit ?? string.Empty
+                })
+                .ToList();
 
-                body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
-                    new DocumentFormat.OpenXml.Wordprocessing.Run(
-                        new DocumentFormat.OpenXml.Wordprocessing.Text(string.Empty))));
-            }
+            body.Append(BuildWordTable(
+                new[] { "Тип", "Наименование", "Блок", "Отметка", "Количество", "Ед." },
+                detailedRows));
+
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text(string.Empty))));
+
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text("Итого к дозаказу по одинаковым наименованиям"))));
+
+            var aggregatedRows = orderedRows
+                .GroupBy(
+                    x => $"{(x.Group ?? string.Empty).Trim().ToUpperInvariant()}||{(x.Material ?? string.Empty).Trim().ToUpperInvariant()}||{(x.Unit ?? string.Empty).Trim().ToUpperInvariant()}",
+                    StringComparer.Ordinal)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    return new
+                    {
+                        Group = first.Group ?? string.Empty,
+                        Material = first.Material ?? string.Empty,
+                        Unit = first.Unit ?? string.Empty,
+                        Quantity = g.Sum(x => x.Quantity)
+                    };
+                })
+                .OrderBy(x => x.Group, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.Material, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var summaryRows = aggregatedRows
+                .Select(x => (IReadOnlyList<string>)new[]
+                {
+                    x.Group,
+                    x.Material,
+                    FormatNumberByUnit(x.Quantity, x.Unit),
+                    x.Unit
+                })
+                .ToList();
+
+            body.Append(BuildWordTable(
+                new[] { "Тип", "Наименование", "Итого количество", "Ед." },
+                summaryRows));
 
             mainPart.Document.Save();
+        }
+
+        private static DocumentFormat.OpenXml.Wordprocessing.Table BuildWordTable(
+            IReadOnlyList<string> headers,
+            IEnumerable<IReadOnlyList<string>> rows)
+        {
+            var table = new DocumentFormat.OpenXml.Wordprocessing.Table();
+            var borders = new DocumentFormat.OpenXml.Wordprocessing.TableBorders(
+                new DocumentFormat.OpenXml.Wordprocessing.TopBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 },
+                new DocumentFormat.OpenXml.Wordprocessing.BottomBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 },
+                new DocumentFormat.OpenXml.Wordprocessing.LeftBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 },
+                new DocumentFormat.OpenXml.Wordprocessing.RightBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 },
+                new DocumentFormat.OpenXml.Wordprocessing.InsideHorizontalBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 },
+                new DocumentFormat.OpenXml.Wordprocessing.InsideVerticalBorder { Val = DocumentFormat.OpenXml.Wordprocessing.BorderValues.Single, Size = 6 });
+            table.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.TableProperties(borders));
+
+            AppendWordTableRow(table, headers, isHeader: true);
+
+            foreach (var row in rows ?? Enumerable.Empty<IReadOnlyList<string>>())
+            {
+                AppendWordTableRow(table, row ?? Array.Empty<string>(), isHeader: false);
+            }
+
+            return table;
+        }
+
+        private static void AppendWordTableRow(
+            DocumentFormat.OpenXml.Wordprocessing.Table table,
+            IReadOnlyList<string> values,
+            bool isHeader)
+        {
+            var tableRow = new DocumentFormat.OpenXml.Wordprocessing.TableRow();
+            foreach (var value in values ?? Array.Empty<string>())
+            {
+                var run = new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text(value ?? string.Empty)
+                    {
+                        Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve
+                    });
+                if (isHeader)
+                    run.RunProperties = new DocumentFormat.OpenXml.Wordprocessing.RunProperties(new DocumentFormat.OpenXml.Wordprocessing.Bold());
+
+                var paragraph = new DocumentFormat.OpenXml.Wordprocessing.Paragraph(run);
+                var tableCell = new DocumentFormat.OpenXml.Wordprocessing.TableCell(paragraph);
+                tableRow.Append(tableCell);
+            }
+
+            table.Append(tableRow);
         }
 
         private void OpenSummaryBalanceWindow_Click(object sender, RoutedEventArgs e)
@@ -21357,23 +21638,33 @@ namespace ConstructionControl
                 return;
             }
 
+            var exportAsMatrix = AskArrivalExportMatrixMode();
+            if (exportAsMatrix == null)
+                return;
+
             var dlg = new SaveFileDialog
             {
                 Filter = "Excel (*.xlsx)|*.xlsx",
-                FileName = "Приход.xlsx"
+                FileName = exportAsMatrix.Value ? "Приход_матрица.xlsx" : "Приход_таблица.xlsx"
             };
 
             if (dlg.ShowDialog() != true)
                 return;
 
-            using (var wb = new XLWorkbook())
+            try
             {
-                ExportArrival(wb);
+                using var wb = new XLWorkbook();
+                if (exportAsMatrix.Value)
+                    ExportArrivalMatrix(wb);
+                else
+                    ExportArrival(wb);
                 wb.SaveAs(dlg.FileName);
+                MessageBox.Show("Экспорт завершён");
             }
-
-
-            MessageBox.Show("Экспорт завершён");
+            catch (IOException)
+            {
+                MessageBox.Show("Не удалось сохранить файл. Закройте этот файл в Excel/PlanMaker и повторите экспорт.");
+            }
         }
 
         private void ExportSelectedRangeToExcel_Click(object sender, RoutedEventArgs e)
@@ -21854,6 +22145,117 @@ namespace ConstructionControl
                 ws.Columns().AdjustToContents();
                 ws.Range(1, 1, row - 1, 8).SetAutoFilter();
             }
+        }
+
+        private bool? AskArrivalExportMatrixMode()
+        {
+            var result = MessageBox.Show(
+                "Выберите формат экспорта:\nДа — Таблица\nНет — Матрица",
+                "Экспорт прихода",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+
+            return result switch
+            {
+                MessageBoxResult.Yes => false,
+                MessageBoxResult.No => true,
+                _ => null
+            };
+        }
+
+        private void ExportArrivalMatrix(IXLWorkbook wb)
+        {
+            var ws = wb.Worksheets.Add("Матрица");
+            var data = filteredJournal
+                .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
+                .ToList();
+
+            if (data.Count == 0)
+            {
+                ws.Cell(1, 1).Value = "Нет данных по выбранным фильтрам.";
+                ws.Columns().AdjustToContents();
+                return;
+            }
+
+            var columns = data
+                .GroupBy(x => new
+                {
+                    Date = x.Date.Date,
+                    Ttn = (x.Ttn ?? string.Empty).Trim(),
+                    Supplier = (x.Supplier ?? string.Empty).Trim(),
+                    Passport = (x.Passport ?? string.Empty).Trim()
+                })
+                .Select(x => x.Key)
+                .OrderBy(x => x.Date)
+                .ThenBy(x => x.Ttn, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var materials = data
+                .Select(x => (x.MaterialName ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var unitByMaterial = data
+                .GroupBy(x => (x.MaterialName ?? string.Empty).Trim(), StringComparer.CurrentCultureIgnoreCase)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.Select(y => y.Unit ?? string.Empty).FirstOrDefault() ?? string.Empty,
+                    StringComparer.CurrentCultureIgnoreCase);
+
+            ws.Cell(1, 1).Value = "Наименование";
+            ws.Cell(1, 2).Value = "Ед.";
+            ws.Range(1, 1, 1, 2).Style.Font.Bold = true;
+            ws.Range(1, 1, 1, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF2F7");
+
+            for (var i = 0; i < columns.Count; i++)
+            {
+                var col = columns[i];
+                var excelCol = i + 3;
+                ws.Cell(1, excelCol).Value = $"{col.Date:dd.MM.yyyy}\n{(string.IsNullOrWhiteSpace(col.Ttn) ? "—" : col.Ttn)}";
+                ws.Cell(2, excelCol).Value = string.IsNullOrWhiteSpace(col.Supplier) ? "—" : col.Supplier;
+                ws.Cell(3, excelCol).Value = string.IsNullOrWhiteSpace(col.Passport) ? "—" : col.Passport;
+                ws.Cell(1, excelCol).Style.Alignment.WrapText = true;
+                ws.Cell(2, excelCol).Style.Alignment.WrapText = true;
+                ws.Cell(3, excelCol).Style.Alignment.WrapText = true;
+            }
+
+            ws.Range(1, 3, 3, columns.Count + 2).Style.Font.Bold = true;
+            ws.Range(1, 3, 3, columns.Count + 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF4FF");
+
+            for (var materialIndex = 0; materialIndex < materials.Count; materialIndex++)
+            {
+                var material = materials[materialIndex];
+                var row = materialIndex + 4;
+                ws.Cell(row, 1).Value = material;
+                ws.Cell(row, 2).Value = unitByMaterial.TryGetValue(material, out var unit) ? unit : string.Empty;
+
+                for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                {
+                    var col = columns[columnIndex];
+                    var quantity = data
+                        .Where(x => string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase)
+                            && x.Date.Date == col.Date
+                            && string.Equals((x.Ttn ?? string.Empty).Trim(), col.Ttn, StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals((x.Supplier ?? string.Empty).Trim(), col.Supplier, StringComparison.CurrentCultureIgnoreCase)
+                            && string.Equals((x.Passport ?? string.Empty).Trim(), col.Passport, StringComparison.CurrentCultureIgnoreCase))
+                        .Sum(x => x.Quantity);
+
+                    if (Math.Abs(quantity) > 0.0001)
+                        ws.Cell(row, columnIndex + 3).Value = quantity;
+                }
+            }
+
+            var totalRows = materials.Count + 3;
+            var totalCols = columns.Count + 2;
+            ws.Range(1, 1, totalRows, totalCols).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(1, 1, totalRows, totalCols).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            ws.Columns().AdjustToContents();
+            ws.Rows(1, 3).Height = 28;
+            ws.SheetView.FreezeRows(3);
+            ws.SheetView.FreezeColumns(2);
+            ws.Range(1, 1, 3, totalCols).SetAutoFilter();
         }
 
 
