@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 
 namespace ConstructionControl
 {
@@ -59,13 +60,21 @@ namespace ConstructionControl
         public List<ArrivalItem> ArrivalHistory { get; set; } = new();
         public List<string> SummaryVisibleGroups { get; set; } = new();
         public Dictionary<string, List<string>> SummaryMarksByGroup { get; set; } = new();
+        public Dictionary<string, string> OtInstructionNumbersByProfession { get; set; } = new();
+        public Dictionary<string, List<string>> ProductionDeviationsByType { get; set; } = new();
         public List<OtJournalEntry> OtJournal { get; set; } = new();
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
         public ProductionAutoFillSettings ProductionAutoFillSettings { get; set; } = new();
+        public List<ProductionAutoFillProfile> ProductionAutoFillProfiles { get; set; } = new();
+        public string SelectedProductionAutoFillProfileName { get; set; } = string.Empty;
+        public List<ProductionJournalTemplate> ProductionTemplates { get; set; } = new();
         public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
+        public List<InspectionJournalTemplate> InspectionTemplates { get; set; } = new();
         public List<DocumentTreeNode> PdfDocuments { get; set; } = new();
         public List<DocumentTreeNode> EstimateDocuments { get; set; } = new();
+        public List<ArrivalFilterTemplate> ArrivalFilterTemplates { get; set; } = new();
+        public List<SummaryBalanceHistoryEntry> SummaryBalanceHistory { get; set; } = new();
         public ProjectUiSettings UiSettings { get; set; } = new();
         public List<ProjectChangeLogEntry> ChangeLog { get; set; } = new();
     }
@@ -93,6 +102,35 @@ namespace ConstructionControl
         public bool AllowMixedMaterialsInRow { get; set; } = true;
     }
 
+    public class ProductionAutoFillProfile
+    {
+        public string Name { get; set; } = string.Empty;
+        public ProductionAutoFillSettings Settings { get; set; } = new();
+    }
+
+    public class ProductionJournalTemplate
+    {
+        public string Name { get; set; } = string.Empty;
+        public string ActionName { get; set; } = string.Empty;
+        public string WorkName { get; set; } = string.Empty;
+        public string ElementsText { get; set; } = string.Empty;
+        public string BlocksText { get; set; } = string.Empty;
+        public string MarksText { get; set; } = string.Empty;
+        public string BrigadeName { get; set; } = string.Empty;
+        public string Weather { get; set; } = string.Empty;
+        public string Deviations { get; set; } = string.Empty;
+        public bool RequiresHiddenWorkAct { get; set; }
+    }
+
+    public class InspectionJournalTemplate
+    {
+        public string Name { get; set; } = string.Empty;
+        public string JournalName { get; set; } = string.Empty;
+        public string InspectionName { get; set; } = string.Empty;
+        public int ReminderPeriodDays { get; set; } = 7;
+        public string Notes { get; set; } = string.Empty;
+    }
+
     public class ProjectUiSettings
     {
         public bool DisableTree { get; set; }
@@ -102,6 +140,50 @@ namespace ConstructionControl
         public int AutoSaveIntervalMinutes { get; set; } = 5;
         public bool HideReminderDetails { get; set; }
         public bool SafeStartupMode { get; set; }
+        public string UiDensityMode { get; set; } = "Стандартный";
+        public string AccessRole { get; set; } = ProjectAccessRoles.Critical;
+        public bool RequireCodeForCriticalOperations { get; set; } = true;
+        public bool SummaryReminderOnOverage { get; set; } = true;
+        public bool SummaryReminderOnDeficit { get; set; }
+        public bool SummaryReminderOnlyMain { get; set; } = true;
+        public string DataRootDirectory { get; set; } = string.Empty;
+        public string OtStatusFilter { get; set; } = "Все";
+        public string OtSpecialtyFilter { get; set; } = "Все";
+        public string OtBrigadeFilter { get; set; } = "Все";
+        public Dictionary<string, string> TabDisplayModes { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
+        public Dictionary<string, List<GridColumnPreference>> GridColumnPreferences { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
+    }
+
+    public static class ProjectAccessRoles
+    {
+        public const string View = "view";
+        public const string Edit = "edit";
+        public const string Critical = "critical";
+
+        public static readonly string[] All =
+        {
+            View,
+            Edit,
+            Critical
+        };
+
+        public static string ToDisplay(string role)
+        {
+            return (role ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                View => "Просмотр",
+                Edit => "Редактирование",
+                _ => "Критические операции"
+            };
+        }
+    }
+
+    public class GridColumnPreference
+    {
+        public string Header { get; set; } = string.Empty;
+        public bool IsVisible { get; set; } = true;
+        public int DisplayIndex { get; set; }
+        public double Width { get; set; } = double.NaN;
     }
 
     public class ReminderSectionViewModel
@@ -115,6 +197,14 @@ namespace ConstructionControl
         private string name;
         private string filePath;
         private string storedRelativePath;
+        private string contentHash;
+        private long? fileSizeBytes;
+        private DateTime? hashVerifiedAtUtc;
+        private int previewPage = 1;
+        private double previewZoom = 100;
+        private int previewScrollX;
+        private int previewScrollY;
+        private string previewSheetName;
         private bool isFolder;
 
         public string Name
@@ -133,6 +223,54 @@ namespace ConstructionControl
         {
             get => storedRelativePath;
             set => SetField(ref storedRelativePath, value);
+        }
+
+        public string ContentHash
+        {
+            get => contentHash;
+            set => SetField(ref contentHash, value);
+        }
+
+        public long? FileSizeBytes
+        {
+            get => fileSizeBytes;
+            set => SetField(ref fileSizeBytes, value);
+        }
+
+        public DateTime? HashVerifiedAtUtc
+        {
+            get => hashVerifiedAtUtc;
+            set => SetField(ref hashVerifiedAtUtc, value);
+        }
+
+        public int PreviewPage
+        {
+            get => previewPage <= 0 ? 1 : previewPage;
+            set => SetField(ref previewPage, value <= 0 ? 1 : value);
+        }
+
+        public double PreviewZoom
+        {
+            get => previewZoom <= 0 ? 100 : previewZoom;
+            set => SetField(ref previewZoom, value <= 0 ? 100 : value);
+        }
+
+        public int PreviewScrollX
+        {
+            get => previewScrollX;
+            set => SetField(ref previewScrollX, Math.Max(0, value));
+        }
+
+        public int PreviewScrollY
+        {
+            get => previewScrollY;
+            set => SetField(ref previewScrollY, Math.Max(0, value));
+        }
+
+        public string PreviewSheetName
+        {
+            get => previewSheetName;
+            set => SetField(ref previewSheetName, value);
         }
 
         public bool IsFolder
@@ -213,6 +351,7 @@ namespace ConstructionControl
         }
 
         public List<TimesheetMonthEntry> Months { get; set; } = new();
+        public List<TimesheetMonthEntry> ArchivedMonths { get; set; } = new();
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -504,7 +643,14 @@ namespace ConstructionControl
         public bool IsDismissed
         {
             get => isDismissed;
-            set => SetField(ref isDismissed, value);
+            set
+            {
+                if (SetField(ref isDismissed, value))
+                {
+                    OnPropertyChanged(nameof(IsActionEnabled));
+                    OnPropertyChanged(nameof(StatusLabel));
+                }
+            }
         }
 
         public bool IsPendingRepeat
@@ -546,15 +692,21 @@ namespace ConstructionControl
             !string.IsNullOrWhiteSpace(InstructionType)
             && InstructionType.Contains("первич", StringComparison.CurrentCultureIgnoreCase);
 
-        public bool IsActionEnabled => !IsPrimaryInstruction && IsPendingRepeat;
+        public bool IsActionEnabled => IsPendingRepeat && !IsDismissed;
 
-        public string StatusLabel => IsPendingRepeat
-            ? "Требуется повторный"
-            : IsRepeatCompleted
-                ? "Повторный пройден"
-                : IsScheduledRepeat
-                    ? "Запланирован"
-                    : string.Empty;
+        public string StatusLabel => IsDismissed
+            ? "Снят с объекта"
+            : IsPrimaryInstruction && IsPendingRepeat
+                ? "Требуется первичный"
+                : IsPendingRepeat
+                    ? "Требуется повторный"
+                    : IsPrimaryInstruction && IsRepeatCompleted
+                        ? "Первичный пройден"
+                        : IsRepeatCompleted
+                            ? "Повторный пройден"
+                            : IsScheduledRepeat
+                                ? "Запланирован"
+                                : string.Empty;
 
         public DateTime NextRepeatDate => InstructionDate.AddMonths(Math.Max(1, RepeatPeriodMonths));
 
@@ -644,7 +796,34 @@ namespace ConstructionControl
         public string Supplier { get; set; }
         public string Position { get; set; }
         public string Volume { get; set; }
+        public bool IsAnomaly { get; set; }
+        public string AnomalyText { get; set; }
 
+    }
+
+    public class ArrivalFilterTemplate
+    {
+        public string Name { get; set; } = string.Empty;
+        public List<string> SelectedTypes { get; set; } = new();
+        public List<string> SelectedNames { get; set; } = new();
+        public bool ShowMain { get; set; } = true;
+        public bool ShowExtra { get; set; } = true;
+        public bool ShowLowCost { get; set; } = true;
+        public bool ShowInternal { get; set; } = true;
+        public DateTime? DateFrom { get; set; }
+        public DateTime? DateTo { get; set; }
+        public string SearchText { get; set; } = string.Empty;
+    }
+
+    public class SummaryBalanceHistoryEntry
+    {
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public string Group { get; set; } = string.Empty;
+        public string Material { get; set; } = string.Empty;
+        public string Unit { get; set; } = string.Empty;
+        public double Quantity { get; set; }
+        public bool IsOverage { get; set; }
+        public string Reason { get; set; } = string.Empty;
     }
     public class ObjectArchive
     {
@@ -702,8 +881,11 @@ namespace ConstructionControl
         private string deviations;
         private bool requiresHiddenWorkAct;
         private string remainingInfo;
+        private string blocksDisplayText;
         private bool suppressDateDisplay;
         private bool suppressWeatherDisplay;
+        private bool isAutoCorrectedQuantity;
+        private bool isGeneratedCompanion;
 
         public DateTime Date
         {
@@ -771,6 +953,13 @@ namespace ConstructionControl
             set => SetField(ref remainingInfo, value);
         }
 
+        [JsonIgnore]
+        public string BlocksDisplayText
+        {
+            get => string.IsNullOrWhiteSpace(blocksDisplayText) ? (BlocksText ?? string.Empty) : blocksDisplayText;
+            set => SetField(ref blocksDisplayText, value);
+        }
+
         public bool SuppressDateDisplay
         {
             get => suppressDateDisplay;
@@ -783,13 +972,30 @@ namespace ConstructionControl
             set => SetField(ref suppressWeatherDisplay, value);
         }
 
+        public bool IsAutoCorrectedQuantity
+        {
+            get => isAutoCorrectedQuantity;
+            set => SetField(ref isAutoCorrectedQuantity, value);
+        }
+
+        public bool IsGeneratedCompanion
+        {
+            get => isGeneratedCompanion;
+            set => SetField(ref isGeneratedCompanion, value);
+        }
+
         public string DateDisplay => SuppressDateDisplay ? string.Empty : Date.ToString("dd.MM.yyyy");
 
-        public string WeatherDisplay => SuppressWeatherDisplay ? string.Empty : (Weather ?? string.Empty);
+        public string WeatherDisplay => SuppressWeatherDisplay ? string.Empty : LevelMarkHelper.PreventSingleLetterWrap(Weather ?? string.Empty);
 
         public string ElementsDisplay => string.Join(Environment.NewLine, LevelMarkHelper.SplitText(ElementsText));
 
         public string DeviationsDisplay => string.Join(Environment.NewLine, LevelMarkHelper.SplitText(Deviations));
+
+        public string StatusDisplay
+            => IsGeneratedCompanion
+                ? "Автосоздано (компаньон)"
+                : (IsAutoCorrectedQuantity ? "Скорректировано по остатку" : "Норма");
 
         public string WorkKey => $"{ActionName?.Trim()}::{WorkName?.Trim()}";
 
@@ -814,6 +1020,9 @@ namespace ConstructionControl
 
             if (propertyName == nameof(Deviations))
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DeviationsDisplay)));
+
+            if (propertyName == nameof(IsAutoCorrectedQuantity) || propertyName == nameof(IsGeneratedCompanion))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusDisplay)));
 
             return true;
         }
@@ -844,6 +1053,8 @@ namespace ConstructionControl
         public string JournalDisplay => LevelMarkHelper.PreventSingleLetterWrap(JournalName ?? string.Empty);
 
         public string InspectionDisplay => LevelMarkHelper.PreventSingleLetterWrap(InspectionName ?? string.Empty);
+
+        public string NotesDisplay => LevelMarkHelper.PreventSingleLetterWrap(Notes ?? string.Empty);
 
         public DateTime ReminderStartDate
         {
@@ -892,6 +1103,8 @@ namespace ConstructionControl
 
         public bool IsDue => !IsCompletionHistory && DateTime.Today >= NextReminderDate.Date;
 
+        public bool IsUpcoming => !IsCompletionHistory && !IsDue;
+
         public string ReminderStatus => IsCompletionHistory
             ? (LastCompletedDate.HasValue
                 ? $"Проведен: {LastCompletedDate.Value:dd.MM.yyyy}"
@@ -899,6 +1112,8 @@ namespace ConstructionControl
             : (IsDue
                 ? $"Нужно провести с {NextReminderDate:dd.MM.yyyy}"
                 : $"Следующий: {NextReminderDate:dd.MM.yyyy}");
+
+        public string ReminderStatusDisplay => LevelMarkHelper.PreventSingleLetterWrap(ReminderStatus);
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -916,11 +1131,20 @@ namespace ConstructionControl
             if (propertyName == nameof(InspectionName))
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InspectionDisplay)));
 
-            if (propertyName != nameof(ReminderStatus) && propertyName != nameof(NextReminderDate) && propertyName != nameof(IsDue))
+            if (propertyName == nameof(Notes))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotesDisplay)));
+
+            if (propertyName != nameof(ReminderStatus)
+                && propertyName != nameof(ReminderStatusDisplay)
+                && propertyName != nameof(NextReminderDate)
+                && propertyName != nameof(IsDue)
+                && propertyName != nameof(IsUpcoming))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextReminderDate)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDue)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsUpcoming)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatus)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatusDisplay)));
             }
             return true;
         }

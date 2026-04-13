@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 
 namespace ConstructionControl
 {
@@ -197,6 +198,7 @@ namespace ConstructionControl
         private bool isBulkUpdating;
         private int visibleCatalogColumns = 5;
         private int visibleLevelColumns = 6;
+        private ICollectionView rulesView;
         public Dictionary<string, string> ResultRules { get; private set; } = new();
         public List<string> ResultAutoSplitMaterials { get; private set; } = new();
         public List<MaterialBindingChange> ResultBindingChanges { get; private set; } = new();
@@ -270,7 +272,12 @@ namespace ConstructionControl
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableCategoryName)));
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableTypeName)));
             cvs.GroupDescriptions.Add(new PropertyGroupDescription(nameof(MaterialSplitRuleRow.EditableSubTypeName)));
-            RulesGrid.ItemsSource = cvs.View;
+            cvs.IsLiveGroupingRequested = true;
+            cvs.LiveGroupingProperties.Add(nameof(MaterialSplitRuleRow.EditableCategoryName));
+            cvs.LiveGroupingProperties.Add(nameof(MaterialSplitRuleRow.EditableTypeName));
+            cvs.LiveGroupingProperties.Add(nameof(MaterialSplitRuleRow.EditableSubTypeName));
+            rulesView = cvs.View;
+            RulesGrid.ItemsSource = rulesView;
             visibleLevelColumns = rows.Any() ? System.Math.Max(6, rows.Max(GetUsedSegmentCount)) : 6;
             ApplyCatalogColumnVisibility();
             ApplyLevelColumnVisibility();
@@ -311,6 +318,106 @@ namespace ConstructionControl
 
             return 0;
         }
+
+        private List<MaterialSplitRuleRow> GetSelectedRows()
+        {
+            var selected = RulesGrid.SelectedItems
+                .Cast<object>()
+                .OfType<MaterialSplitRuleRow>()
+                .Distinct()
+                .ToList();
+
+            if (selected.Count == 0 && RulesGrid.SelectedItem is MaterialSplitRuleRow current)
+                selected.Add(current);
+
+            return selected;
+        }
+
+        private List<MaterialSplitRuleRow> GetSelectedTargets(MaterialSplitRuleRow source)
+        {
+            var selected = GetSelectedRows();
+            if (selected.Count < 2)
+                return new List<MaterialSplitRuleRow>();
+
+            return selected
+                .Where(x => !ReferenceEquals(x, source))
+                .ToList();
+        }
+
+        private bool ApplyToSelectedRows(MaterialSplitRuleRow source, System.Action<MaterialSplitRuleRow> apply)
+        {
+            var targets = GetSelectedTargets(source);
+            if (targets.Count == 0)
+                return false;
+
+            isBulkUpdating = true;
+            try
+            {
+                foreach (var target in targets)
+                    apply(target);
+            }
+            finally
+            {
+                isBulkUpdating = false;
+            }
+
+            return true;
+        }
+
+        private static string GetColumnBindingPath(DataGridColumn column)
+        {
+            if (column is DataGridBoundColumn boundColumn && boundColumn.Binding is Binding binding)
+                return binding.Path?.Path ?? string.Empty;
+
+            return string.Empty;
+        }
+
+        private static bool IsGroupColumn(string path)
+        {
+            return string.Equals(path, nameof(MaterialSplitRuleRow.EditableCategoryName), System.StringComparison.Ordinal)
+                   || string.Equals(path, nameof(MaterialSplitRuleRow.EditableTypeName), System.StringComparison.Ordinal)
+                   || string.Equals(path, nameof(MaterialSplitRuleRow.EditableSubTypeName), System.StringComparison.Ordinal);
+        }
+
+        private void RefreshRulesView()
+        {
+            rulesView?.Refresh();
+        }
+
+        private bool ApplyCellValueToSelectedRows(MaterialSplitRuleRow source, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            bool changed = path switch
+            {
+                nameof(MaterialSplitRuleRow.EditableCategoryName) => ApplyToSelectedRows(source, target => target.EditableCategoryName = source.EditableCategoryName),
+                nameof(MaterialSplitRuleRow.EditableTypeName) => ApplyToSelectedRows(source, target => target.EditableTypeName = source.EditableTypeName),
+                nameof(MaterialSplitRuleRow.EditableSubTypeName) => ApplyToSelectedRows(source, target => target.EditableSubTypeName = source.EditableSubTypeName),
+                nameof(MaterialSplitRuleRow.EditableLevel4Name) => ApplyToSelectedRows(source, target => target.EditableLevel4Name = source.EditableLevel4Name),
+                nameof(MaterialSplitRuleRow.EditableLevel5Name) => ApplyToSelectedRows(source, target => target.EditableLevel5Name = source.EditableLevel5Name),
+                nameof(MaterialSplitRuleRow.EditableLevel6Name) => ApplyToSelectedRows(source, target => target.EditableLevel6Name = source.EditableLevel6Name),
+                nameof(MaterialSplitRuleRow.EditableMaterialName) => ApplyToSelectedRows(source, target => target.EditableMaterialName = source.EditableMaterialName),
+                nameof(MaterialSplitRuleRow.IsAutoSplitEnabled) => ApplyToSelectedRows(source, target => target.IsAutoSplitEnabled = source.IsAutoSplitEnabled),
+                nameof(MaterialSplitRuleRow.Segment1) => ApplyToSelectedRows(source, target => target.Segment1 = source.Segment1),
+                nameof(MaterialSplitRuleRow.Segment2) => ApplyToSelectedRows(source, target => target.Segment2 = source.Segment2),
+                nameof(MaterialSplitRuleRow.Segment3) => ApplyToSelectedRows(source, target => target.Segment3 = source.Segment3),
+                nameof(MaterialSplitRuleRow.Segment4) => ApplyToSelectedRows(source, target => target.Segment4 = source.Segment4),
+                nameof(MaterialSplitRuleRow.Segment5) => ApplyToSelectedRows(source, target => target.Segment5 = source.Segment5),
+                nameof(MaterialSplitRuleRow.Segment6) => ApplyToSelectedRows(source, target => target.Segment6 = source.Segment6),
+                nameof(MaterialSplitRuleRow.Segment7) => ApplyToSelectedRows(source, target => target.Segment7 = source.Segment7),
+                nameof(MaterialSplitRuleRow.Segment8) => ApplyToSelectedRows(source, target => target.Segment8 = source.Segment8),
+                nameof(MaterialSplitRuleRow.Segment9) => ApplyToSelectedRows(source, target => target.Segment9 = source.Segment9),
+                nameof(MaterialSplitRuleRow.Segment10) => ApplyToSelectedRows(source, target => target.Segment10 = source.Segment10),
+                _ => false
+            };
+
+            if (changed && IsGroupColumn(path))
+                RefreshRulesView();
+
+            return changed;
+        }
+
         private void AddEntry_Click(object sender, RoutedEventArgs e)
         {
             var selected = RulesGrid.SelectedItem as MaterialSplitRuleRow;
@@ -353,6 +460,46 @@ namespace ConstructionControl
 
             rows.Remove(selected);
         }
+
+        private void ApplyTypeToSelection_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
+
+            if (!ApplyToSelectedRows(selected, row => row.EditableTypeName = selected.EditableTypeName))
+            {
+                MessageBox.Show("Выделите несколько строк (Shift + клик), чтобы применить тип к диапазону.");
+                return;
+            }
+
+            RefreshRulesView();
+        }
+
+        private void ApplySubTypeToSelection_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
+
+            if (!ApplyToSelectedRows(selected, row => row.EditableSubTypeName = selected.EditableSubTypeName))
+            {
+                MessageBox.Show("Выделите несколько строк (Shift + клик), чтобы применить подтип к диапазону.");
+                return;
+            }
+
+            RefreshRulesView();
+        }
+
+        private void ApplyAutoSplitToSelection_Click(object sender, RoutedEventArgs e)
+        {
+            if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
+                return;
+
+            if (!ApplyToSelectedRows(selected, row => row.IsAutoSplitEnabled = selected.IsAutoSplitEnabled))
+            {
+                MessageBox.Show("Выделите несколько строк (Shift + клик), чтобы применить авторазбиение к диапазону.");
+            }
+        }
+
         private void RenameTypeForAll_Click(object sender, RoutedEventArgs e)
         {
             if (RulesGrid.SelectedItem is not MaterialSplitRuleRow selected)
@@ -489,10 +636,27 @@ namespace ConstructionControl
             if (e.Row?.Item is not MaterialSplitRuleRow edited)
                 return;
 
-            var normalizedRule = edited.GetRule();
-            if (string.IsNullOrWhiteSpace(normalizedRule))
+            var bindingPath = GetColumnBindingPath(e.Column);
+            var selectedRows = GetSelectedRows();
+            if (selectedRows.Count > 1)
+                ApplyCellValueToSelectedRows(edited, bindingPath);
+
+            if (IsGroupColumn(bindingPath))
+                RefreshRulesView();
+
+            if (string.IsNullOrWhiteSpace(bindingPath) || !bindingPath.StartsWith("Segment", System.StringComparison.Ordinal))
                 return;
-            edited.SetRule(normalizedRule);
+
+            var rowsToNormalize = selectedRows.Count > 0
+                ? selectedRows
+                : new List<MaterialSplitRuleRow> { edited };
+
+            foreach (var row in rowsToNormalize)
+            {
+                var normalizedRule = row.GetRule();
+                if (!string.IsNullOrWhiteSpace(normalizedRule))
+                    row.SetRule(normalizedRule);
+            }
         }
 
         private void ApplySplitToOthers_Click(object sender, RoutedEventArgs e)
@@ -507,7 +671,10 @@ namespace ConstructionControl
                 return;
             }
 
-            var targets = PromptRuleTargets(edited);
+            var targets = GetSelectedTargets(edited);
+            if (targets.Count == 0)
+                targets = PromptRuleTargets(edited);
+
             if (targets == null || targets.Count == 0)
                 return;
 

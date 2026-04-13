@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -11,17 +12,48 @@ namespace ConstructionControl
 {
     public partial class ObjectSettingsWindow : Window
     {
-        private readonly ProjectObject _object;
+        private readonly ProjectObject _sourceObject;
+        private ProjectObject _object;
         private readonly ObservableCollection<BlockFloors> floorsRows = new();
         private readonly ObservableCollection<BlockAxisRow> blockAxisRows = new();
         private readonly ObservableCollection<NamedPersonRow> masterRows = new();
         private readonly ObservableCollection<NamedPersonRow> foremanRows = new();
+        private readonly bool allowCreateAsNew;
 
-        public ObjectSettingsWindow(ProjectObject obj)
+        public bool CreateAsNewObject { get; private set; }
+        public ProjectObject ResultObject { get; private set; }
+
+        public ObjectSettingsWindow(ProjectObject obj, bool allowCreateAsNew = false)
         {
             InitializeComponent();
-            _object = obj;
+            _sourceObject = obj ?? new ProjectObject();
+            _object = CloneObject(_sourceObject);
+            allowCreateAsNew = allowCreateAsNew && obj != null;
+            this.allowCreateAsNew = allowCreateAsNew;
 
+            CreateAsNewBorder.Visibility = allowCreateAsNew ? Visibility.Visible : Visibility.Collapsed;
+            if (allowCreateAsNew)
+                CreateAsNewCheck.IsChecked = false;
+
+            for (var i = 0; i <= 12; i++)
+            {
+                MasterCountComboBox.Items.Add(i);
+                ForemanCountComboBox.Items.Add(i);
+            }
+
+            LoadObjectToForm(_object);
+            ResultObject = _object;
+        }
+
+        private static ProjectObject CloneObject(ProjectObject source)
+        {
+            var json = JsonSerializer.Serialize(source ?? new ProjectObject());
+            var clone = JsonSerializer.Deserialize<ProjectObject>(json);
+            return clone ?? new ProjectObject();
+        }
+
+        private void LoadObjectToForm(ProjectObject obj)
+        {
             NameBox.Text = obj.Name ?? string.Empty;
             FullObjectNameBox.Text = obj.FullObjectName ?? string.Empty;
             BlocksBox.Text = Math.Max(1, obj.BlocksCount).ToString();
@@ -34,12 +66,6 @@ namespace ConstructionControl
             ProjectOrganizationRepresentativeBox.Text = obj.ProjectOrganizationRepresentative ?? string.Empty;
             ProjectDocumentationNameBox.Text = obj.ProjectDocumentationName ?? string.Empty;
             SiteManagerNameBox.Text = obj.SiteManagerName ?? string.Empty;
-
-            for (var i = 0; i <= 12; i++)
-            {
-                MasterCountComboBox.Items.Add(i);
-                ForemanCountComboBox.Items.Add(i);
-            }
 
             BuildFloorsGrid();
             BuildBlockAxesGrid();
@@ -229,7 +255,14 @@ namespace ConstructionControl
 
         private void Ok_Click(object sender, RoutedEventArgs e)
         {
-            _object.Name = NameBox.Text.Trim();
+            var name = NameBox.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show("Введите название объекта.", "Проверка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _object.Name = name;
             _object.FullObjectName = FullObjectNameBox.Text?.Trim() ?? string.Empty;
             _object.BlocksCount = ParseBlocksCount();
             _object.HasBasement = BasementCheck.IsChecked == true;
@@ -256,6 +289,8 @@ namespace ConstructionControl
                     _object.FloorsByBlock[row.Block] = Math.Max(0, row.Floors);
             }
 
+            CreateAsNewObject = allowCreateAsNew && CreateAsNewCheck.IsChecked == true;
+            ResultObject = _object;
             DialogResult = true;
         }
 

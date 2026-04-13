@@ -1,8 +1,8 @@
 <Application x:Class="ConstructionControl.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:ConstructionControl"
-             StartupUri="MainWindow.xaml">
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:local="clr-namespace:ConstructionControl">
     <Application.Resources>
         <SolidColorBrush x:Key="AppBgBrush" Color="#F5F7FA"/>
         <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/>
@@ -29,6 +29,44 @@
         <SolidColorBrush x:Key="OverlayBrush" Color="#66000000"/>
         <SolidColorBrush x:Key="OverlayStrongBrush" Color="#88000000"/>
 
+        <sys:Double x:Key="SpacingXs">4</sys:Double>
+        <sys:Double x:Key="SpacingSm">8</sys:Double>
+        <sys:Double x:Key="SpacingMd">12</sys:Double>
+        <sys:Double x:Key="SpacingLg">16</sys:Double>
+        <sys:Double x:Key="SpacingXl">20</sys:Double>
+
+        <sys:Double x:Key="AppFontSizeCompact">12</sys:Double>
+        <sys:Double x:Key="AppFontSizeStandard">13</sys:Double>
+        <sys:Double x:Key="AppFontSize">13</sys:Double>
+
+        <sys:Double x:Key="ControlHeightCompact">32</sys:Double>
+        <sys:Double x:Key="ControlHeightStandard">36</sys:Double>
+        <sys:Double x:Key="ControlHeight">36</sys:Double>
+
+        <Thickness x:Key="TextBoxPaddingCompact">10,6</Thickness>
+        <Thickness x:Key="TextBoxPaddingStandard">12,8</Thickness>
+        <Thickness x:Key="TextBoxPadding">12,8</Thickness>
+
+        <Thickness x:Key="ComboPaddingCompact">8,4</Thickness>
+        <Thickness x:Key="ComboPaddingStandard">8,6</Thickness>
+        <Thickness x:Key="ComboPadding">8,6</Thickness>
+
+        <Thickness x:Key="ButtonPaddingCompact">12,0</Thickness>
+        <Thickness x:Key="ButtonPaddingStandard">16,0</Thickness>
+        <Thickness x:Key="ButtonPadding">16,0</Thickness>
+
+        <Thickness x:Key="TabPaddingCompact">10,5</Thickness>
+        <Thickness x:Key="TabPaddingStandard">14,6</Thickness>
+        <Thickness x:Key="TabPadding">14,6</Thickness>
+
+        <sys:Double x:Key="DataGridRowMinHeightCompact">30</sys:Double>
+        <sys:Double x:Key="DataGridRowMinHeightStandard">34</sys:Double>
+        <sys:Double x:Key="DataGridRowMinHeight">34</sys:Double>
+
+        <Thickness x:Key="DataGridCellPaddingCompact">6,4</Thickness>
+        <Thickness x:Key="DataGridCellPaddingStandard">8,5</Thickness>
+        <Thickness x:Key="DataGridCellPadding">8,5</Thickness>
+
         <DropShadowEffect x:Key="ComboShadow" Color="#0F172A" Opacity="0.08" BlurRadius="14" ShadowDepth="2"/>
         <DropShadowEffect x:Key="SoftShadowEffect" BlurRadius="16" Opacity="0.08" ShadowDepth="2" Color="#0F172A"/>
 
@@ -51,8 +89,9 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="{DynamicResource TextBoxPadding}"/>
+            <Setter Property="MinHeight" Value="{DynamicResource ControlHeight}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -100,8 +139,9 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="{DynamicResource ComboPadding}"/>
+            <Setter Property="MinHeight" Value="{DynamicResource ControlHeight}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -259,14 +299,15 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Padding" Value="{DynamicResource ComboPadding}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="{DynamicResource ControlHeight}"/>
             <Setter Property="MinWidth" Value="120"/>
-            <Setter Property="Padding" Value="16,0"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="{DynamicResource ButtonPadding}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="TextBlock.TextWrapping" Value="Wrap"/>
             <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis"/>
@@ -375,7 +416,8 @@
         </Style>
         <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Padding" Value="{DynamicResource ComboPadding}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
         </Style>
         <Style TargetType="ToolBar">
             <Setter Property="Background" Value="Transparent"/>
@@ -391,7 +433,8 @@
             <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Padding" Value="{DynamicResource TabPadding}"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
@@ -435,7 +478,7 @@
             <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource DividerBrush}"/>
             <Setter Property="VerticalGridLinesBrush" Value="{StaticResource DividerBrush}"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="{DynamicResource AppFontSize}"/>
             <Setter Property="EnableRowVirtualization" Value="True"/>
             <Setter Property="EnableColumnVirtualization" Value="True"/>
             <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
@@ -451,7 +494,7 @@
             <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
-            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Padding" Value="{DynamicResource TextBoxPadding}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -461,7 +504,7 @@
         </Style>
 
         <Style TargetType="DataGridRow">
-            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="MinHeight" Value="{DynamicResource DataGridRowMinHeight}"/>
             <Setter Property="Background" Value="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=RowBackground}"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
@@ -476,7 +519,7 @@
         <Style TargetType="DataGridCell">
             <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
-            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Padding" Value="{DynamicResource DataGridCellPadding}"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">

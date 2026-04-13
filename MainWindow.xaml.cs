@@ -24,8 +24,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Documents;
+using System.Windows.Interop;
+using System.Windows.Navigation;
 using System.Windows.Threading;
-using WinForms = System.Windows.Forms;
 using WpfPath = System.Windows.Shapes.Path;
 using System.Text.RegularExpressions;
 
@@ -52,6 +53,8 @@ namespace ConstructionControl
 
         private readonly Dictionary<string, Brush> colorMap = new();
         private int colorIndex = 0;
+        private DateTime? lastSuccessfulSaveLocalTime;
+        private string lastOperationStatusText = "Готово";
 
         private Brush GetColor(string group)
         {
@@ -93,6 +96,12 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> specialties = new();
         private readonly ObservableCollection<string> professions = new();
         private string otSearchText = string.Empty;
+        private readonly ObservableCollection<string> otStatusFilters = new();
+        private readonly ObservableCollection<string> otSpecialtyFilters = new();
+        private readonly ObservableCollection<string> otBrigadeFilters = new();
+        private string selectedOtStatusFilter = "Все";
+        private string selectedOtSpecialtyFilter = "Все";
+        private string selectedOtBrigadeFilter = "Все";
         private bool isTreePinned;
         private Point treeDragStart;
         private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
@@ -111,6 +120,7 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> productionMarkOptions = new();
         private readonly ObservableCollection<string> productionWeatherOptions = new();
         private readonly ObservableCollection<string> productionDeviationOptions = new();
+        private readonly ObservableCollection<string> productionAutoFillProfileNames = new();
         private readonly ObservableCollection<InspectionJournalEntry> inspectionJournalRows = new();
         private readonly ObservableCollection<string> inspectionJournalNames = new();
         private readonly ObservableCollection<string> inspectionNames = new();
@@ -145,15 +155,21 @@ namespace ConstructionControl
         private bool isSyncingTimesheetToOt;
         private const int MaxTimesheetMissingDocs = 3;
         private ReminderOverlayWindow reminderOverlayWindow;
-        private WinForms.Panel estimateExcelPanel;
         private object estimateExcelApplication;
         private object estimateExcelWorkbook;
         private Process estimateSpreadsheetProcess;
         private IntPtr estimateExcelWindowHandle = IntPtr.Zero;
+        private int estimateEmbeddedWindowX = int.MinValue;
+        private int estimateEmbeddedWindowY = int.MinValue;
+        private int estimateEmbeddedWindowWidth = -1;
+        private int estimateEmbeddedWindowHeight = -1;
         private string estimateEmbeddedFilePath = string.Empty;
         private string preferredSpreadsheetEditorPath = string.Empty;
         private bool useExternalSpreadsheetEditor;
         private bool previewWarmupStarted;
+        private readonly Dictionary<string, string> documentHashPathCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> lastStorageIntegrityIssues = new();
+        private readonly ObservableCollection<OperationLogEntry> operationLogEntries = new();
         private string lastSavedStateSnapshot = string.Empty;
         private bool closeConfirmed;
         private FileStream projectLockStream;
@@ -170,6 +186,7 @@ namespace ConstructionControl
         private bool inspectionLookupsDirty = true;
         private bool productionStateDirty = true;
         private bool inspectionStateDirty = true;
+        private bool isRefreshingProductionProfileSelection;
         private int summaryDataVersion = 1;
         private readonly Dictionary<string, SummaryMatrixCacheEntry> summaryMatrixCache = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TimeSpan> tabOpenDiagnostics = new(StringComparer.CurrentCultureIgnoreCase);
@@ -183,6 +200,18 @@ namespace ConstructionControl
         private int processingOverlayDepth;
         private readonly DispatcherTimer processingOverlayDelayTimer;
         private string processingOverlayPendingText = "Идет обработка...";
+        private bool isApplyingColumnPreferences;
+        private bool isOpeningCommandDialog;
+        private readonly ObservableCollection<string> arrivalFilterTemplateNames = new();
+        private bool suppressArrivalTemplateSelectionChange;
+        private static readonly Regex DigitsInputRegex = new(@"^\d+$", RegexOptions.Compiled);
+        private const string ActiveTabModeKey = "__active_tab";
+
+        private const string GridPrefArrival = "tab_arrival_legacy_grid";
+        private const string GridPrefOt = "tab_ot_grid";
+        private const string GridPrefTimesheet = "tab_timesheet_grid";
+        private const string GridPrefProduction = "tab_production_grid";
+        private const string GridPrefInspection = "tab_inspection_grid";
 
         private sealed class SummaryMatrixCacheEntry
         {
@@ -203,6 +232,139 @@ namespace ConstructionControl
             public double TotalArrival { get; set; }
         }
 
+        private sealed class ColumnManagerRow : INotifyPropertyChanged
+        {
+            private bool isVisible = true;
+            private string widthText = string.Empty;
+            private int order;
+
+            public string Header { get; set; } = string.Empty;
+            public bool IsVisible
+            {
+                get => isVisible;
+                set
+                {
+                    if (isVisible == value)
+                        return;
+
+                    isVisible = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsVisible)));
+                }
+            }
+
+            public string WidthText
+            {
+                get => widthText;
+                set
+                {
+                    if (string.Equals(widthText, value, StringComparison.CurrentCulture))
+                        return;
+
+                    widthText = value ?? string.Empty;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidthText)));
+                }
+            }
+
+            public int Order
+            {
+                get => order;
+                set
+                {
+                    if (order == value)
+                        return;
+
+                    order = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Order)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class OtInstructionReferenceRow : INotifyPropertyChanged
+        {
+            private string profession = string.Empty;
+            private string instructionNumbers = string.Empty;
+
+            public string Profession
+            {
+                get => profession;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(profession, normalized, StringComparison.CurrentCulture))
+                        return;
+                    profession = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Profession)));
+                }
+            }
+
+            public string InstructionNumbers
+            {
+                get => instructionNumbers;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(instructionNumbers, normalized, StringComparison.CurrentCulture))
+                        return;
+                    instructionNumbers = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstructionNumbers)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class ProductionDeviationReferenceRow : INotifyPropertyChanged
+        {
+            private string materialType = string.Empty;
+            private string deviation = string.Empty;
+
+            public string MaterialType
+            {
+                get => materialType;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(materialType, normalized, StringComparison.CurrentCulture))
+                        return;
+                    materialType = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialType)));
+                }
+            }
+
+            public string Deviation
+            {
+                get => deviation;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(deviation, normalized, StringComparison.CurrentCulture))
+                        return;
+                    deviation = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Deviation)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class GlobalSearchResult
+        {
+            public string TabHeader { get; set; } = string.Empty;
+            public string Title { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public Action NavigateAction { get; set; }
+        }
+
+        private sealed class CommandPaletteAction
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Shortcut { get; set; } = string.Empty;
+            public string Hint { get; set; } = string.Empty;
+            public Action ExecuteAction { get; set; }
+        }
+
         private enum SaveTrigger
         {
             Manual,
@@ -212,20 +374,39 @@ namespace ConstructionControl
 
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;
+        private const int GWLP_HWNDPARENT = -8;
         private const long WS_CHILD = 0x40000000L;
         private const long WS_CAPTION = 0x00C00000L;
+        private const long WS_DLGFRAME = 0x00400000L;
         private const long WS_THICKFRAME = 0x00040000L;
         private const long WS_MINIMIZEBOX = 0x00020000L;
         private const long WS_MAXIMIZEBOX = 0x00010000L;
         private const long WS_SYSMENU = 0x00080000L;
         private const long WS_POPUP = unchecked((int)0x80000000);
         private const long WS_EX_APPWINDOW = 0x00040000L;
+        private const long WS_EX_TOOLWINDOW = 0x00000080L;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOZORDER = 0x0004;
         private const uint SWP_NOACTIVATE = 0x0010;
         private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_SHOWWINDOW = 0x0040;
+        private const uint SWP_NOOWNERZORDER = 0x0200;
+        private const int SW_HIDE = 0;
         private const int SW_SHOW = 5;
-        private const int EmbeddedExcelTopTrim = 40;
+        private const int EmbeddedExcelTopTrim = 0;
+        private const uint WM_CANCELMODE = 0x001F;
+        private const byte VK_SHIFT = 0x10;
+        private const byte VK_CONTROL = 0x11;
+        private const byte VK_MENU = 0x12;
+        private const byte VK_ESCAPE = 0x1B;
+        private const byte VK_LSHIFT = 0xA0;
+        private const byte VK_RSHIFT = 0xA1;
+        private const byte VK_LCONTROL = 0xA2;
+        private const byte VK_RCONTROL = 0xA3;
+        private const byte VK_LMENU = 0xA4;
+        private const byte VK_RMENU = 0xA5;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
@@ -242,6 +423,24 @@ namespace ConstructionControl
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -582,6 +781,111 @@ namespace ConstructionControl
             public bool IsOverage { get; set; }
         }
 
+        private sealed class SummaryComparisonRow
+        {
+            public string Тип { get; set; } = string.Empty;
+            public string Наименование { get; set; } = string.Empty;
+            public string Ед { get; set; } = string.Empty;
+            public double План { get; set; }
+            public double Пришло { get; set; }
+            public double Смонтировано { get; set; }
+            public double Остаток { get; set; }
+        }
+
+        private sealed class SummaryBalanceEditorRow : INotifyPropertyChanged
+        {
+            private string reason = string.Empty;
+            public string Category { get; set; } = string.Empty;
+            public string Group { get; set; } = string.Empty;
+            public string Material { get; set; } = string.Empty;
+            public string Unit { get; set; } = string.Empty;
+            public double Quantity { get; set; }
+            public bool IsOverage { get; set; }
+            public string Scenario => IsOverage ? "Излишек" : "Дефицит";
+
+            public string Reason
+            {
+                get => reason;
+                set
+                {
+                    if (string.Equals(reason, value, StringComparison.CurrentCulture))
+                        return;
+                    reason = value ?? string.Empty;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Reason)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class DocumentLibraryReportRow
+        {
+            public string Library { get; set; } = string.Empty;
+            public string NodeName { get; set; } = string.Empty;
+            public string NodeType { get; set; } = string.Empty;
+            public string FilePath { get; set; } = string.Empty;
+            public string Status { get; set; } = string.Empty;
+        }
+
+        private sealed class DocumentTreeSearchRow
+        {
+            public string Library { get; set; } = string.Empty;
+            public string Name { get; set; } = string.Empty;
+            public string NodeType { get; set; } = string.Empty;
+            public string Path { get; set; } = string.Empty;
+            public string FilePath { get; set; } = string.Empty;
+            public DocumentTreeNode Node { get; set; }
+        }
+
+        private sealed class DocumentStorageManifestEntry
+        {
+            public string RelativePath { get; set; } = string.Empty;
+            public string Hash { get; set; } = string.Empty;
+            public long Size { get; set; }
+        }
+
+        private sealed class DocumentIntegrityIssueRow
+        {
+            public string NodeName { get; set; } = string.Empty;
+            public string Path { get; set; } = string.Empty;
+            public string Issue { get; set; } = string.Empty;
+        }
+
+        private sealed class DocumentStorageMaintenanceResult
+        {
+            public int NodesVisited { get; set; }
+            public int PathsRecovered { get; set; }
+            public int MetadataUpdated { get; set; }
+            public int LinksRepointed { get; set; }
+            public int HashIndexSize { get; set; }
+            public int DuplicateFilesRemoved { get; set; }
+            public int OrphanFilesRemoved { get; set; }
+            public List<string> Errors { get; } = new();
+        }
+
+        private sealed class OperationLogEntry
+        {
+            public DateTime TimestampLocal { get; set; }
+            public string Kind { get; set; } = string.Empty;
+            public string Status { get; set; } = string.Empty;
+            public string Details { get; set; } = string.Empty;
+        }
+
+        private sealed class DiagnosticsMetricRow
+        {
+            public string Metric { get; set; } = string.Empty;
+            public string Value { get; set; } = string.Empty;
+        }
+
+        private sealed class BoolToScenarioConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is bool flag && flag ? "Излишек" : "Дефицит";
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
         private sealed class AutoProductionCandidate
         {
             public string Group { get; set; }
@@ -603,16 +907,23 @@ namespace ConstructionControl
         public ObservableCollection<string> ProductionMarkOptions => productionMarkOptions;
         public ObservableCollection<string> ProductionWeatherOptions => productionWeatherOptions;
         public ObservableCollection<string> ProductionDeviationOptions => productionDeviationOptions;
+        public ObservableCollection<string> ProductionAutoFillProfileNames => productionAutoFillProfileNames;
         public ObservableCollection<string> InspectionJournalNames => inspectionJournalNames;
         public ObservableCollection<string> InspectionNames => inspectionNames;
         public MainWindow()
         {
             InitializeComponent();
+            if (PdfPreviewBrowser != null)
+                PdfPreviewBrowser.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
+            if (EstimatePreviewBrowser != null)
+                EstimatePreviewBrowser.LoadCompleted += DocumentPreviewBrowser_LoadCompleted;
             currentSaveFileName = ResolveDefaultSavePath();
             InitializeSpreadsheetEditorPreference();
             SizeChanged += MainWindow_SizeChanged;
             LocationChanged += MainWindow_LocationChanged;
             StateChanged += MainWindow_StateChanged;
+            Activated += MainWindow_Activated;
+            Deactivated += MainWindow_Deactivated;
             reminderRefreshTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(30)
@@ -690,6 +1001,9 @@ namespace ConstructionControl
                 ArrivalPanel.SetObject(currentObject, journal);
             RefreshArrivalTypes();
             RefreshArrivalNames();
+            if (ArrivalTemplateBox != null)
+                ArrivalTemplateBox.ItemsSource = arrivalFilterTemplateNames;
+            RefreshArrivalFilterTemplates();
             RefreshDocumentLibraries();
             UpdateArrivalViewMode();
 
@@ -743,6 +1057,7 @@ namespace ConstructionControl
                 return persistentPath;
 
             var candidates = new List<string>();
+            AddCandidate(candidates, GetLegacyPersistentDefaultSavePath());
             AddCandidate(candidates, System.IO.Path.Combine(Environment.CurrentDirectory, DefaultSaveFileName));
             AddCandidate(candidates, System.IO.Path.Combine(AppContext.BaseDirectory, DefaultSaveFileName));
 
@@ -764,6 +1079,7 @@ namespace ConstructionControl
 
                 File.Copy(existing, persistentPath, overwrite: false);
                 CopyDirectorySafe(BuildStorageRootPath(existing), BuildStorageRootPath(persistentPath));
+                CopyDirectorySafe(BuildLegacyStorageRootPath(existing), BuildStorageRootPath(persistentPath));
                 return persistentPath;
             }
             catch
@@ -772,7 +1088,45 @@ namespace ConstructionControl
             }
         }
 
+        private static string GetDefaultDataRootPath()
+        {
+            var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var root = System.IO.Path.Combine(appDataFolder, "ConstructionControl", "Data");
+            Directory.CreateDirectory(root);
+            return root;
+        }
+
+        private static string NormalizeDataRootPath(string dataRootPath)
+        {
+            var candidate = string.IsNullOrWhiteSpace(dataRootPath)
+                ? GetDefaultDataRootPath()
+                : Environment.ExpandEnvironmentVariables(dataRootPath.Trim());
+
+            try
+            {
+                var fullPath = System.IO.Path.GetFullPath(candidate);
+                Directory.CreateDirectory(fullPath);
+                return fullPath;
+            }
+            catch
+            {
+                return GetDefaultDataRootPath();
+            }
+        }
+
+        private string GetConfiguredDataRootPath()
+        {
+            var rawPath = currentObject?.UiSettings?.DataRootDirectory;
+            return NormalizeDataRootPath(rawPath);
+        }
+
         private static string GetPersistentDefaultSavePath()
+        {
+            var dataRoot = GetDefaultDataRootPath();
+            return System.IO.Path.Combine(dataRoot, DefaultSaveFileName);
+        }
+
+        private static string GetLegacyPersistentDefaultSavePath()
         {
             var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var appFolder = System.IO.Path.Combine(appDataFolder, "ConstructionControl");
@@ -812,15 +1166,59 @@ namespace ConstructionControl
             return string.Concat(bytes.Select(x => x.ToString("x2"))).Substring(0, 24);
         }
 
-        private static string GetProjectRuntimeDirectory(string saveFileName)
+        private static string BuildStorageRootPath(string saveFileName)
         {
-            var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var root = System.IO.Path.Combine(appDataFolder, "ConstructionControl", "runtime");
+            if (string.IsNullOrWhiteSpace(saveFileName))
+                return string.Empty;
+
+            var dataRoot = GetDefaultDataRootPath();
+            var root = System.IO.Path.Combine(dataRoot, "storage", BuildProjectInstanceKey(saveFileName));
             Directory.CreateDirectory(root);
-            var projectFolder = System.IO.Path.Combine(root, BuildProjectInstanceKey(saveFileName));
-            Directory.CreateDirectory(projectFolder);
-            return projectFolder;
+            return root;
         }
+
+        private static string BuildLegacyStorageRootPath(string saveFileName)
+        {
+            if (string.IsNullOrWhiteSpace(saveFileName))
+                return string.Empty;
+
+            var fullSavePath = System.IO.Path.GetFullPath(saveFileName);
+            var folder = System.IO.Path.GetDirectoryName(fullSavePath);
+            var baseName = System.IO.Path.GetFileNameWithoutExtension(fullSavePath);
+            if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(baseName))
+                return string.Empty;
+
+            return System.IO.Path.Combine(folder, $"{baseName}_files");
+        }
+
+        private string BuildStorageRootPathForCurrentSettings(string saveFileName, bool createIfMissing)
+        {
+            if (string.IsNullOrWhiteSpace(saveFileName))
+                return string.Empty;
+
+            var dataRoot = GetConfiguredDataRootPath();
+            var storageRoot = System.IO.Path.Combine(dataRoot, "storage", BuildProjectInstanceKey(saveFileName));
+            if (createIfMissing)
+                Directory.CreateDirectory(storageRoot);
+
+            return storageRoot;
+        }
+
+        private string BuildRuntimeRootPathForCurrentSettings(string saveFileName, bool createIfMissing)
+        {
+            if (string.IsNullOrWhiteSpace(saveFileName))
+                return string.Empty;
+
+            var dataRoot = GetConfiguredDataRootPath();
+            var runtimeRoot = System.IO.Path.Combine(dataRoot, "runtime", BuildProjectInstanceKey(saveFileName));
+            if (createIfMissing)
+                Directory.CreateDirectory(runtimeRoot);
+
+            return runtimeRoot;
+        }
+
+        private string GetProjectRuntimeDirectory(string saveFileName)
+            => BuildRuntimeRootPathForCurrentSettings(saveFileName, createIfMissing: true);
 
         private string GetAutoBackupDirectory(string saveFileName)
         {
@@ -951,6 +1349,11 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(latestBackup) || !File.Exists(latestBackup))
                 return;
 
+            var hasCurrentState = TryReadStateSavedAtUtc(currentSaveFileName, out var currentSavedAtUtc);
+            var hasBackupState = TryReadStateSavedAtUtc(latestBackup, out var backupSavedAtUtc);
+            if (hasCurrentState && hasBackupState && currentSavedAtUtc >= backupSavedAtUtc)
+                return;
+
             var backupTimeLocal = File.GetLastWriteTime(latestBackup);
             var answer = MessageBox.Show(
                 $"Обнаружено некорректное завершение предыдущего сеанса.{Environment.NewLine}Найдено автосохранение от {backupTimeLocal:dd.MM.yyyy HH:mm:ss}.{Environment.NewLine}{Environment.NewLine}Восстановить его?",
@@ -982,15 +1385,40 @@ namespace ConstructionControl
                     $"Не удалось восстановить автосохранение.{Environment.NewLine}{ex.Message}",
                     "Ошибка восстановления",
                     MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                MessageBoxImage.Warning);
+            }
+        }
+
+        private bool TryReadStateSavedAtUtc(string statePath, out DateTime savedAtUtc)
+        {
+            savedAtUtc = DateTime.MinValue;
+            if (string.IsNullOrWhiteSpace(statePath) || !File.Exists(statePath))
+                return false;
+
+            try
+            {
+                var json = File.ReadAllText(statePath);
+                if (!TryDeserializeAppState(json, out var state, out _)
+                    || state == null
+                    || state.SavedAtUtc == default)
+                {
+                    return false;
+                }
+
+                savedAtUtc = DateTime.SpecifyKind(state.SavedAtUtc, DateTimeKind.Utc);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
         private void InitializeSpreadsheetEditorPreference()
         {
             preferredSpreadsheetEditorPath = ResolvePlanMakerExecutablePath();
-            useExternalSpreadsheetEditor = !string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath)
-                && File.Exists(preferredSpreadsheetEditorPath);
+            // Для смет используем PlanMaker в отдельном окне с визуальным встраиванием в область предпросмотра.
+            useExternalSpreadsheetEditor = true;
         }
 
         private static string ResolvePlanMakerExecutablePath()
@@ -1112,7 +1540,7 @@ namespace ConstructionControl
                 && estimateExcelWindowHandle != IntPtr.Zero
                 && IsEstimateSpreadsheetProcessAlive())
             {
-                EstimateExcelHost.Visibility = Visibility.Visible;
+                EstimateExcelHost.Visibility = Visibility.Collapsed;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
                 ScheduleEstimateEmbeddedLayout();
@@ -1160,15 +1588,25 @@ namespace ConstructionControl
                     // Ignore process shutdown failures.
                 }
 
-                throw new InvalidOperationException("PlanMaker не предоставил окно для встраивания.");
+                throw new InvalidOperationException("PlanMaker не предоставил окно для предпросмотра.");
             }
 
             estimateSpreadsheetProcess = process;
             estimateEmbeddedFilePath = filePath;
             estimateExcelWindowHandle = handle;
 
-            ConfigureEmbeddedWindow(estimateExcelWindowHandle, estimateExcelPanel.Handle);
-            EstimateExcelHost.Visibility = Visibility.Visible;
+            try
+            {
+                ShowWindow(estimateExcelWindowHandle, SW_HIDE);
+            }
+            catch
+            {
+                // Ignore early visibility errors before the window is positioned.
+            }
+
+            ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
+            ResetEstimateEmbeddedLayoutCache();
+            EstimateExcelHost.Visibility = Visibility.Collapsed;
             EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
             EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
             ScheduleEstimateEmbeddedLayout();
@@ -1293,6 +1731,7 @@ namespace ConstructionControl
 
                     estimateSpreadsheetProcess = null;
                     estimateExcelWindowHandle = IntPtr.Zero;
+                    ResetEstimateEmbeddedLayoutCache();
                     estimateEmbeddedFilePath = string.Empty;
                 }
             }
@@ -1313,6 +1752,7 @@ namespace ConstructionControl
                 Marshal.FinalReleaseComObject(estimateExcelWorkbook);
                 estimateExcelWorkbook = null;
                 estimateExcelWindowHandle = IntPtr.Zero;
+                ResetEstimateEmbeddedLayoutCache();
                 estimateEmbeddedFilePath = string.Empty;
             }
         }
@@ -1353,15 +1793,38 @@ namespace ConstructionControl
 
         private void InitializeEstimatePreviewHost()
         {
-            if (EstimateExcelHost == null || estimateExcelPanel != null)
+            if (EstimateExcelHost == null)
                 return;
+        }
 
-            estimateExcelPanel = new WinForms.Panel
+        private IntPtr EnsureEstimatePreviewHostHandle()
+        {
+            if (EstimateExcelHost == null || EstimatePreviewContainer == null || EstimatePreviewBrowser == null || EstimatePreviewPlaceholder == null)
+                throw new InvalidOperationException("Область предпросмотра сметы не готова.");
+
+            EstimatePreviewContainer.Visibility = Visibility.Visible;
+            EstimateExcelHost.Visibility = Visibility.Visible;
+            EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+            EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+
+            EstimatePreviewContainer.UpdateLayout();
+            EstimateExcelHost.UpdateLayout();
+
+            var handle = EstimateExcelHost.HostHandle;
+            if (handle != IntPtr.Zero)
+                return handle;
+
+            Dispatcher.Invoke(() =>
             {
-                BackColor = System.Drawing.Color.White
-            };
-            estimateExcelPanel.Resize += (_, _) => LayoutEmbeddedEstimateWindow();
-            EstimateExcelHost.Child = estimateExcelPanel;
+                EstimatePreviewContainer.UpdateLayout();
+                EstimateExcelHost.UpdateLayout();
+            }, DispatcherPriority.Loaded);
+
+            handle = EstimateExcelHost.HostHandle;
+            if (handle == IntPtr.Zero)
+                throw new InvalidOperationException("Не удалось подготовить встроенную область для сметы.");
+
+            return handle;
         }
 
         private void MainWindow_StateChanged(object sender, EventArgs e)
@@ -1369,10 +1832,28 @@ namespace ConstructionControl
             if (WindowState == WindowState.Minimized)
             {
                 reminderOverlayWindow?.Hide();
+                HideEstimateEmbeddedPreview();
                 return;
             }
 
             UpdateReminderOverlayPlacement();
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+                ScheduleEstimateEmbeddedLayout();
+        }
+
+        private void MainWindow_Activated(object sender, EventArgs e)
+        {
+            UpdateReminderOverlayPlacement();
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+                ScheduleEstimateEmbeddedLayout();
+        }
+
+        private void MainWindow_Deactivated(object sender, EventArgs e)
+        {
+            if (useExternalSpreadsheetEditor && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
+                HideEstimateEmbeddedPreview();
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -1659,6 +2140,8 @@ namespace ConstructionControl
         {
             processingOverlayDepth++;
             processingOverlayPendingText = string.IsNullOrWhiteSpace(text) ? "Идет обработка..." : text;
+            AddOperationLogEntry("Фоновая операция", "Старт", processingOverlayPendingText);
+            UpdateStatusBar();
 
             if (processingOverlayDelayTimer == null)
             {
@@ -1684,11 +2167,16 @@ namespace ConstructionControl
                 processingOverlayDepth--;
 
             if (processingOverlayDepth > 0)
+            {
+                UpdateStatusBar();
                 return;
+            }
 
             processingOverlayDelayTimer?.Stop();
             if (ProcessingOverlay != null)
                 ProcessingOverlay.Visibility = Visibility.Collapsed;
+            AddOperationLogEntry("Фоновая операция", "Завершено", processingOverlayPendingText);
+            UpdateStatusBar();
         }
 
         private sealed class ProcessingScope : IDisposable
@@ -1750,6 +2238,7 @@ namespace ConstructionControl
                     RequestReminderRefresh(immediate: true);
                 UpdateReminderOverlayPlacement();
                 EnsureSelectedTabInitialized();
+                UpdateStatusBar();
             }), DispatcherPriority.Background);
         }
 
@@ -1760,8 +2249,10 @@ namespace ConstructionControl
 
             currentObject.PdfDocuments ??= new List<DocumentTreeNode>();
             currentObject.EstimateDocuments ??= new List<DocumentTreeNode>();
+            documentHashPathCache.Clear();
             NormalizeDocumentPaths(currentObject.PdfDocuments, isPdfLibrary: true);
             NormalizeDocumentPaths(currentObject.EstimateDocuments, isPdfLibrary: false);
+            RebuildDocumentHashPathCache();
         }
 
         private void NormalizeDocumentPaths(IEnumerable<DocumentTreeNode> nodes, bool isPdfLibrary)
@@ -1787,16 +2278,22 @@ namespace ConstructionControl
                     {
                         node.StoredRelativePath = relative;
                     }
-                    else if (TryCopyDocumentToStorage(node.FilePath, isPdfLibrary, out var copiedPath, out var copiedRelativePath))
+                    else if (TryCopyDocumentToStorage(node.FilePath, isPdfLibrary, out var copiedPath, out var copiedRelativePath, out var copiedHash, out var copiedSize))
                     {
                         node.FilePath = copiedPath;
                         node.StoredRelativePath = copiedRelativePath;
+                        node.ContentHash = copiedHash;
+                        node.FileSizeBytes = copiedSize;
+                        node.HashVerifiedAtUtc = DateTime.UtcNow;
                     }
                 }
 
                 var resolved = ResolveDocumentPath(node);
                 if (!string.IsNullOrWhiteSpace(resolved))
+                {
                     node.FilePath = resolved;
+                    EnsureDocumentNodeFileMetadata(node, resolved);
+                }
 
                 NormalizeDocumentPaths(node.Children, isPdfLibrary);
             }
@@ -1818,8 +2315,7 @@ namespace ConstructionControl
                 if (!fullFilePath.StartsWith(fullFolderPath, StringComparison.OrdinalIgnoreCase))
                     return string.Empty;
 
-                var fileName = System.IO.Path.GetFileName(fullFilePath);
-                return System.IO.Path.Combine(isPdfLibrary ? "pdf" : "estimate", fileName);
+                return System.IO.Path.GetRelativePath(fullFolderPath, fullFilePath);
             }
             catch
             {
@@ -1833,7 +2329,10 @@ namespace ConstructionControl
                 return string.Empty;
 
             if (!string.IsNullOrWhiteSpace(node.FilePath) && File.Exists(node.FilePath))
+            {
+                EnsureDocumentNodeFileMetadata(node, node.FilePath);
                 return node.FilePath;
+            }
 
             if (!string.IsNullOrWhiteSpace(node.StoredRelativePath))
             {
@@ -1842,11 +2341,111 @@ namespace ConstructionControl
                 {
                     var candidate = System.IO.Path.Combine(baseFolder, node.StoredRelativePath);
                     if (File.Exists(candidate))
+                    {
+                        EnsureDocumentNodeFileMetadata(node, candidate);
                         return candidate;
+                    }
                 }
             }
 
+            if (TryRecoverDocumentPath(node, out var recoveredPath))
+            {
+                node.FilePath = recoveredPath;
+                EnsureDocumentNodeFileMetadata(node, recoveredPath);
+                return recoveredPath;
+            }
+
             return node.FilePath ?? string.Empty;
+        }
+
+        private bool TryRecoverDocumentPath(DocumentTreeNode node, out string recoveredPath)
+        {
+            recoveredPath = string.Empty;
+            if (node == null || node.IsFolder)
+                return false;
+
+            if (!string.IsNullOrWhiteSpace(node.ContentHash) && TryGetStoredPathByHash(node.ContentHash, out var byHashPath))
+            {
+                recoveredPath = byHashPath;
+                return true;
+            }
+
+            var fileName = string.Empty;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(node.FilePath))
+                    fileName = System.IO.Path.GetFileName(node.FilePath);
+
+                if (string.IsNullOrWhiteSpace(fileName) && !string.IsNullOrWhiteSpace(node.StoredRelativePath))
+                    fileName = System.IO.Path.GetFileName(node.StoredRelativePath);
+            }
+            catch
+            {
+                fileName = string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(fileName))
+                return false;
+
+            foreach (var root in GetDocumentSearchRoots(node.FilePath))
+            {
+                if (TryFindFileByName(root, fileName, out var foundPath))
+                {
+                    recoveredPath = foundPath;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private IEnumerable<string> GetDocumentSearchRoots(string originalPath)
+        {
+            var roots = new List<string>();
+            var storageRoot = GetProjectStorageRoot(createIfMissing: false);
+            if (!string.IsNullOrWhiteSpace(storageRoot) && Directory.Exists(storageRoot))
+                roots.Add(storageRoot);
+
+            if (!string.IsNullOrWhiteSpace(currentSaveFileName))
+            {
+                var saveFolder = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(currentSaveFileName));
+                if (!string.IsNullOrWhiteSpace(saveFolder) && Directory.Exists(saveFolder))
+                    roots.Add(saveFolder);
+            }
+
+            if (!string.IsNullOrWhiteSpace(originalPath))
+            {
+                var originalFolder = System.IO.Path.GetDirectoryName(originalPath);
+                if (!string.IsNullOrWhiteSpace(originalFolder) && Directory.Exists(originalFolder))
+                    roots.Add(originalFolder);
+            }
+
+            return roots
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => System.IO.Path.GetFullPath(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool TryFindFileByName(string root, string fileName, out string foundPath)
+        {
+            foundPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(fileName) || !Directory.Exists(root))
+                return false;
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories))
+                {
+                    foundPath = file;
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore search errors in inaccessible folders
+            }
+
+            return false;
         }
 
         private string GetProjectStorageRoot(bool createIfMissing)
@@ -1854,17 +2453,18 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(currentSaveFileName))
                 return string.Empty;
 
-            var savePath = System.IO.Path.GetFullPath(currentSaveFileName);
-            var saveFolder = System.IO.Path.GetDirectoryName(savePath);
-            var saveName = System.IO.Path.GetFileNameWithoutExtension(savePath);
-            if (string.IsNullOrWhiteSpace(saveFolder) || string.IsNullOrWhiteSpace(saveName))
+            var primaryRoot = BuildStorageRootPathForCurrentSettings(currentSaveFileName, createIfMissing);
+            if (string.IsNullOrWhiteSpace(primaryRoot))
                 return string.Empty;
 
-            var storageRoot = System.IO.Path.Combine(saveFolder, $"{saveName}_files");
-            if (createIfMissing)
-                Directory.CreateDirectory(storageRoot);
+            if (!createIfMissing && !Directory.Exists(primaryRoot))
+            {
+                var legacyRoot = BuildLegacyStorageRootPath(currentSaveFileName);
+                if (!string.IsNullOrWhiteSpace(legacyRoot) && Directory.Exists(legacyRoot))
+                    return legacyRoot;
+            }
 
-            return storageRoot;
+            return primaryRoot;
         }
 
         private string GetDocumentStorageFolder(bool isPdfLibrary, bool createIfMissing)
@@ -1881,12 +2481,29 @@ namespace ConstructionControl
         }
 
         private bool TryCopyDocumentToStorage(string sourceFilePath, bool isPdfLibrary, out string storedAbsolutePath, out string storedRelativePath)
+            => TryCopyDocumentToStorage(sourceFilePath, isPdfLibrary, out storedAbsolutePath, out storedRelativePath, out _, out _);
+
+        private bool TryCopyDocumentToStorage(string sourceFilePath, bool isPdfLibrary, out string storedAbsolutePath, out string storedRelativePath, out string contentHash, out long fileSize)
         {
             storedAbsolutePath = sourceFilePath;
             storedRelativePath = string.Empty;
+            contentHash = string.Empty;
+            fileSize = 0;
 
             if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
                 return false;
+
+            if (!TryComputeFileHash(sourceFilePath, out contentHash, out fileSize))
+                return false;
+
+            if (!string.IsNullOrWhiteSpace(contentHash) && TryGetStoredPathByHash(contentHash, out var existingPath))
+            {
+                storedAbsolutePath = existingPath;
+                var baseFolder = GetProjectStorageRoot(createIfMissing: false);
+                if (!string.IsNullOrWhiteSpace(baseFolder))
+                    storedRelativePath = System.IO.Path.GetRelativePath(baseFolder, existingPath);
+                return true;
+            }
 
             var folder = GetDocumentStorageFolder(isPdfLibrary, createIfMissing: true);
             if (string.IsNullOrWhiteSpace(folder))
@@ -1895,23 +2512,151 @@ namespace ConstructionControl
             try
             {
                 var extension = System.IO.Path.GetExtension(sourceFilePath);
-                var baseName = System.IO.Path.GetFileNameWithoutExtension(sourceFilePath);
-                foreach (var invalid in System.IO.Path.GetInvalidFileNameChars())
-                    baseName = baseName.Replace(invalid, '_');
-                if (string.IsNullOrWhiteSpace(baseName))
-                    baseName = "document";
-
-                var uniqueName = $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmssfff}_{Guid.NewGuid().ToString("N")[..6]}{extension}";
+                var hashPrefix = string.IsNullOrWhiteSpace(contentHash)
+                    ? Guid.NewGuid().ToString("N")
+                    : contentHash[..Math.Min(contentHash.Length, 24)];
+                var uniqueName = $"{hashPrefix}{extension}";
                 var targetPath = System.IO.Path.Combine(folder, uniqueName);
-                File.Copy(sourceFilePath, targetPath, overwrite: false);
+
+                if (!File.Exists(targetPath))
+                {
+                    File.Copy(sourceFilePath, targetPath, overwrite: false);
+                }
+                else
+                {
+                    if (!TryComputeFileHash(targetPath, out var existingHash, out _)
+                        || !string.Equals(existingHash, contentHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        uniqueName = $"{hashPrefix}_{Guid.NewGuid().ToString("N")[..6]}{extension}";
+                        targetPath = System.IO.Path.Combine(folder, uniqueName);
+                        File.Copy(sourceFilePath, targetPath, overwrite: false);
+                    }
+                }
 
                 storedAbsolutePath = targetPath;
-                storedRelativePath = System.IO.Path.Combine(isPdfLibrary ? "pdf" : "estimate", uniqueName);
+                var baseFolder = GetProjectStorageRoot(createIfMissing: true);
+                storedRelativePath = System.IO.Path.GetRelativePath(baseFolder, targetPath);
+                if (!string.IsNullOrWhiteSpace(contentHash))
+                    documentHashPathCache[contentHash] = storedAbsolutePath;
                 return true;
             }
             catch
             {
                 return false;
+            }
+        }
+
+        private static bool TryComputeFileHash(string filePath, out string hashHex, out long fileSize)
+        {
+            hashHex = string.Empty;
+            fileSize = 0;
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return false;
+
+            try
+            {
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                fileSize = stream.Length;
+                using var sha = SHA256.Create();
+                var hash = sha.ComputeHash(stream);
+                hashHex = Convert.ToHexString(hash);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool TryGetStoredPathByHash(string hash, out string storedPath)
+        {
+            storedPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            if (documentHashPathCache.TryGetValue(hash, out var cached) && File.Exists(cached))
+            {
+                storedPath = cached;
+                return true;
+            }
+
+            var storageRoot = GetProjectStorageRoot(createIfMissing: false);
+            if (string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
+                return false;
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories))
+                {
+                    if (!TryComputeFileHash(file, out var fileHash, out _))
+                        continue;
+
+                    if (!string.Equals(fileHash, hash, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    documentHashPathCache[hash] = file;
+                    storedPath = file;
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore inaccessible files
+            }
+
+            return false;
+        }
+
+        private void RebuildDocumentHashPathCache()
+        {
+            documentHashPathCache.Clear();
+            void Collect(IEnumerable<DocumentTreeNode> nodes)
+            {
+                if (nodes == null)
+                    return;
+
+                foreach (var node in nodes)
+                {
+                    if (node == null)
+                        continue;
+
+                    if (node.IsFolder)
+                    {
+                        Collect(node.Children);
+                        continue;
+                    }
+
+                    var resolved = ResolveDocumentPath(node);
+                    if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved))
+                        continue;
+
+                    EnsureDocumentNodeFileMetadata(node, resolved);
+                    if (!string.IsNullOrWhiteSpace(node.ContentHash))
+                        documentHashPathCache[node.ContentHash] = resolved;
+                }
+            }
+
+            Collect(currentObject?.PdfDocuments);
+            Collect(currentObject?.EstimateDocuments);
+        }
+
+        private void EnsureDocumentNodeFileMetadata(DocumentTreeNode node, string filePath)
+        {
+            if (node == null || node.IsFolder || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return;
+
+            var info = new FileInfo(filePath);
+            var shouldRehash = string.IsNullOrWhiteSpace(node.ContentHash)
+                || !node.FileSizeBytes.HasValue
+                || node.FileSizeBytes.Value != info.Length;
+
+            if (shouldRehash && TryComputeFileHash(filePath, out var hash, out var fileSize))
+            {
+                node.ContentHash = hash;
+                node.FileSizeBytes = fileSize;
+                node.HashVerifiedAtUtc = DateTime.UtcNow;
+                if (!string.IsNullOrWhiteSpace(hash))
+                    documentHashPathCache[hash] = filePath;
             }
         }
 
@@ -2171,19 +2916,38 @@ namespace ConstructionControl
                 return;
             }
 
-            EstimateInfoPanel.Visibility = Visibility.Collapsed;
-            EstimatePreviewContainer.Visibility = Visibility.Visible;
+            if (useExternalSpreadsheetEditor
+                && estimateExcelWindowHandle != IntPtr.Zero
+                && IsEstimateSpreadsheetProcessAlive()
+                && string.Equals(estimateEmbeddedFilePath, resolvedPath, StringComparison.CurrentCultureIgnoreCase))
+            {
+                EstimateInfoPanel.Visibility = Visibility.Collapsed;
+                EstimatePreviewContainer.Visibility = Visibility.Visible;
+                if (EstimateExcelHost != null)
+                    EstimateExcelHost.Visibility = Visibility.Collapsed;
+
+                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                ScheduleEstimateEmbeddedLayout();
+                return;
+            }
+
+            StopEstimateEmbeddedPreview();
+            EstimateInfoPanel.Visibility = Visibility.Visible;
+            EstimatePreviewContainer.Visibility = Visibility.Collapsed;
 
             try
             {
-                ShowEmbeddedEstimateWorkbook(resolvedPath);
+                EstimateInfoPanel.Visibility = Visibility.Collapsed;
+                EstimatePreviewContainer.Visibility = Visibility.Visible;
+                ShowEmbeddedEstimateWorkbook(node, resolvedPath);
             }
             catch (Exception ex)
             {
                 StopEstimateEmbeddedPreview();
                 EstimateInfoPanel.Visibility = Visibility.Visible;
                 EstimatePreviewContainer.Visibility = Visibility.Collapsed;
-                ShowEstimatePreviewPlaceholder($"Не удалось открыть предпросмотр сметы: {ex.Message}");
+                ShowEstimatePreviewPlaceholder($"Не удалось открыть смету во встроенном режиме: {ex.Message}");
             }
         }
 
@@ -2282,7 +3046,22 @@ namespace ConstructionControl
             }
             catch (Exception ex)
             {
-                ShowDocumentPreviewPlaceholder(browser, placeholder, statusText, $"Не удалось открыть предпросмотр: {ex.Message}");
+                if (TryOpenDocumentInExternalApp(resolvedPath, out var fallbackError))
+                {
+                    ShowDocumentPreviewPlaceholder(
+                        browser,
+                        placeholder,
+                        statusText,
+                        "Встроенный предпросмотр недоступен. Файл открыт во внешнем приложении.");
+                }
+                else
+                {
+                    ShowDocumentPreviewPlaceholder(
+                        browser,
+                        placeholder,
+                        statusText,
+                        $"Не удалось открыть предпросмотр: {ex.Message}{Environment.NewLine}{fallbackError}");
+                }
             }
         }
 
@@ -2316,10 +3095,97 @@ namespace ConstructionControl
             browser.Navigate(new Uri(filePath, UriKind.Absolute));
         }
 
-        private void ShowEmbeddedEstimateWorkbook(string filePath)
+        private void DocumentPreviewBrowser_LoadCompleted(object sender, NavigationEventArgs e)
+        {
+            if (ReferenceEquals(sender, PdfPreviewBrowser))
+            {
+                RestoreBrowserPreviewState(selectedPdfNode, PdfPreviewBrowser);
+                return;
+            }
+
+            if (ReferenceEquals(sender, EstimatePreviewBrowser))
+                RestoreBrowserPreviewState(selectedEstimateNode, EstimatePreviewBrowser);
+        }
+
+        private static void SaveBrowserPreviewState(DocumentTreeNode node, WebBrowser browser)
+        {
+            if (node == null || browser == null || browser.Visibility != Visibility.Visible)
+                return;
+
+            try
+            {
+                dynamic doc = browser.Document;
+                if (doc == null)
+                    return;
+
+                dynamic root = doc.documentElement;
+                if (root == null)
+                    return;
+
+                node.PreviewScrollX = SafeToInt(root.scrollLeft);
+                node.PreviewScrollY = SafeToInt(root.scrollTop);
+            }
+            catch
+            {
+                // Some embedded engines do not expose DOM scroll state.
+            }
+        }
+
+        private static void RestoreBrowserPreviewState(DocumentTreeNode node, WebBrowser browser)
+        {
+            if (node == null || browser == null || browser.Visibility != Visibility.Visible)
+                return;
+
+            try
+            {
+                dynamic doc = browser.Document;
+                if (doc == null)
+                    return;
+
+                dynamic window = doc.parentWindow;
+                if (window != null)
+                    window.scrollTo(node.PreviewScrollX, node.PreviewScrollY);
+            }
+            catch
+            {
+                // Ignore unsupported script host operations.
+            }
+        }
+
+        private static int SafeToInt(object value, int fallback = 0)
+        {
+            if (value == null)
+                return fallback;
+
+            try
+            {
+                return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private static double SafeToDouble(object value, double fallback = 0)
+        {
+            if (value == null)
+                return fallback;
+
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private void ShowEmbeddedEstimateWorkbook(DocumentTreeNode node, string filePath)
         {
             InitializeEstimatePreviewHost();
-            if (EstimateExcelHost == null || estimateExcelPanel == null)
+            if (EstimateExcelHost == null)
                 throw new InvalidOperationException("Область предпросмотра Excel не готова.");
 
             if (useExternalSpreadsheetEditor)
@@ -2334,6 +3200,7 @@ namespace ConstructionControl
                 EstimateExcelHost.Visibility = Visibility.Visible;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                RestoreEstimatePreviewState(node);
                 ScheduleEstimateEmbeddedLayout();
                 return;
             }
@@ -2363,12 +3230,19 @@ namespace ConstructionControl
                     throw new InvalidOperationException("Excel не предоставил окно для встраивания.");
 
                 ConfigureEstimateExcelLiteUi(excelApp);
+                RestoreEstimatePreviewState(node);
 
-                ConfigureEmbeddedWindow(estimateExcelWindowHandle, estimateExcelPanel.Handle);
+                ConfigureEmbeddedWindow(estimateExcelWindowHandle, EnsureEstimatePreviewHostHandle());
+                ResetEstimateEmbeddedLayoutCache();
                 EstimateExcelHost.Visibility = Visibility.Visible;
                 EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
                 EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
                 ScheduleEstimateEmbeddedLayout();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (EstimateExcelHost?.Visibility == Visibility.Visible && estimateExcelWindowHandle != IntPtr.Zero)
+                        ActivateEmbeddedEstimateWindow();
+                }), DispatcherPriority.Background);
             }
             catch
             {
@@ -2382,18 +3256,196 @@ namespace ConstructionControl
             }
         }
 
+        private void SaveEstimatePreviewState()
+        {
+            if (selectedEstimateNode == null || estimateExcelApplication == null || estimateExcelWorkbook == null)
+                return;
+
+            try
+            {
+                dynamic excelApp = estimateExcelApplication;
+                dynamic window = excelApp.ActiveWindow;
+                if (window != null)
+                {
+                    selectedEstimateNode.PreviewZoom = SafeToDouble(window.Zoom, selectedEstimateNode.PreviewZoom);
+                    selectedEstimateNode.PreviewScrollY = Math.Max(0, SafeToInt(window.ScrollRow, selectedEstimateNode.PreviewScrollY));
+                    selectedEstimateNode.PreviewScrollX = Math.Max(0, SafeToInt(window.ScrollColumn, selectedEstimateNode.PreviewScrollX));
+                }
+
+                dynamic activeSheet = excelApp.ActiveSheet;
+                if (activeSheet != null)
+                    selectedEstimateNode.PreviewSheetName = activeSheet.Name?.ToString() ?? string.Empty;
+
+                selectedEstimateNode.HashVerifiedAtUtc ??= DateTime.UtcNow;
+            }
+            catch
+            {
+                // ignore state-read errors from COM
+            }
+        }
+
+        private void RestoreEstimatePreviewState(DocumentTreeNode node)
+        {
+            if (node == null || estimateExcelApplication == null || estimateExcelWorkbook == null)
+                return;
+
+            try
+            {
+                dynamic excelApp = estimateExcelApplication;
+                dynamic workbook = estimateExcelWorkbook;
+
+                if (!string.IsNullOrWhiteSpace(node.PreviewSheetName))
+                {
+                    try
+                    {
+                        dynamic sheet = workbook.Worksheets[node.PreviewSheetName];
+                        sheet?.Activate();
+                    }
+                    catch
+                    {
+                        // keep current sheet if stored one is missing
+                    }
+                }
+
+                dynamic window = excelApp.ActiveWindow;
+                if (window != null)
+                {
+                    var zoom = Math.Clamp((int)Math.Round(node.PreviewZoom <= 0 ? 100 : node.PreviewZoom), 10, 400);
+                    window.Zoom = zoom;
+                    if (node.PreviewScrollY > 0)
+                        window.ScrollRow = node.PreviewScrollY;
+                    if (node.PreviewScrollX > 0)
+                        window.ScrollColumn = node.PreviewScrollX;
+                }
+            }
+            catch
+            {
+                // ignore state-apply errors from COM
+            }
+        }
+
         private void StopEstimateEmbeddedPreview()
         {
+            SaveEstimatePreviewState();
             if (EstimateExcelHost != null)
                 EstimateExcelHost.Visibility = Visibility.Collapsed;
 
             CloseEstimateWorkbook(saveChanges: true);
+            ResetEstimateEmbeddedLayoutCache();
         }
 
         private void HideEstimateEmbeddedPreview()
         {
-            if (EstimateExcelHost != null)
-                EstimateExcelHost.Visibility = Visibility.Collapsed;
+            SaveEstimatePreviewState();
+
+            if (useExternalSpreadsheetEditor && estimateExcelWindowHandle != IntPtr.Zero)
+            {
+                if (EstimateExcelHost != null)
+                    EstimateExcelHost.Visibility = Visibility.Collapsed;
+
+                try
+                {
+                    ShowWindow(estimateExcelWindowHandle, SW_HIDE);
+                }
+                catch
+                {
+                    // Ignore visibility errors for the detached estimate window.
+                }
+            }
+        }
+
+        private void ReleaseStuckModifierKeys()
+        {
+            static bool IsDown(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
+            static void Release(byte key) => keybd_event(key, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+
+            if (IsDown(VK_SHIFT) || IsDown(VK_LSHIFT) || IsDown(VK_RSHIFT))
+            {
+                Release(VK_LSHIFT);
+                Release(VK_RSHIFT);
+                Release(VK_SHIFT);
+            }
+
+            if (IsDown(VK_CONTROL) || IsDown(VK_LCONTROL) || IsDown(VK_RCONTROL))
+            {
+                Release(VK_LCONTROL);
+                Release(VK_RCONTROL);
+                Release(VK_CONTROL);
+            }
+
+            if (IsDown(VK_MENU) || IsDown(VK_LMENU) || IsDown(VK_RMENU))
+            {
+                Release(VK_LMENU);
+                Release(VK_RMENU);
+                Release(VK_MENU);
+            }
+        }
+
+        private static void PressAndReleaseKey(byte key)
+        {
+            keybd_event(key, 0, 0, UIntPtr.Zero);
+            keybd_event(key, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        }
+
+        private void ResetEmbeddedEstimateInputState()
+        {
+            try { ReleaseCapture(); } catch { }
+
+            if (estimateExcelWindowHandle != IntPtr.Zero)
+            {
+                try { SendMessage(estimateExcelWindowHandle, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); } catch { }
+            }
+
+            try
+            {
+                if (estimateExcelApplication != null)
+                {
+                    dynamic excelApp = estimateExcelApplication;
+                    try { excelApp.CutCopyMode = false; } catch { }
+                    try { excelApp.SendKeys("{ESC}", false); } catch { }
+                }
+            }
+            catch
+            {
+                // Ignore compatibility issues for non-Excel editors.
+            }
+
+            try { PressAndReleaseKey(VK_ESCAPE); } catch { }
+        }
+
+        private void ActivateEmbeddedEstimateWindow()
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero)
+                return;
+
+            try { Mouse.Capture(null); } catch { }
+
+            try
+            {
+                SetFocus(estimateExcelWindowHandle);
+            }
+            catch
+            {
+                // Ignore focus errors.
+            }
+        }
+
+        private void EstimateExcelHost_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            ActivateEmbeddedEstimateWindow();
+        }
+
+        private void EstimateExcelHost_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            ActivateEmbeddedEstimateWindow();
+        }
+
+        private void ResetEstimateEmbeddedLayoutCache()
+        {
+            estimateEmbeddedWindowX = int.MinValue;
+            estimateEmbeddedWindowY = int.MinValue;
+            estimateEmbeddedWindowWidth = -1;
+            estimateEmbeddedWindowHeight = -1;
         }
 
         private void ScheduleEstimateEmbeddedLayout()
@@ -2401,7 +3453,7 @@ namespace ConstructionControl
             if (estimateExcelWindowHandle == IntPtr.Zero)
                 return;
 
-            LayoutEmbeddedEstimateWindow();
+            LayoutEmbeddedEstimateWindow(force: true);
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (estimateExcelWindowHandle != IntPtr.Zero)
@@ -2414,24 +3466,156 @@ namespace ConstructionControl
             }), DispatcherPriority.ApplicationIdle);
         }
 
-        private void LayoutEmbeddedEstimateWindow()
+        private void LayoutEmbeddedEstimateWindow(bool force = false)
         {
-            if (estimateExcelWindowHandle == IntPtr.Zero || estimateExcelPanel == null || estimateExcelPanel.IsDisposed)
+            if (estimateExcelWindowHandle == IntPtr.Zero)
                 return;
 
-            var width = Math.Max(0, estimateExcelPanel.ClientSize.Width);
-            var hostHeight = Math.Max(0, estimateExcelPanel.ClientSize.Height);
-            var topTrim = !useExternalSpreadsheetEditor && hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
-            var height = Math.Max(0, hostHeight + topTrim);
+            int width;
+            int height;
+            int x;
+            int y;
+
+            if (useExternalSpreadsheetEditor)
+            {
+                if (EstimatePreviewContainer == null)
+                    return;
+
+                if (!IsVisible
+                    || WindowState == WindowState.Minimized
+                    || !ReferenceEquals(MainTabs?.SelectedItem, EstimateTab)
+                    || EstimatePreviewContainer.Visibility != Visibility.Visible)
+                {
+                    try
+                    {
+                        ShowWindow(estimateExcelWindowHandle, SW_HIDE);
+                    }
+                    catch
+                    {
+                        // Ignore visibility errors for the detached estimate window.
+                    }
+
+                    return;
+                }
+
+                EstimatePreviewContainer.UpdateLayout();
+                var screenBounds = GetScreenBounds(EstimatePreviewContainer);
+                width = screenBounds.Width;
+                height = screenBounds.Height;
+                if (width <= 0 || height <= 0)
+                {
+                    try
+                    {
+                        ShowWindow(estimateExcelWindowHandle, SW_HIDE);
+                    }
+                    catch
+                    {
+                        // Ignore visibility errors for the detached estimate window.
+                    }
+
+                    return;
+                }
+
+                x = screenBounds.X;
+                y = screenBounds.Y;
+            }
+            else
+            {
+                if (EstimateExcelHost == null || EstimateExcelHost.HostHandle == IntPtr.Zero)
+                    return;
+
+                width = Math.Max(0, (int)Math.Round(EstimateExcelHost.ActualWidth));
+                var hostHeight = Math.Max(0, (int)Math.Round(EstimateExcelHost.ActualHeight));
+                var topTrim = hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
+                height = Math.Max(0, hostHeight + topTrim);
+                x = 0;
+                y = -topTrim;
+            }
+
+            if (!force
+                && x == estimateEmbeddedWindowX
+                && y == estimateEmbeddedWindowY
+                && width == estimateEmbeddedWindowWidth
+                && height == estimateEmbeddedWindowHeight)
+            {
+                return;
+            }
+
+            estimateEmbeddedWindowX = x;
+            estimateEmbeddedWindowY = y;
+            estimateEmbeddedWindowWidth = width;
+            estimateEmbeddedWindowHeight = height;
+
+            var flags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
+            if (useExternalSpreadsheetEditor)
+                flags |= SWP_NOACTIVATE;
+            if (force)
+                flags |= SWP_FRAMECHANGED;
             SetWindowPos(
                 estimateExcelWindowHandle,
                 IntPtr.Zero,
-                0,
-                -topTrim,
+                x,
+                y,
                 width,
                 height,
-                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-            ShowWindow(estimateExcelWindowHandle, SW_SHOW);
+                flags);
+
+            if (!useExternalSpreadsheetEditor)
+                ShowWindow(estimateExcelWindowHandle, SW_SHOW);
+        }
+
+        private void ConfigureFloatingEstimateWindow(IntPtr windowHandle)
+        {
+            if (windowHandle == IntPtr.Zero)
+                return;
+
+            try
+            {
+                ShowWindow(windowHandle, SW_HIDE);
+            }
+            catch
+            {
+                // Ignore visibility errors while preparing the pseudo-embedded window.
+            }
+
+            var ownerHandle = new WindowInteropHelper(this).Handle;
+            var style = GetWindowLongPtr(windowHandle, GWL_STYLE).ToInt64();
+            style &= ~(WS_CAPTION | WS_DLGFRAME | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_CHILD);
+            style |= WS_POPUP;
+            SetWindowLongPtr(windowHandle, GWL_STYLE, new IntPtr(style));
+
+            var exStyle = GetWindowLongPtr(windowHandle, GWL_EXSTYLE).ToInt64();
+            exStyle &= ~WS_EX_APPWINDOW;
+            exStyle |= WS_EX_TOOLWINDOW;
+            SetWindowLongPtr(windowHandle, GWL_EXSTYLE, new IntPtr(exStyle));
+
+            if (ownerHandle != IntPtr.Zero)
+                SetWindowLongPtr(windowHandle, GWLP_HWNDPARENT, ownerHandle);
+
+            SetWindowPos(
+                windowHandle,
+                IntPtr.Zero,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+
+        private static (int X, int Y, int Width, int Height) GetScreenBounds(FrameworkElement element)
+        {
+            if (element == null || !element.IsLoaded)
+                return (0, 0, 0, 0);
+
+            var topLeft = element.PointToScreen(new Point(0, 0));
+            var bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+
+            var left = (int)Math.Round(Math.Min(topLeft.X, bottomRight.X));
+            var top = (int)Math.Round(Math.Min(topLeft.Y, bottomRight.Y));
+            var right = (int)Math.Round(Math.Max(topLeft.X, bottomRight.X));
+            var bottom = (int)Math.Round(Math.Max(topLeft.Y, bottomRight.Y));
+
+            return (left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
         }
 
         private static void ConfigureEmbeddedWindow(IntPtr windowHandle, IntPtr parentHandle)
@@ -2561,12 +3745,15 @@ namespace ConstructionControl
 
         private void PdfTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            SaveBrowserPreviewState(selectedPdfNode, PdfPreviewBrowser);
             selectedPdfNode = e.NewValue as DocumentTreeNode;
             UpdatePdfSelectionInfo();
         }
 
         private void EstimateTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            SaveEstimatePreviewState();
+            SaveBrowserPreviewState(selectedEstimateNode, EstimatePreviewBrowser);
             selectedEstimateNode = e.NewValue as DocumentTreeNode;
             UpdateEstimateSelectionInfo();
         }
@@ -2605,7 +3792,7 @@ namespace ConstructionControl
             var copyFailedFiles = new List<string>();
             foreach (var file in dialog.FileNames.Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
-                if (!TryCopyDocumentToStorage(file, refreshPdf, out var storedPath, out var storedRelativePath)
+                if (!TryCopyDocumentToStorage(file, refreshPdf, out var storedPath, out var storedRelativePath, out var contentHash, out var fileSize)
                     || string.IsNullOrWhiteSpace(storedRelativePath))
                 {
                     copyFailedFiles.Add(file);
@@ -2617,6 +3804,9 @@ namespace ConstructionControl
                     Name = System.IO.Path.GetFileNameWithoutExtension(file),
                     FilePath = storedPath,
                     StoredRelativePath = storedRelativePath,
+                    ContentHash = contentHash,
+                    FileSizeBytes = fileSize,
+                    HashVerifiedAtUtc = DateTime.UtcNow,
                     IsFolder = false
                 });
             }
@@ -2711,6 +3901,17 @@ namespace ConstructionControl
                 return;
             }
 
+            var isMassDelete = selectedNode.IsFolder || (selectedNode.Children?.Count ?? 0) > 0;
+            if (isMassDelete)
+            {
+                if (!EnsureCanRunCriticalOperation("массовое удаление узла документов"))
+                    return;
+            }
+            else if (!EnsureCanEditOperation("удаление документа"))
+            {
+                return;
+            }
+
             if (MessageBox.Show($"Удалить \"{selectedNode.Name}\"?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                 return;
 
@@ -2769,6 +3970,771 @@ namespace ConstructionControl
         private void OpenEstimateNode_Click(object sender, RoutedEventArgs e)
             => OpenDocumentNode(selectedEstimateNode);
 
+        private void OpenPdfLibraryReport_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentLibraryReport("Отчет по PDF-документам", currentObject?.PdfDocuments);
+
+        private void OpenEstimateLibraryReport_Click(object sender, RoutedEventArgs e)
+            => OpenDocumentLibraryReport("Отчет по сметам", currentObject?.EstimateDocuments);
+
+        private void OpenAllDocumentsReport_Click(object sender, RoutedEventArgs e)
+        {
+            var rows = new List<DocumentLibraryReportRow>();
+            rows.AddRange(BuildDocumentLibraryRows(currentObject?.PdfDocuments, "PDF"));
+            rows.AddRange(BuildDocumentLibraryRows(currentObject?.EstimateDocuments, "Сметы"));
+            ShowDocumentLibraryReport("Сводный отчет по документам", rows);
+        }
+
+        private void SearchPdfNodes_Click(object sender, RoutedEventArgs e)
+            => ShowDocumentTreeSearchDialog("Поиск по PDF", currentObject?.PdfDocuments, "PDF", node =>
+            {
+                selectedPdfNode = node;
+                SelectMainTab(PdfTab);
+                UpdatePdfSelectionInfo();
+            });
+
+        private void SearchEstimateNodes_Click(object sender, RoutedEventArgs e)
+            => ShowDocumentTreeSearchDialog("Поиск по сметам", currentObject?.EstimateDocuments, "Сметы", node =>
+            {
+                selectedEstimateNode = node;
+                SelectMainTab(EstimateTab);
+                UpdateEstimateSelectionInfo();
+            });
+
+        private void BatchRenamePdfNodes_Click(object sender, RoutedEventArgs e)
+            => BatchRenameDocumentNodes(currentObject?.PdfDocuments, selectedPdfNode, true);
+
+        private void BatchRenameEstimateNodes_Click(object sender, RoutedEventArgs e)
+            => BatchRenameDocumentNodes(currentObject?.EstimateDocuments, selectedEstimateNode, false);
+
+        private void ReorganizePdfNodes_Click(object sender, RoutedEventArgs e)
+            => ReorganizeDocumentNodesByExtension(currentObject?.PdfDocuments, selectedPdfNode, true);
+
+        private void ReorganizeEstimateNodes_Click(object sender, RoutedEventArgs e)
+            => ReorganizeDocumentNodesByExtension(currentObject?.EstimateDocuments, selectedEstimateNode, false);
+
+        private void CheckPdfDocumentsIntegrity_Click(object sender, RoutedEventArgs e)
+            => ShowDocumentIntegrityReport("Проверка целостности PDF", currentObject?.PdfDocuments);
+
+        private void CheckEstimateDocumentsIntegrity_Click(object sender, RoutedEventArgs e)
+            => ShowDocumentIntegrityReport("Проверка целостности смет", currentObject?.EstimateDocuments);
+
+        private void RunDocumentStorageMaintenance_Click(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureCanRunCriticalOperation("обслуживание хранилища документов"))
+                return;
+
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                "Выполнить обслуживание хранилища документов?\n\nБудет выполнено:\n- восстановление путей по хэшу/имени;\n- пересчет хэшей и метаданных;\n- дедупликация ссылок на одинаковые файлы;\n- удаление неиспользуемых файлов из внутреннего хранилища.",
+                "Обслуживание хранилища",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes)
+                return;
+
+            var result = RunDocumentStorageMaintenanceCore();
+            SaveState(SaveTrigger.System);
+            RefreshDocumentLibraries();
+
+            var summary = $"Проверено файлов: {result.NodesVisited}\n" +
+                          $"Восстановлено путей: {result.PathsRecovered}\n" +
+                          $"Обновлено хэшей/размеров: {result.MetadataUpdated}\n" +
+                          $"Ссылок перекинуто на каноничные файлы: {result.LinksRepointed}\n" +
+                          $"Уникальных файлов по хэшу: {result.HashIndexSize}\n" +
+                          $"Удалено дубликатов в хранилище: {result.DuplicateFilesRemoved}\n" +
+                          $"Удалено неиспользуемых файлов: {result.OrphanFilesRemoved}";
+
+            if (result.Errors.Count > 0)
+            {
+                summary += $"\n\nОшибок при обслуживании: {result.Errors.Count}\n" +
+                           string.Join("\n", result.Errors.Take(8));
+                if (result.Errors.Count > 8)
+                    summary += "\n...";
+            }
+
+            MessageBox.Show(summary, "Обслуживание хранилища", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private DocumentStorageMaintenanceResult RunDocumentStorageMaintenanceCore()
+        {
+            var result = new DocumentStorageMaintenanceResult();
+            EnsureDocumentLibraries();
+
+            var fileNodes = EnumerateDocumentFileNodes(currentObject?.PdfDocuments)
+                .Concat(EnumerateDocumentFileNodes(currentObject?.EstimateDocuments))
+                .ToList();
+
+            result.NodesVisited = fileNodes.Count;
+            var referencedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var canonicalByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var duplicatePhysicalCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var node in fileNodes)
+            {
+                var originalPath = node.FilePath ?? string.Empty;
+                var resolved = ResolveDocumentPath(node);
+                if (!string.IsNullOrWhiteSpace(resolved)
+                    && !string.Equals(originalPath, resolved, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.PathsRecovered++;
+                }
+
+                if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved))
+                    continue;
+
+                var fullResolved = System.IO.Path.GetFullPath(resolved);
+
+                var oldHash = node.ContentHash ?? string.Empty;
+                var oldSize = node.FileSizeBytes;
+                EnsureDocumentNodeFileMetadata(node, fullResolved);
+                if (!string.Equals(oldHash, node.ContentHash ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                    || oldSize != node.FileSizeBytes)
+                {
+                    result.MetadataUpdated++;
+                }
+
+                var hash = node.ContentHash ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(hash))
+                    continue;
+
+                if (!canonicalByHash.TryGetValue(hash, out var canonicalPath))
+                {
+                    canonicalByHash[hash] = fullResolved;
+                    continue;
+                }
+
+                var fullCanonical = System.IO.Path.GetFullPath(canonicalPath);
+                if (string.Equals(fullCanonical, fullResolved, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                node.FilePath = fullCanonical;
+                var storageRoot = GetProjectStorageRoot(createIfMissing: false);
+                if (!string.IsNullOrWhiteSpace(storageRoot))
+                {
+                    try
+                    {
+                        node.StoredRelativePath = System.IO.Path.GetRelativePath(storageRoot, fullCanonical);
+                    }
+                    catch
+                    {
+                        // keep existing relative path if conversion failed
+                    }
+                }
+
+                duplicatePhysicalCandidates.Add(fullResolved);
+                result.LinksRepointed++;
+            }
+
+            result.HashIndexSize = canonicalByHash.Count;
+            referencedPaths.Clear();
+            foreach (var node in fileNodes)
+            {
+                var path = ResolveDocumentPath(node);
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    continue;
+
+                referencedPaths.Add(System.IO.Path.GetFullPath(path));
+            }
+
+            var storageRootPath = GetProjectStorageRoot(createIfMissing: false);
+            var storageRootFullPath = string.IsNullOrWhiteSpace(storageRootPath)
+                ? string.Empty
+                : System.IO.Path.GetFullPath(storageRootPath);
+
+            foreach (var duplicateFile in duplicatePhysicalCandidates)
+            {
+                if (string.IsNullOrWhiteSpace(storageRootFullPath)
+                    || !IsPathUnderRoot(duplicateFile, storageRootFullPath)
+                    || referencedPaths.Contains(duplicateFile)
+                    || !File.Exists(duplicateFile))
+                    continue;
+
+                try
+                {
+                    File.Delete(duplicateFile);
+                    result.DuplicateFilesRemoved++;
+                }
+                catch (Exception ex)
+                {
+                    result.Errors.Add($"Не удалось удалить дубликат: {duplicateFile} ({ex.Message})");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(storageRootFullPath) && Directory.Exists(storageRootFullPath))
+            {
+                foreach (var file in Directory.EnumerateFiles(storageRootFullPath, "*", SearchOption.AllDirectories))
+                {
+                    var full = System.IO.Path.GetFullPath(file);
+                    if (referencedPaths.Contains(full))
+                        continue;
+
+                    try
+                    {
+                        File.Delete(full);
+                        result.OrphanFilesRemoved++;
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"Не удалось удалить неиспользуемый файл: {full} ({ex.Message})");
+                    }
+                }
+
+                foreach (var directory in Directory.EnumerateDirectories(storageRootFullPath, "*", SearchOption.AllDirectories)
+                             .OrderByDescending(path => path.Length))
+                {
+                    try
+                    {
+                        if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                            Directory.Delete(directory);
+                    }
+                    catch
+                    {
+                        // best effort cleanup
+                    }
+                }
+            }
+
+            RebuildDocumentHashPathCache();
+            return result;
+        }
+
+        private static bool IsPathUnderRoot(string path, string root)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root))
+                return false;
+
+            try
+            {
+                var fullPath = System.IO.Path.GetFullPath(path);
+                var fullRoot = System.IO.Path.GetFullPath(root);
+                if (!fullRoot.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+                    fullRoot += System.IO.Path.DirectorySeparatorChar;
+
+                return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<DocumentTreeNode> EnumerateDocumentFileNodes(IEnumerable<DocumentTreeNode> roots)
+        {
+            if (roots == null)
+                yield break;
+
+            var stack = new Stack<DocumentTreeNode>(roots.Where(x => x != null).Reverse());
+            while (stack.Count > 0)
+            {
+                var node = stack.Pop();
+                if (node == null)
+                    continue;
+
+                if (!node.IsFolder)
+                    yield return node;
+
+                if (node.Children == null || node.Children.Count == 0)
+                    continue;
+
+                for (var i = node.Children.Count - 1; i >= 0; i--)
+                {
+                    var child = node.Children[i];
+                    if (child != null)
+                        stack.Push(child);
+                }
+            }
+        }
+
+        private void ShowDocumentTreeSearchDialog(string title, List<DocumentTreeNode> root, string libraryName, Action<DocumentTreeNode> navigate)
+        {
+            if (root == null || root.Count == 0)
+            {
+                MessageBox.Show("Дерево документов пусто.");
+                return;
+            }
+
+            var sourceRows = BuildDocumentTreeSearchRows(root, libraryName);
+            if (sourceRows.Count == 0)
+            {
+                MessageBox.Show("В дереве нет узлов для поиска.");
+                return;
+            }
+
+            var resultRows = new ObservableCollection<DocumentTreeSearchRow>(sourceRows);
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 1000,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var rootGrid = new Grid { Margin = new Thickness(14) };
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = rootGrid;
+
+            var searchBox = new TextBox
+            {
+                Tag = "Введите часть названия узла или файла",
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            rootGrid.Children.Add(searchBox);
+
+            var grid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = resultRows,
+                ColumnWidth = DataGridLength.Auto
+            };
+            grid.Columns.Add(new DataGridTextColumn { Header = "Раздел", Binding = new Binding(nameof(DocumentTreeSearchRow.Library)), Width = 90 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Узел", Binding = new Binding(nameof(DocumentTreeSearchRow.Name)), Width = 260 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(DocumentTreeSearchRow.NodeType)), Width = 90 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Путь в дереве", Binding = new Binding(nameof(DocumentTreeSearchRow.Path)), Width = 300 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Путь к файлу", Binding = new Binding(nameof(DocumentTreeSearchRow.FilePath)), Width = 280 });
+            DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+            Grid.SetRow(grid, 1);
+            rootGrid.Children.Add(grid);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            rootGrid.Children.Add(footer);
+
+            var openButton = new Button { Content = "Открыть", MinWidth = 120, IsDefault = true };
+            var cancelButton = new Button { Content = "Закрыть", MinWidth = 120, IsCancel = true, Margin = new Thickness(8, 0, 0, 0), Style = FindResource("SecondaryButton") as Style };
+            footer.Children.Add(openButton);
+            footer.Children.Add(cancelButton);
+
+            void ApplyFilter()
+            {
+                var query = searchBox.Text?.Trim() ?? string.Empty;
+                var filtered = string.IsNullOrWhiteSpace(query)
+                    ? sourceRows
+                    : sourceRows.Where(x =>
+                        (x.Name?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false)
+                        || (x.Path?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false)
+                        || (x.FilePath?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false))
+                        .ToList();
+
+                resultRows.Clear();
+                foreach (var row in filtered)
+                    resultRows.Add(row);
+            }
+
+            searchBox.TextChanged += (_, _) => ApplyFilter();
+
+            void NavigateSelected()
+            {
+                if (grid.SelectedItem is not DocumentTreeSearchRow selected || selected.Node == null)
+                    return;
+
+                navigate?.Invoke(selected.Node);
+                dialog.DialogResult = true;
+            }
+
+            openButton.Click += (_, _) => NavigateSelected();
+            grid.MouseDoubleClick += (_, _) => NavigateSelected();
+            ApplyFilter();
+            dialog.ShowDialog();
+        }
+
+        private List<DocumentTreeSearchRow> BuildDocumentTreeSearchRows(IEnumerable<DocumentTreeNode> nodes, string libraryName)
+        {
+            var rows = new List<DocumentTreeSearchRow>();
+            if (nodes == null)
+                return rows;
+
+            void Collect(IEnumerable<DocumentTreeNode> currentNodes, string pathPrefix)
+            {
+                if (currentNodes == null)
+                    return;
+
+                foreach (var node in currentNodes)
+                {
+                    if (node == null)
+                        continue;
+
+                    var nodeName = string.IsNullOrWhiteSpace(node.Name) ? "Без названия" : node.Name.Trim();
+                    var nodePath = string.IsNullOrWhiteSpace(pathPrefix) ? nodeName : $"{pathPrefix} / {nodeName}";
+                    var resolvedFilePath = node.IsFolder ? string.Empty : ResolveDocumentPath(node);
+                    rows.Add(new DocumentTreeSearchRow
+                    {
+                        Library = libraryName,
+                        Name = nodeName,
+                        NodeType = node.IsFolder ? "Папка" : "Файл",
+                        Path = nodePath,
+                        FilePath = resolvedFilePath,
+                        Node = node
+                    });
+
+                    if (node.Children?.Count > 0)
+                        Collect(node.Children, nodePath);
+                }
+            }
+
+            Collect(nodes, string.Empty);
+            return rows;
+        }
+
+        private void BatchRenameDocumentNodes(List<DocumentTreeNode> root, DocumentTreeNode selectedNode, bool isPdfLibrary)
+        {
+            if (root == null || root.Count == 0)
+            {
+                MessageBox.Show("Дерево документов пусто.");
+                return;
+            }
+
+            List<DocumentTreeNode> targetCollection;
+            if (selectedNode?.IsFolder == true)
+            {
+                targetCollection = selectedNode.Children ?? new List<DocumentTreeNode>();
+            }
+            else if (selectedNode != null)
+            {
+                targetCollection = GetOwningDocumentCollection(root, selectedNode) ?? root;
+            }
+            else
+            {
+                targetCollection = root;
+            }
+
+            var fileNodes = targetCollection.Where(x => x != null && !x.IsFolder).ToList();
+            if (fileNodes.Count == 0)
+            {
+                MessageBox.Show("Для пакетного переименования нет файлов в выбранном разделе.");
+                return;
+            }
+
+            var prefix = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите префикс имени для пакетного переименования:",
+                "Пакетное переименование",
+                isPdfLibrary ? "PDF_" : "Смета_")?.Trim();
+            if (string.IsNullOrWhiteSpace(prefix))
+                return;
+
+            var startText = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите стартовый номер:",
+                "Пакетное переименование",
+                "1")?.Trim();
+            if (!int.TryParse(startText, out var start))
+                start = 1;
+            start = Math.Max(1, start);
+
+            var index = start;
+            foreach (var node in fileNodes.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                node.Name = $"{prefix}{index:D3}";
+                index++;
+            }
+
+            SaveState();
+            RefreshDocumentLibraries();
+            MessageBox.Show($"Переименовано файлов: {fileNodes.Count}.");
+        }
+
+        private void ReorganizeDocumentNodesByExtension(List<DocumentTreeNode> root, DocumentTreeNode selectedNode, bool isPdfLibrary)
+        {
+            if (root == null || root.Count == 0)
+            {
+                MessageBox.Show("Дерево документов пусто.");
+                return;
+            }
+
+            List<DocumentTreeNode> targetCollection = selectedNode?.IsFolder == true
+                ? (selectedNode.Children ?? new List<DocumentTreeNode>())
+                : root;
+
+            var directFiles = targetCollection.Where(x => x != null && !x.IsFolder).ToList();
+            if (directFiles.Count == 0)
+            {
+                MessageBox.Show("Нет файлов верхнего уровня для реорганизации.");
+                return;
+            }
+
+            var moved = 0;
+            foreach (var fileNode in directFiles)
+            {
+                var resolved = ResolveDocumentPath(fileNode);
+                var ext = System.IO.Path.GetExtension(resolved)?.Trim('.').ToUpperInvariant();
+                if (string.IsNullOrWhiteSpace(ext))
+                    ext = "ДРУГОЕ";
+
+                var folder = targetCollection.FirstOrDefault(x => x.IsFolder && string.Equals(x.Name, ext, StringComparison.CurrentCultureIgnoreCase));
+                if (folder == null)
+                {
+                    folder = new DocumentTreeNode
+                    {
+                        Name = ext,
+                        IsFolder = true,
+                        Children = new List<DocumentTreeNode>()
+                    };
+                    targetCollection.Add(folder);
+                }
+
+                targetCollection.Remove(fileNode);
+                folder.Children ??= new List<DocumentTreeNode>();
+                folder.Children.Add(fileNode);
+                moved++;
+            }
+
+            SaveState();
+            RefreshDocumentLibraries();
+            MessageBox.Show($"Реорганизация завершена. Перемещено файлов: {moved}.");
+        }
+
+        private void ShowDocumentIntegrityReport(string title, IEnumerable<DocumentTreeNode> root)
+        {
+            var issues = BuildDocumentIntegrityIssues(root).ToList();
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 1080,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var layout = new Grid { Margin = new Thickness(14) };
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            dialog.Content = layout;
+
+            layout.Children.Add(new TextBlock
+            {
+                Text = issues.Count == 0 ? "Проблем целостности не найдено." : $"Найдено проблем: {issues.Count}",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            var grid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = issues,
+                ColumnWidth = DataGridLength.Auto
+            };
+            grid.Columns.Add(new DataGridTextColumn { Header = "Узел", Binding = new Binding(nameof(DocumentIntegrityIssueRow.NodeName)), Width = 280 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Проблема", Binding = new Binding(nameof(DocumentIntegrityIssueRow.Issue)), Width = 320 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Путь", Binding = new Binding(nameof(DocumentIntegrityIssueRow.Path)), Width = 420 });
+            DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+            Grid.SetRow(grid, 1);
+            layout.Children.Add(grid);
+
+            dialog.ShowDialog();
+        }
+
+        private IEnumerable<DocumentIntegrityIssueRow> BuildDocumentIntegrityIssues(IEnumerable<DocumentTreeNode> root)
+        {
+            var issues = new List<DocumentIntegrityIssueRow>();
+            var hashOwner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            void Collect(IEnumerable<DocumentTreeNode> nodes)
+            {
+                if (nodes == null)
+                    return;
+
+                foreach (var node in nodes)
+                {
+                    if (node == null)
+                        continue;
+
+                    if (node.IsFolder)
+                    {
+                        Collect(node.Children);
+                        continue;
+                    }
+
+                    var resolved = ResolveDocumentPath(node);
+                    if (string.IsNullOrWhiteSpace(resolved) || !File.Exists(resolved))
+                    {
+                        issues.Add(new DocumentIntegrityIssueRow
+                        {
+                            NodeName = node.Name ?? string.Empty,
+                            Path = node.FilePath ?? string.Empty,
+                            Issue = "Файл не найден"
+                        });
+                        continue;
+                    }
+
+                    if (!TryComputeFileHash(resolved, out var hash, out var size))
+                    {
+                        issues.Add(new DocumentIntegrityIssueRow
+                        {
+                            NodeName = node.Name ?? string.Empty,
+                            Path = resolved,
+                            Issue = "Не удалось вычислить хэш"
+                        });
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(node.ContentHash)
+                        && !string.Equals(node.ContentHash, hash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        issues.Add(new DocumentIntegrityIssueRow
+                        {
+                            NodeName = node.Name ?? string.Empty,
+                            Path = resolved,
+                            Issue = "Хэш не совпадает с сохраненным"
+                        });
+                    }
+
+                    if (node.FileSizeBytes.HasValue && node.FileSizeBytes.Value != size)
+                    {
+                        issues.Add(new DocumentIntegrityIssueRow
+                        {
+                            NodeName = node.Name ?? string.Empty,
+                            Path = resolved,
+                            Issue = "Размер отличается от сохраненного"
+                        });
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(hash))
+                    {
+                        if (hashOwner.TryGetValue(hash, out var existing))
+                        {
+                            issues.Add(new DocumentIntegrityIssueRow
+                            {
+                                NodeName = node.Name ?? string.Empty,
+                                Path = resolved,
+                                Issue = $"Дубликат содержимого (как \"{existing}\")"
+                            });
+                        }
+                        else
+                        {
+                            hashOwner[hash] = node.Name ?? string.Empty;
+                        }
+                    }
+                }
+            }
+
+            Collect(root);
+            issues.AddRange(lastStorageIntegrityIssues.Select(x => new DocumentIntegrityIssueRow
+            {
+                NodeName = "Импорт/Экспорт",
+                Path = string.Empty,
+                Issue = x
+            }));
+            return issues;
+        }
+
+        private void OpenDocumentLibraryReport(string title, List<DocumentTreeNode> root)
+        {
+            var rows = BuildDocumentLibraryRows(root, string.Empty);
+            ShowDocumentLibraryReport(title, rows);
+        }
+
+        private List<DocumentLibraryReportRow> BuildDocumentLibraryRows(List<DocumentTreeNode> root, string libraryName)
+        {
+            var rows = new List<DocumentLibraryReportRow>();
+            if (root == null || root.Count == 0)
+                return rows;
+
+            void Collect(IEnumerable<DocumentTreeNode> nodes)
+            {
+                if (nodes == null)
+                    return;
+
+                foreach (var node in nodes)
+                {
+                    if (node == null)
+                        continue;
+
+                    if (node.IsFolder)
+                    {
+                        Collect(node.Children);
+                        continue;
+                    }
+
+                    var resolved = ResolveDocumentPath(node);
+                    var exists = !string.IsNullOrWhiteSpace(resolved) && File.Exists(resolved);
+                    rows.Add(new DocumentLibraryReportRow
+                    {
+                        Library = libraryName,
+                        NodeName = node.Name ?? string.Empty,
+                        NodeType = "Файл",
+                        FilePath = resolved ?? string.Empty,
+                        Status = exists ? "Доступен" : "Файл не найден"
+                    });
+                }
+            }
+
+            Collect(root);
+            return rows;
+        }
+
+        private void ShowDocumentLibraryReport(string title, List<DocumentLibraryReportRow> rows)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                MessageBox.Show("Дерево документов пусто.");
+                return;
+            }
+
+            var total = rows.Count;
+            var missing = rows.Count(x => string.Equals(x.Status, "Файл не найден", StringComparison.CurrentCultureIgnoreCase));
+            var available = total - missing;
+            var showLibraryColumn = rows.Any(x => !string.IsNullOrWhiteSpace(x.Library));
+
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 1080,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var layout = new Grid { Margin = new Thickness(14) };
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            dialog.Content = layout;
+
+            layout.Children.Add(new TextBlock
+            {
+                Text = $"Всего файлов: {total}; доступно: {available}; отсутствует: {missing}",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            var dg = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = rows,
+                ColumnWidth = DataGridLength.Auto
+            };
+            if (showLibraryColumn)
+                dg.Columns.Add(new DataGridTextColumn { Header = "Раздел", Binding = new Binding(nameof(DocumentLibraryReportRow.Library)), Width = 90 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Узел", Binding = new Binding(nameof(DocumentLibraryReportRow.NodeName)), Width = 280 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(DocumentLibraryReportRow.NodeType)), Width = 80 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Статус", Binding = new Binding(nameof(DocumentLibraryReportRow.Status)), Width = 140 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Путь", Binding = new Binding(nameof(DocumentLibraryReportRow.FilePath)), Width = showLibraryColumn ? 450 : 520 });
+            DataGridSizingHelper.SetEnableSmartSizing(dg, true);
+            Grid.SetRow(dg, 1);
+            layout.Children.Add(dg);
+
+            dialog.ShowDialog();
+        }
+
         private void OpenDocumentNode(DocumentTreeNode node)
         {
             if (node == null || node.IsFolder)
@@ -2784,11 +4750,39 @@ namespace ConstructionControl
                 return;
             }
 
-            Process.Start(new ProcessStartInfo
+            if (!TryOpenDocumentInExternalApp(resolvedPath, out var error))
             {
-                FileName = resolvedPath,
-                UseShellExecute = true
-            });
+                MessageBox.Show(
+                    $"Не удалось открыть файл во внешнем приложении.{Environment.NewLine}{error}",
+                    "Открытие файла",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private static bool TryOpenDocumentInExternalApp(string filePath, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                errorMessage = "Файл не найден.";
+                return false;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = filePath,
+                    UseShellExecute = true
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         private void EstimatePreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -2897,6 +4891,7 @@ namespace ConstructionControl
         private void ArrivalLegacyViewButton_Click(object sender, RoutedEventArgs e)
         {
             arrivalMatrixMode = false;
+            SetTabDisplayMode("Приход", "Таблица");
             UpdateArrivalViewMode();
             RequestArrivalFilterRefresh(immediate: true);
         }
@@ -2904,6 +4899,7 @@ namespace ConstructionControl
         private void ArrivalMatrixViewButton_Click(object sender, RoutedEventArgs e)
         {
             arrivalMatrixMode = true;
+            SetTabDisplayMode("Приход", "Матрица");
             SyncArrivalMatrixSelectionWithTree();
             if (selectedArrivalTypes.Count > 1)
             {
@@ -2922,8 +4918,13 @@ namespace ConstructionControl
             if (e.Source is not TabControl tab || tab.SelectedItem is not TabItem item)
                 return;
 
+            var previousTab = e.RemovedItems.OfType<TabItem>().FirstOrDefault();
+            if (previousTab != null)
+                SaveGridColumnPreferences(GetGridByTabHeader(previousTab.Header?.ToString()));
+
             var tabStopwatch = Stopwatch.StartNew();
             EnsureTabInitialized(item);
+            SetTabDisplayMode(ActiveTabModeKey, item.Header?.ToString() ?? string.Empty);
             UpdateTabButtons();
             UpdateTreePanelState(forceVisible: isTreePinned);
             UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
@@ -2970,7 +4971,16 @@ namespace ConstructionControl
                     editable.CommitEdit();
             }
 
-            view?.Refresh();
+            if (view != null)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (view is IEditableCollectionView editableView && (editableView.IsAddingNew || editableView.IsEditingItem))
+                        return;
+
+                    view.Refresh();
+                }), DispatcherPriority.Background);
+            }
             if (item.Header?.ToString() == "Табель")
             {
                 if (timesheetNeedsRebuild || TimesheetGrid?.ItemsSource == null)
@@ -2993,6 +5003,8 @@ namespace ConstructionControl
                 UpdateEstimateSelectionInfo();
                 ScheduleEstimateEmbeddedLayout();
             }
+
+            ApplyGridColumnPreferences(GetGridByTabHeader(item.Header?.ToString()));
 
             tabStopwatch.Stop();
             UpdateTabOpenDiagnostics(item.Header?.ToString() ?? string.Empty, tabStopwatch.Elapsed);
@@ -3020,8 +5032,53 @@ namespace ConstructionControl
 
         private void EnsureOtJournalStorage()
         {
-            if (currentObject != null && currentObject.OtJournal == null)
-                currentObject.OtJournal = new List<OtJournalEntry>();
+            if (currentObject == null)
+                return;
+
+            currentObject.OtJournal ??= new List<OtJournalEntry>();
+            EnsureReferenceMappingsStorage();
+        }
+
+        private void EnsureReferenceMappingsStorage()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.OtInstructionNumbersByProfession ??= new Dictionary<string, string>();
+            currentObject.ProductionDeviationsByType ??= new Dictionary<string, List<string>>();
+
+            var normalizedOt = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (var pair in currentObject.OtInstructionNumbersByProfession)
+            {
+                var profession = pair.Key?.Trim();
+                var numbers = pair.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(profession) || string.IsNullOrWhiteSpace(numbers))
+                    continue;
+
+                normalizedOt[profession] = numbers;
+            }
+
+            var normalizedProduction = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (var pair in currentObject.ProductionDeviationsByType)
+            {
+                var materialType = pair.Key?.Trim();
+                if (string.IsNullOrWhiteSpace(materialType))
+                    continue;
+
+                var deviations = (pair.Value ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+
+                if (deviations.Count == 0)
+                    continue;
+
+                normalizedProduction[materialType] = deviations;
+            }
+
+            currentObject.OtInstructionNumbersByProfession = normalizedOt.ToDictionary(x => x.Key, x => x.Value);
+            currentObject.ProductionDeviationsByType = normalizedProduction.ToDictionary(x => x.Key, x => x.Value);
         }
 
         private void BindOtJournal()
@@ -3033,6 +5090,11 @@ namespace ConstructionControl
                 return;
             }
 
+            EnsureProjectUiSettings();
+            selectedOtStatusFilter = string.IsNullOrWhiteSpace(currentObject.UiSettings?.OtStatusFilter) ? "Все" : currentObject.UiSettings.OtStatusFilter.Trim();
+            selectedOtSpecialtyFilter = string.IsNullOrWhiteSpace(currentObject.UiSettings?.OtSpecialtyFilter) ? "Все" : currentObject.UiSettings.OtSpecialtyFilter.Trim();
+            selectedOtBrigadeFilter = string.IsNullOrWhiteSpace(currentObject.UiSettings?.OtBrigadeFilter) ? "Все" : currentObject.UiSettings.OtBrigadeFilter.Trim();
+
             var view = CollectionViewSource.GetDefaultView(currentObject.OtJournal);
             view.Filter = OtJournalFilter;
             OtJournalGrid.ItemsSource = view;
@@ -3040,6 +5102,7 @@ namespace ConstructionControl
             RefreshBrigadierNames();
             RefreshSpecialties();
             RefreshProfessions();
+            RefreshOtFilterOptions();
             NormalizeOtRows();
             SortOtJournal();
             RequestReminderRefresh();
@@ -3051,11 +5114,130 @@ namespace ConstructionControl
             if (item is not OtJournalEntry row)
                 return false;
 
-            if (string.IsNullOrWhiteSpace(otSearchText))
-                return true;
+            if (!string.IsNullOrWhiteSpace(otSearchText)
+                && !(row.FullName ?? string.Empty).Contains(otSearchText, StringComparison.CurrentCultureIgnoreCase))
+                return false;
 
-            return (row.FullName ?? string.Empty).Contains(otSearchText, StringComparison.CurrentCultureIgnoreCase);
+            if (!string.Equals(selectedOtStatusFilter, "Все", StringComparison.CurrentCultureIgnoreCase))
+            {
+                var status = GetOtStatusFilterLabel(row);
+                if (!string.Equals(status, selectedOtStatusFilter, StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+            }
+
+            if (!string.Equals(selectedOtSpecialtyFilter, "Все", StringComparison.CurrentCultureIgnoreCase))
+            {
+                var specialty = string.IsNullOrWhiteSpace(row.Specialty) ? "Без специальности" : row.Specialty.Trim();
+                if (!string.Equals(specialty, selectedOtSpecialtyFilter, StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+            }
+
+            if (!string.Equals(selectedOtBrigadeFilter, "Все", StringComparison.CurrentCultureIgnoreCase))
+            {
+                var brigade = GetOtBrigadeFilterLabel(row);
+                if (!string.Equals(brigade, selectedOtBrigadeFilter, StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+            }
+
+            return true;
         }
+
+        private string GetOtStatusFilterLabel(OtJournalEntry row)
+        {
+            if (row == null)
+                return "Без статуса";
+            if (row.IsDismissed)
+                return "Снят с объекта";
+            if (row.IsPrimaryInstruction && row.IsPendingRepeat)
+                return "Требуется первичный";
+            if (row.IsPendingRepeat)
+                return "Требуется повторный";
+            if (row.IsPrimaryInstruction && row.IsRepeatCompleted)
+                return "Первичный пройден";
+            if (row.IsScheduledRepeat)
+                return "Запланирован";
+            if (row.IsRepeatCompleted)
+                return "Повторный пройден";
+            return "Без статуса";
+        }
+
+        private string GetOtBrigadeFilterLabel(OtJournalEntry row)
+        {
+            if (row == null)
+                return "Без бригады";
+            if (row.IsBrigadier)
+                return string.IsNullOrWhiteSpace(row.FullName) ? "Без бригады" : row.FullName.Trim();
+            return string.IsNullOrWhiteSpace(row.BrigadierName) ? "Без бригады" : row.BrigadierName.Trim();
+        }
+
+        private void RefreshOtFilterOptions()
+        {
+            otStatusFilters.Clear();
+            foreach (var status in new[] { "Все", "Требуется первичный", "Требуется повторный", "Первичный пройден", "Запланирован", "Повторный пройден", "Снят с объекта", "Без статуса" })
+                otStatusFilters.Add(status);
+
+            otSpecialtyFilters.Clear();
+            otSpecialtyFilters.Add("Все");
+            if (currentObject?.OtJournal != null)
+            {
+                foreach (var specialty in currentObject.OtJournal
+                             .Select(x => string.IsNullOrWhiteSpace(x.Specialty) ? "Без специальности" : x.Specialty.Trim())
+                             .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                             .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    otSpecialtyFilters.Add(specialty);
+                }
+            }
+
+            otBrigadeFilters.Clear();
+            otBrigadeFilters.Add("Все");
+            if (currentObject?.OtJournal != null)
+            {
+                foreach (var brigade in currentObject.OtJournal
+                             .Select(GetOtBrigadeFilterLabel)
+                             .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                             .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    otBrigadeFilters.Add(brigade);
+                }
+            }
+
+            if (OtStatusFilterBox != null)
+            {
+                OtStatusFilterBox.ItemsSource = otStatusFilters;
+                OtStatusFilterBox.SelectedItem = otStatusFilters.Contains(selectedOtStatusFilter) ? selectedOtStatusFilter : "Все";
+            }
+
+            if (OtSpecialtyFilterBox != null)
+            {
+                OtSpecialtyFilterBox.ItemsSource = otSpecialtyFilters;
+                OtSpecialtyFilterBox.SelectedItem = otSpecialtyFilters.Contains(selectedOtSpecialtyFilter) ? selectedOtSpecialtyFilter : "Все";
+            }
+
+            if (OtBrigadeFilterBox != null)
+            {
+                OtBrigadeFilterBox.ItemsSource = otBrigadeFilters;
+                OtBrigadeFilterBox.SelectedItem = otBrigadeFilters.Contains(selectedOtBrigadeFilter) ? selectedOtBrigadeFilter : "Все";
+            }
+        }
+
+        private void OtFilters_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            selectedOtStatusFilter = OtStatusFilterBox?.SelectedItem?.ToString() ?? "Все";
+            selectedOtSpecialtyFilter = OtSpecialtyFilterBox?.SelectedItem?.ToString() ?? "Все";
+            selectedOtBrigadeFilter = OtBrigadeFilterBox?.SelectedItem?.ToString() ?? "Все";
+
+            EnsureProjectUiSettings();
+            if (currentObject?.UiSettings != null)
+            {
+                currentObject.UiSettings.OtStatusFilter = selectedOtStatusFilter;
+                currentObject.UiSettings.OtSpecialtyFilter = selectedOtSpecialtyFilter;
+                currentObject.UiSettings.OtBrigadeFilter = selectedOtBrigadeFilter;
+            }
+
+            RequestOtSearchRefresh(immediate: true);
+        }
+
         private void SubscribeOtJournalEntryEvents()
         {
             if (currentObject?.OtJournal == null)
@@ -3098,10 +5280,20 @@ namespace ConstructionControl
                 RequestReminderRefresh();
             }
 
+            if (e.PropertyName == nameof(OtJournalEntry.Specialty)
+                || e.PropertyName == nameof(OtJournalEntry.BrigadierName)
+                || e.PropertyName == nameof(OtJournalEntry.IsBrigadier)
+                || e.PropertyName == nameof(OtJournalEntry.IsDismissed)
+                || e.PropertyName == nameof(OtJournalEntry.IsPendingRepeat)
+                || e.PropertyName == nameof(OtJournalEntry.IsScheduledRepeat)
+                || e.PropertyName == nameof(OtJournalEntry.IsRepeatCompleted))
+            {
+                RefreshOtFilterOptions();
+            }
+
             if (!isSyncingTimesheetToOt && IsOtPropertyAffectingTimesheet(e.PropertyName))
             {
-                MarkTimesheetOtSyncDirty();
-                RequestTimesheetRebuild();
+                SyncOtEntryToTimesheet(row, refreshVisibleTimesheet: true);
             }
         }
 
@@ -3119,12 +5311,24 @@ namespace ConstructionControl
         {
             specialties.Clear();
 
-            if (currentObject?.OtJournal == null)
-                return;
+            var values = Enumerable.Empty<string>();
 
-            foreach (var item in currentObject.OtJournal
-                         .Where(x => !string.IsNullOrWhiteSpace(x.Specialty))
-                         .Select(x => x.Specialty.Trim())
+            if (currentObject?.OtJournal != null)
+            {
+                values = values.Concat(currentObject.OtJournal
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Specialty))
+                    .Select(x => x.Specialty.Trim()));
+            }
+
+            if (currentObject?.TimesheetPeople != null)
+            {
+                values = values.Concat(currentObject.TimesheetPeople
+                    .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Specialty))
+                    .Select(x => x.Specialty.Trim()));
+            }
+
+            foreach (var item in values
+                         .Where(x => !string.IsNullOrWhiteSpace(x))
                          .Distinct(StringComparer.CurrentCultureIgnoreCase)
                          .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
             {
@@ -3184,6 +5388,14 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(key))
                 return;
 
+            EnsureReferenceMappingsStorage();
+            var mappedNumbers = TryGetMappedInstructionNumbers(key);
+            if (!string.IsNullOrWhiteSpace(mappedNumbers))
+            {
+                row.InstructionNumbers = mappedNumbers;
+                return;
+            }
+
             var template = currentObject.OtJournal
                 .Where(x => !ReferenceEquals(x, row))
                 .FirstOrDefault(x =>
@@ -3193,6 +5405,27 @@ namespace ConstructionControl
 
             if (template != null)
                 row.InstructionNumbers = template.InstructionNumbers;
+        }
+
+        private string TryGetMappedInstructionNumbers(string professionOrSpecialty)
+        {
+            if (currentObject?.OtInstructionNumbersByProfession == null || string.IsNullOrWhiteSpace(professionOrSpecialty))
+                return string.Empty;
+
+            var key = professionOrSpecialty.Trim();
+            if (currentObject.OtInstructionNumbersByProfession.TryGetValue(key, out var exactValue)
+                && !string.IsNullOrWhiteSpace(exactValue))
+            {
+                return exactValue.Trim();
+            }
+
+            var pair = currentObject.OtInstructionNumbersByProfession.FirstOrDefault(x =>
+                string.Equals(x.Key?.Trim(), key, StringComparison.CurrentCultureIgnoreCase)
+                && !string.IsNullOrWhiteSpace(x.Value));
+
+            return pair.Equals(default(KeyValuePair<string, string>))
+                ? string.Empty
+                : pair.Value.Trim();
         }
         private void RefreshBrigadierNames()
         {
@@ -3215,62 +5448,9 @@ namespace ConstructionControl
             if (currentObject?.OtJournal == null)
                 return;
 
-            foreach (var scheduledRow in currentObject.OtJournal
-                         .Where(x => !x.IsDismissed && x.IsScheduledRepeat && DateTime.Today >= x.InstructionDate)
-                         .ToList())
-            {
-                scheduledRow.IsScheduledRepeat = false;
-                scheduledRow.IsPendingRepeat = true;
-                scheduledRow.IsRepeatCompleted = false;
-            }
-
-            var toAdd = new List<OtJournalEntry>();
-
-            foreach (var group in currentObject.OtJournal
-                         .Where(x => !string.IsNullOrWhiteSpace(x.FullName))
-                         .GroupBy(x => x.FullName.Trim(), StringComparer.CurrentCultureIgnoreCase))
-            {
-                var activeRows = group.Where(x => !x.IsDismissed).ToList();
-                if (!activeRows.Any())
-                    continue;
-
-                var pendingExists = activeRows.Any(x => x.IsPendingRepeat);
-                if (pendingExists)
-                    continue;
-
-                var lastCompleted = activeRows
-                    .Where(x => !x.IsPendingRepeat && !x.IsScheduledRepeat)
-                    .OrderByDescending(x => x.InstructionDate)
-                    .FirstOrDefault();
-
-                if (lastCompleted == null)
-                    continue;
-
-                var repeatDate = lastCompleted.NextRepeatDate;
-                if (DateTime.Today < repeatDate)
-                    continue;
-
-                var clone = new OtJournalEntry
-                {
-                    PersonId = lastCompleted.PersonId,
-                    InstructionDate = repeatDate,
-                    FullName = lastCompleted.FullName,
-                    Specialty = lastCompleted.Specialty,
-                    Rank = lastCompleted.Rank,
-                    Profession = lastCompleted.Profession,
-                    InstructionType = BuildRepeatInstructionType(group.Count(IsRepeatInstruction) + 1),
-                    InstructionNumbers = lastCompleted.InstructionNumbers,
-                    RepeatPeriodMonths = Math.Max(1, lastCompleted.RepeatPeriodMonths),
-                    IsBrigadier = lastCompleted.IsBrigadier,
-                    BrigadierName = lastCompleted.BrigadierName,
-                    IsPendingRepeat = true,
-                    IsScheduledRepeat = false,
-                    IsRepeatCompleted = false,
-                    IsDismissed = false,
-                };
-                clone.PropertyChanged += OtJournalEntry_PropertyChanged;
-                toAdd.Add(clone);
-            }
+            var toAdd = OtRepeatRuleEngine.Apply(currentObject.OtJournal, DateTime.Today, BuildRepeatInstructionType);
+            foreach (var row in toAdd)
+                row.PropertyChanged += OtJournalEntry_PropertyChanged;
 
             if (toAdd.Count > 0)
                 currentObject.OtJournal.AddRange(toAdd);
@@ -3517,7 +5697,8 @@ namespace ConstructionControl
                         .Select(x =>
                         {
                             var person = !string.IsNullOrWhiteSpace(x.LastName) ? x.LastName : x.FullName;
-                            return $"Нужен повторный инструктаж: {person}";
+                            var instructionName = x.IsPrimaryInstruction ? "первичный" : "повторный";
+                            return $"Нужен {instructionName} инструктаж: {person}";
                         })
                         .ToList()
                 });
@@ -3622,54 +5803,28 @@ namespace ConstructionControl
 
         private List<SummaryBalanceReminderItem> CollectSummaryBalanceReminderItems()
         {
-            var result = new List<SummaryBalanceReminderItem>();
             if (currentObject == null)
+                return new List<SummaryBalanceReminderItem>();
+
+            EnsureProjectUiSettings();
+            var settings = currentObject.UiSettings ?? new ProjectUiSettings();
+            if (!settings.SummaryReminderOnOverage && !settings.SummaryReminderOnDeficit)
+                return new List<SummaryBalanceReminderItem>();
+
+            return BuildSummaryBalanceItems(
+                settings.SummaryReminderOnOverage,
+                settings.SummaryReminderOnDeficit,
+                settings.SummaryReminderOnlyMain);
+        }
+
+        private List<SummaryBalanceReminderItem> BuildSummaryBalanceItems(bool includeOverage, bool includeDeficit, bool onlyMainCategory)
+        {
+            var result = new List<SummaryBalanceReminderItem>();
+            if (currentObject == null || (!includeOverage && !includeDeficit))
                 return result;
 
             var keyComparer = StringComparer.CurrentCultureIgnoreCase;
             var candidates = new HashSet<(string Group, string Material)>();
-
-            var mainCatalogPairs = (currentObject.MaterialCatalog ?? new List<MaterialCatalogItem>())
-                .Where(x => x != null
-                         && string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase)
-                         && !string.IsNullOrWhiteSpace(x.TypeName)
-                         && !string.IsNullOrWhiteSpace(x.MaterialName))
-                .Select(x => $"{x.TypeName.Trim()}||{x.MaterialName.Trim()}")
-                .ToHashSet(keyComparer);
-
-            var nonMainCatalogPairs = (currentObject.MaterialCatalog ?? new List<MaterialCatalogItem>())
-                .Where(x => x != null
-                         && !string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase)
-                         && !string.IsNullOrWhiteSpace(x.TypeName)
-                         && !string.IsNullOrWhiteSpace(x.MaterialName))
-                .Select(x => $"{x.TypeName.Trim()}||{x.MaterialName.Trim()}")
-                .ToHashSet(keyComparer);
-
-            bool IsMainCandidate(string group, string material)
-            {
-                var key = $"{group}||{material}";
-                if (mainCatalogPairs.Contains(key))
-                    return true;
-
-                if (nonMainCatalogPairs.Contains(key))
-                    return false;
-
-                var hasMainRecord = journal.Any(x =>
-                    string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase));
-                if (hasMainRecord)
-                    return true;
-
-                var hasNonMainRecord = journal.Any(x =>
-                    !string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase));
-                if (hasNonMainRecord)
-                    return false;
-
-                return false;
-            }
 
             if (currentObject.Demand != null)
             {
@@ -3680,57 +5835,45 @@ namespace ConstructionControl
                         && !string.IsNullOrWhiteSpace(parts[0])
                         && !string.IsNullOrWhiteSpace(parts[1]))
                     {
-                        var group = parts[0].Trim();
-                        var material = parts[1].Trim();
-                        if (IsMainCandidate(group, material))
-                            candidates.Add((group, material));
+                        candidates.Add((parts[0].Trim(), parts[1].Trim()));
                     }
                 }
             }
 
-            foreach (var row in journal.Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)))
+            foreach (var row in journal)
             {
                 var group = row.MaterialGroup?.Trim();
                 var material = row.MaterialName?.Trim();
                 if (!string.IsNullOrWhiteSpace(group) && !string.IsNullOrWhiteSpace(material))
-                {
-                    if (!IsMainCandidate(group, material))
-                        continue;
                     candidates.Add((group, material));
-                }
             }
 
             if (currentObject.MaterialCatalog != null)
             {
-                foreach (var item in currentObject.MaterialCatalog.Where(x =>
-                             string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)))
+                foreach (var item in currentObject.MaterialCatalog)
                 {
                     var group = item.TypeName?.Trim();
                     var material = item.MaterialName?.Trim();
                     if (!string.IsNullOrWhiteSpace(group) && !string.IsNullOrWhiteSpace(material))
-                    {
-                        if (!IsMainCandidate(group, material))
-                            continue;
                         candidates.Add((group, material));
-                    }
                 }
             }
 
-            foreach (var (group, material) in candidates
-                         .OrderBy(x => x.Group, keyComparer)
-                         .ThenBy(x => x.Material, keyComparer))
+            foreach (var (group, material) in candidates.OrderBy(x => x.Group, keyComparer).ThenBy(x => x.Material, keyComparer))
             {
+                var category = ResolveMaterialCategory(group, material);
+                if (onlyMainCategory && !string.Equals(category, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    continue;
+
                 var records = journal
-                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
+                    .Where(x => string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
                              && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase))
                     .ToList();
 
-                var unit = records
-                    .Select(x => x.Unit)
-                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-                    ?? GetUnitForMaterial(group, material);
+                if (onlyMainCategory)
+                    records = records.Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
+                var unit = records.Select(x => x.Unit).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? GetUnitForMaterial(group, material);
                 var totalArrived = NormalizeQuantityByUnit(records.Sum(x => x.Quantity), unit);
                 var demand = GetOrCreateDemand(BuildDemandKey(group, material), unit);
                 var totalNeed = NormalizeQuantityByUnit(
@@ -3740,21 +5883,45 @@ namespace ConstructionControl
                     unit);
 
                 var delta = totalArrived - totalNeed;
-                if (delta <= 0.0001)
+                if (!CalculationCore.HasDifference(totalArrived, totalNeed))
                     continue;
 
-                result.Add(new SummaryBalanceReminderItem
+                if (CalculationCore.ShouldNotifySummaryDelta(totalArrived, totalNeed, includeOverage, includeDeficit))
                 {
-                    Category = "Основные",
-                    Group = group,
-                    Material = material,
-                    Unit = unit,
-                    Quantity = delta,
-                    IsOverage = true
-                });
+                    result.Add(new SummaryBalanceReminderItem
+                    {
+                        Category = category,
+                        Group = group,
+                        Material = material,
+                        Unit = unit,
+                        Quantity = Math.Abs(delta),
+                        IsOverage = CalculationCore.IsOverage(totalArrived, totalNeed)
+                    });
+                }
             }
 
             return result;
+        }
+
+        private string ResolveMaterialCategory(string group, string material)
+        {
+            if (currentObject?.MaterialCatalog != null)
+            {
+                var catalogCategory = currentObject.MaterialCatalog
+                    .Where(x => string.Equals((x.TypeName ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
+                             && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.CategoryName?.Trim())
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+                if (!string.IsNullOrWhiteSpace(catalogCategory))
+                    return catalogCategory;
+            }
+
+            var rowCategory = journal
+                .Where(x => string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
+                         && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.Category?.Trim())
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            return string.IsNullOrWhiteSpace(rowCategory) ? "Основные" : rowCategory;
         }
 
         private void SnoozeRemindersButton_Click(object sender, RoutedEventArgs e)
@@ -3796,10 +5963,9 @@ namespace ConstructionControl
             OtJournalGrid.SelectedItem = row;
             RefreshSpecialties();
             RefreshProfessions();
+            RefreshOtFilterOptions();
             RequestReminderRefresh();
             SaveState();
-            MarkTimesheetOtSyncDirty();
-            RequestTimesheetRebuild();
         }
         private void MarkRepeatDone(OtJournalEntry row)
         {
@@ -3808,12 +5974,15 @@ namespace ConstructionControl
 
             if (!row.IsActionEnabled)
             {
-                MessageBox.Show("Для первичного инструктажа действие заблокировано. Отмечайте выполнение только в строке повторного инструктажа.");
+                MessageBox.Show("Для выбранной записи действие недоступно.");
                 return;
             }
 
+            var isPrimaryInstruction = row.IsPrimaryInstruction;
             row.InstructionDate = DateTime.Today;
-            row.InstructionType = BuildRepeatInstructionType(GetRepeatIndexForRow(row));
+            row.InstructionType = isPrimaryInstruction
+                ? "Первичный на рабочем месте"
+                : BuildRepeatInstructionType(GetRepeatIndexForRow(row));
             row.IsPendingRepeat = false;
             row.IsScheduledRepeat = false;
             row.IsRepeatCompleted = true;
@@ -3924,6 +6093,7 @@ namespace ConstructionControl
             RefreshBrigadierNames();
             RefreshSpecialties();
             RefreshProfessions();
+            RefreshOtFilterOptions();
             RequestReminderRefresh();
             MarkTimesheetOtSyncDirty();
             RequestTimesheetRebuild();
@@ -3940,29 +6110,43 @@ namespace ConstructionControl
             if (e.EditAction != DataGridEditAction.Commit)
                 return;
 
+            var changedRow = e.Row.Item as OtJournalEntry;
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshBrigadierNames();
                 RefreshSpecialties();
                 RefreshProfessions();
-                MarkTimesheetOtSyncDirty();
-                RequestTimesheetRebuild();
+                RefreshOtFilterOptions();
+                if (changedRow != null)
+                    SyncOtEntryToTimesheet(changedRow, refreshVisibleTimesheet: true);
+                else
+                {
+                    MarkTimesheetOtSyncDirty();
+                    RequestTimesheetRebuild();
+                }
                 RequestReminderRefresh();
             }));
         }
 
         private void OtJournalGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {
+            var changedRow = e.Row.Item as OtJournalEntry;
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshBrigadierNames();
                 RefreshSpecialties();
                 RefreshProfessions();
+                RefreshOtFilterOptions();
                 NormalizeOtRows();
                 SortOtJournal();
                 RequestReminderRefresh();
-                MarkTimesheetOtSyncDirty();
-                RequestTimesheetRebuild();
+                if (changedRow != null)
+                    SyncOtEntryToTimesheet(changedRow, refreshVisibleTimesheet: true);
+                else
+                {
+                    MarkTimesheetOtSyncDirty();
+                    RequestTimesheetRebuild();
+                }
                 SaveState();
             }));
         }
@@ -3975,6 +6159,7 @@ namespace ConstructionControl
                 RefreshBrigadierNames();
                 RefreshSpecialties();
                 RefreshProfessions();
+                RefreshOtFilterOptions();
                 RequestReminderRefresh();
                 MarkTimesheetOtSyncDirty();
                 RequestTimesheetRebuild();
@@ -4075,7 +6260,22 @@ namespace ConstructionControl
             foreach (var person in currentObject.TimesheetPeople.Where(x => x != null))
             {
                 person.Months ??= new List<TimesheetMonthEntry>();
-                person.Months.RemoveAll(m => m == null || string.IsNullOrWhiteSpace(m.MonthKey) || !allowedKeys.Contains(m.MonthKey));
+                person.ArchivedMonths ??= new List<TimesheetMonthEntry>();
+                person.Months.RemoveAll(m => m == null || string.IsNullOrWhiteSpace(m.MonthKey));
+
+                var outOfWindow = person.Months
+                    .Where(m => !allowedKeys.Contains(m.MonthKey))
+                    .ToList();
+                foreach (var archiveMonth in outOfWindow)
+                {
+                    person.Months.Remove(archiveMonth);
+                    var existingArchive = person.ArchivedMonths.FirstOrDefault(x => string.Equals(x.MonthKey, archiveMonth.MonthKey, StringComparison.Ordinal));
+                    if (existingArchive != null)
+                        person.ArchivedMonths.Remove(existingArchive);
+                    person.ArchivedMonths.Add(archiveMonth);
+                }
+
+                person.ArchivedMonths.RemoveAll(m => m == null || string.IsNullOrWhiteSpace(m.MonthKey));
 
                 var seenMonthKeys = new HashSet<string>(StringComparer.Ordinal);
                 for (var i = person.Months.Count - 1; i >= 0; i--)
@@ -4114,6 +6314,25 @@ namespace ConstructionControl
                         {
                             Value = pair.Value.Trim()
                         };
+                    }
+                }
+
+                foreach (var key in allowedKeys.Where(x => !person.Months.Any(m => string.Equals(m.MonthKey, x, StringComparison.Ordinal))))
+                {
+                    var archived = person.ArchivedMonths.FirstOrDefault(m => string.Equals(m.MonthKey, key, StringComparison.Ordinal));
+                    if (archived != null)
+                    {
+                        person.Months.Add(archived);
+                        person.ArchivedMonths.Remove(archived);
+                    }
+                    else
+                    {
+                        person.Months.Add(new TimesheetMonthEntry
+                        {
+                            MonthKey = key,
+                            DayEntries = new Dictionary<int, TimesheetDayEntry>(),
+                            DayValues = new Dictionary<int, string>()
+                        });
                     }
                 }
 
@@ -4222,6 +6441,95 @@ namespace ConstructionControl
                 currentObject.TimesheetPeople.Add(created);
                 timesheetById[resolvedId] = created;
                 timesheetByName[group.Key] = created;
+            }
+        }
+
+        private void SyncOtEntryToTimesheet(OtJournalEntry sourceRow, bool refreshVisibleTimesheet)
+        {
+            if (sourceRow == null || currentObject?.OtJournal == null)
+                return;
+
+            EnsureTimesheetStorage();
+
+            var sourceNameKey = NormalizePersonNameKey(sourceRow.FullName);
+            if (sourceRow.PersonId == Guid.Empty && string.IsNullOrWhiteSpace(sourceNameKey))
+                return;
+
+            var relatedRows = currentObject.OtJournal
+                .Where(x => x != null
+                    && ((sourceRow.PersonId != Guid.Empty && x.PersonId == sourceRow.PersonId)
+                        || (!string.IsNullOrWhiteSpace(sourceNameKey)
+                            && string.Equals(NormalizePersonNameKey(x.FullName), sourceNameKey, StringComparison.CurrentCultureIgnoreCase))))
+                .ToList();
+
+            if (relatedRows.Count == 0)
+                relatedRows.Add(sourceRow);
+
+            var latestActive = relatedRows
+                .Where(x => !x.IsDismissed && !string.IsNullOrWhiteSpace(x.FullName))
+                .OrderByDescending(x => x.InstructionDate)
+                .FirstOrDefault();
+
+            if (latestActive == null)
+            {
+                timesheetNeedsRebuild = true;
+                return;
+            }
+
+            var resolvedId = relatedRows
+                .Select(x => x.PersonId)
+                .FirstOrDefault(x => x != Guid.Empty);
+
+            if (resolvedId == Guid.Empty)
+            {
+                var latestNameKey = NormalizePersonNameKey(latestActive.FullName);
+                var byName = currentObject.TimesheetPeople
+                    .FirstOrDefault(x => string.Equals(NormalizePersonNameKey(x.FullName), latestNameKey, StringComparison.CurrentCultureIgnoreCase));
+                resolvedId = byName?.PersonId ?? Guid.NewGuid();
+            }
+
+            foreach (var related in relatedRows.Where(x => x.PersonId != resolvedId))
+                related.PersonId = resolvedId;
+
+            latestActive.PersonId = resolvedId;
+
+            var person = currentObject.TimesheetPeople.FirstOrDefault(x => x.PersonId == resolvedId);
+            if (person == null)
+            {
+                var latestNameKey = NormalizePersonNameKey(latestActive.FullName);
+                person = currentObject.TimesheetPeople
+                    .FirstOrDefault(x => string.Equals(NormalizePersonNameKey(x.FullName), latestNameKey, StringComparison.CurrentCultureIgnoreCase));
+            }
+
+            if (person == null)
+            {
+                person = new TimesheetPersonEntry
+                {
+                    PersonId = resolvedId
+                };
+                currentObject.TimesheetPeople.Add(person);
+                RefreshTimesheetPersonSubscriptions();
+            }
+
+            person.FullName = latestActive.FullName?.Trim();
+            person.Specialty = latestActive.Specialty;
+            person.Rank = latestActive.Rank;
+            person.IsBrigadier = latestActive.IsBrigadier;
+            person.BrigadeName = latestActive.IsBrigadier ? latestActive.FullName?.Trim() : latestActive.BrigadierName;
+
+            if (refreshVisibleTimesheet
+                && timesheetInitialized
+                && ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab))
+            {
+                RefreshTimesheetBrigades();
+                RefreshTimesheetRows();
+                TimesheetGrid?.Items.Refresh();
+                UpdateTimesheetMissingDocsNotification();
+                timesheetNeedsRebuild = false;
+            }
+            else
+            {
+                timesheetNeedsRebuild = true;
             }
         }
 
@@ -4352,7 +6660,29 @@ namespace ConstructionControl
             TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "№", Binding = new Binding(nameof(TimesheetRowViewModel.Number)), IsReadOnly = true, Width = 45 });
             TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "ФИО", Binding = new Binding(nameof(TimesheetRowViewModel.FullName)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 220 });
             TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Часов/день", Binding = new Binding(nameof(TimesheetRowViewModel.DailyWorkHours)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 90 });
-            TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Специальность", Binding = new Binding(nameof(TimesheetRowViewModel.Specialty)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 170 });
+            var specialtyCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            specialtyCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(TimesheetRowViewModel.Specialty)));
+            var specialtyCellTemplate = new DataTemplate { VisualTree = specialtyCellFactory };
+
+            var specialtyEditFactory = new FrameworkElementFactory(typeof(ComboBox));
+            specialtyEditFactory.SetValue(ComboBox.IsEditableProperty, true);
+            specialtyEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            specialtyEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            specialtyEditFactory.SetValue(ComboBox.ItemsSourceProperty, specialties);
+            specialtyEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(TimesheetRowViewModel.Specialty))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+            var specialtyEditTemplate = new DataTemplate { VisualTree = specialtyEditFactory };
+
+            TimesheetGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Специальность",
+                Width = 170,
+                CellTemplate = specialtyCellTemplate,
+                CellEditingTemplate = specialtyEditTemplate
+            });
             TimesheetGrid.Columns.Add(new DataGridTextColumn { Header = "Разряд", Binding = new Binding(nameof(TimesheetRowViewModel.Rank)) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 70 });
             TimesheetGrid.Columns.Add(new DataGridCheckBoxColumn
             {
@@ -4390,6 +6720,8 @@ namespace ConstructionControl
                 IsReadOnly = true,
                 Width = 95
             });
+
+            ApplyGridColumnPreferences(TimesheetGrid);
         }
 
         private bool IsTodayColumnSlot(int day)
@@ -4430,22 +6762,30 @@ namespace ConstructionControl
 
         private void TodayPresenceChanged(object sender, RoutedEventArgs e)
         {
+            TimesheetRowViewModel affectedRow = null;
             if (sender is FrameworkElement element
                 && element.DataContext is TimesheetRowViewModel row
                 && int.TryParse(element.Tag?.ToString(), out var day)
                 && day > 0)
             {
+                affectedRow = row;
                 var shouldMarkPresent = row.GetPresenceChecked(day);
                 var autoValue = shouldMarkPresent
                     ? Math.Clamp(row.DailyWorkHours, 1, 24).ToString(CultureInfo.CurrentCulture)
                     : "Н";
 
                 row[day] = autoValue;
+                row.RecalculateTotal();
             }
 
-            SaveState();
-            UpdateTimesheetMissingDocsNotification();
-            TimesheetGrid?.Items.Refresh();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (affectedRow?.Source != null)
+                    UpdateRepeatRequirementByTimesheet(affectedRow.Source);
+                SaveState();
+                UpdateTimesheetMissingDocsNotification();
+                RequestReminderRefresh();
+            }), DispatcherPriority.Background);
         }
 
         private DataTemplate BuildTimesheetDayCellTemplate(int day)
@@ -4539,9 +6879,11 @@ namespace ConstructionControl
                     RefreshTimesheetBrigades();
                 }
                 row.RecalculateTotal();
-                TimesheetGrid?.Items.Refresh();
-                SaveState();
-                UpdateTimesheetMissingDocsNotification();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    SaveState();
+                    UpdateTimesheetMissingDocsNotification();
+                }), DispatcherPriority.Background);
                 return;
             }
 
@@ -4558,8 +6900,11 @@ namespace ConstructionControl
             }
 
             row.RecalculateTotal();
-            SaveState();
-            UpdateTimesheetMissingDocsNotification();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                SaveState();
+                UpdateTimesheetMissingDocsNotification();
+            }), DispatcherPriority.Background);
 
             if (day == DateTime.Today.Day
                 && timesheetMonth.Year == DateTime.Today.Year
@@ -4573,7 +6918,15 @@ namespace ConstructionControl
                     !x.IsDismissed);
 
                 if (due)
-                    MessageBox.Show($"⚠ {row.FullName}: требуется срочный повторный инструктаж по ОТ.", "Напоминание по ОТ", MessageBoxButton.OK, MessageBoxImage.Warning);
+                {
+                    var hasPendingPrimary = currentObject.OtJournal.Any(x =>
+                        x.PersonId == row.PersonId
+                        && x.IsPendingRepeat
+                        && x.IsPrimaryInstruction
+                        && !x.IsDismissed);
+                    var instructionName = hasPendingPrimary ? "первичный" : "повторный";
+                    MessageBox.Show($"⚠ {row.FullName}: требуется срочный {instructionName} инструктаж по ОТ.", "Напоминание по ОТ", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
         }
 
@@ -4698,6 +7051,293 @@ namespace ConstructionControl
             TimesheetGrid.Items.Refresh();
         }
 
+        private void TimesheetRangeOperation_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject?.TimesheetPeople == null || currentObject.TimesheetPeople.Count == 0)
+            {
+                MessageBox.Show("Табель пуст.");
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Операция по диапазону дат",
+                Owner = this,
+                Width = 520,
+                Height = 290,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
+
+            var fromPicker = new DatePicker { SelectedDate = timesheetMonth };
+            var toPicker = new DatePicker { SelectedDate = timesheetMonth.AddDays(Math.Max(0, DateTime.DaysInMonth(timesheetMonth.Year, timesheetMonth.Month) - 1)) };
+            var operationBox = new ComboBox
+            {
+                SelectedIndex = 0,
+                ItemsSource = new[] { "Проставить часы по режиму", "Проставить Н", "Очистить" }
+            };
+
+            var line1 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            line1.Children.Add(new TextBlock { Text = "С:", Width = 24, VerticalAlignment = VerticalAlignment.Center });
+            line1.Children.Add(fromPicker);
+            line1.Children.Add(new TextBlock { Text = "  По:", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+            line1.Children.Add(toPicker);
+            Grid.SetRow(line1, 0);
+            root.Children.Add(line1);
+
+            var line2 = new StackPanel { Orientation = Orientation.Horizontal };
+            line2.Children.Add(new TextBlock { Text = "Операция:", Width = 80, VerticalAlignment = VerticalAlignment.Center });
+            line2.Children.Add(operationBox);
+            Grid.SetRow(line2, 1);
+            root.Children.Add(line2);
+
+            var hint = new TextBlock
+            {
+                Text = "Если в табеле выбраны строки, операция применяется только к ним. Иначе ко всем строкам текущего фильтра.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 10, 0, 0),
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139))
+            };
+            Grid.SetRow(hint, 2);
+            root.Children.Add(hint);
+
+            var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var applyButton = new Button { Content = "Применить", MinWidth = 120 };
+            var cancelButton = new Button { Content = "Отмена", MinWidth = 110, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+            footer.Children.Add(applyButton);
+            footer.Children.Add(cancelButton);
+            Grid.SetRow(footer, 4);
+            root.Children.Add(footer);
+
+            applyButton.Click += (_, _) =>
+            {
+                if (!fromPicker.SelectedDate.HasValue || !toPicker.SelectedDate.HasValue)
+                {
+                    MessageBox.Show("Укажите даты начала и конца.");
+                    return;
+                }
+
+                var start = fromPicker.SelectedDate.Value.Date;
+                var end = toPicker.SelectedDate.Value.Date;
+                if (end < start)
+                    (start, end) = (end, start);
+
+                var targets = TimesheetGrid?.SelectedItems?.OfType<TimesheetRowViewModel>().ToList() ?? new List<TimesheetRowViewModel>();
+                if (targets.Count == 0)
+                    targets = timesheetRows.ToList();
+
+                var mode = operationBox.SelectedItem?.ToString() ?? "Проставить часы по режиму";
+                foreach (var date in Enumerable.Range(0, (end - start).Days + 1).Select(offset => start.AddDays(offset)))
+                {
+                    var monthKey = date.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+                    var day = date.Day;
+
+                    foreach (var row in targets)
+                    {
+                        if (row?.Source == null)
+                            continue;
+
+                        if (string.Equals(mode, "Проставить Н", StringComparison.CurrentCulture))
+                            row.Source.SetDayValue(monthKey, day, "Н");
+                        else if (string.Equals(mode, "Очистить", StringComparison.CurrentCulture))
+                            row.Source.SetDayValue(monthKey, day, string.Empty);
+                        else
+                            row.Source.SetDayValue(monthKey, day, Math.Clamp(row.DailyWorkHours, 1, 24).ToString(CultureInfo.CurrentCulture));
+                    }
+                }
+
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            NormalizeTimesheetMonthsWindow();
+            RefreshTimesheetRows();
+            TimesheetGrid?.Items.Refresh();
+            SaveState();
+            UpdateTimesheetMissingDocsNotification();
+        }
+
+        private void OpenTodayActionsReport_Click(object sender, RoutedEventArgs e)
+        {
+            var items = new List<string>();
+            if (currentObject?.OtJournal != null)
+            {
+                items.AddRange(currentObject.OtJournal
+                    .Where(x => x.IsPendingRepeat && !x.IsDismissed)
+                    .OrderBy(x => x.LastName, StringComparer.CurrentCultureIgnoreCase)
+                    .Select(x => $"ОТ: нужен {(x.IsPrimaryInstruction ? "первичный" : "повторный")} инструктаж — {x.FullName}"));
+            }
+
+            var missingDocs = CollectTimesheetMissingDocsPreview(out var missingDocsCount);
+            if (missingDocsCount > 0)
+                items.AddRange(missingDocs.Select(x => $"Табель: нет документа — {x}"));
+
+            if (items.Count == 0)
+            {
+                MessageBox.Show("На сегодня действий по ОТ и табелю нет.");
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Кто требует действие сегодня",
+                Owner = this,
+                Width = 760,
+                Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+            var list = new ListBox
+            {
+                Margin = new Thickness(12),
+                ItemsSource = items
+            };
+            dialog.Content = list;
+            dialog.ShowDialog();
+        }
+
+        private void OpenOtPersonHistory_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject?.OtJournal == null || currentObject.OtJournal.Count == 0)
+            {
+                MessageBox.Show("Журнал ОТ пуст.");
+                return;
+            }
+
+            var source = OtJournalGrid?.SelectedItem as OtJournalEntry;
+            if (source == null)
+            {
+                MessageBox.Show("Выберите сотрудника в таблице ОТ.");
+                return;
+            }
+
+            var sourceNameKey = NormalizePersonNameKey(source.FullName);
+            var rows = currentObject.OtJournal
+                .Where(x => x != null
+                    && ((source.PersonId != Guid.Empty && x.PersonId == source.PersonId)
+                        || (!string.IsNullOrWhiteSpace(sourceNameKey)
+                            && string.Equals(NormalizePersonNameKey(x.FullName), sourceNameKey, StringComparison.CurrentCultureIgnoreCase))))
+                .OrderByDescending(x => x.InstructionDate)
+                .ToList();
+
+            if (rows.Count == 0)
+            {
+                MessageBox.Show("Для выбранного сотрудника история не найдена.");
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = $"История инструктажей: {source.FullName}",
+                Owner = this,
+                Width = 1080,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "Полная история инструктажей по сотруднику. Цвета соответствуют статусам в журнале ОТ.",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            Border CreateLegendChip(string caption, string resourceKey)
+            {
+                var background = TryFindResource(resourceKey) as Brush ?? Brushes.White;
+                return new Border
+                {
+                    Background = background,
+                    BorderBrush = TryFindResource("StrokeBrush") as Brush ?? Brushes.LightGray,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(8, 4, 8, 4),
+                    Margin = new Thickness(0, 0, 8, 0),
+                    Child = new TextBlock
+                    {
+                        Text = caption
+                    }
+                };
+            }
+
+            var legendPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
+            legendPanel.Children.Add(CreateLegendChip("Желтый: требуется инструктаж", "WarningSoftBrush"));
+            legendPanel.Children.Add(CreateLegendChip("Зеленый: инструктаж пройден", "SuccessSoftBrush"));
+            legendPanel.Children.Add(CreateLegendChip("Синий: запланирован", "SelectedBrush"));
+            legendPanel.Children.Add(CreateLegendChip("Серый: снят с объекта", "SurfaceAltBrush"));
+            Grid.SetRow(legendPanel, 1);
+            root.Children.Add(legendPanel);
+
+            var historyGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ColumnWidth = DataGridLength.Auto,
+                ItemsSource = rows,
+                RowStyle = TryFindResource("OtDueRowStyle") as Style
+            };
+
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Дата", Binding = new Binding(nameof(OtJournalEntry.InstructionDate)) { StringFormat = "dd.MM.yyyy" }, Width = 110 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "ФИО", Binding = new Binding(nameof(OtJournalEntry.FullNameDisplay)), Width = 220 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Вид", Binding = new Binding(nameof(OtJournalEntry.InstructionType)), Width = 150 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Специальность", Binding = new Binding(nameof(OtJournalEntry.Specialty)), Width = 170 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Разряд", Binding = new Binding(nameof(OtJournalEntry.Rank)), Width = 60 });
+
+            var instructionNumbersColumn = new DataGridTextColumn
+            {
+                Header = "Номера инструкций",
+                Binding = new Binding(nameof(OtJournalEntry.InstructionNumbers)),
+                Width = 240
+            };
+            instructionNumbersColumn.ElementStyle = new Style(typeof(TextBlock));
+            instructionNumbersColumn.ElementStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+            historyGrid.Columns.Add(instructionNumbersColumn);
+
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "След. повторный", Binding = new Binding(nameof(OtJournalEntry.NextRepeatDate)) { StringFormat = "dd.MM.yyyy" }, Width = 120 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Статус", Binding = new Binding(nameof(OtJournalEntry.StatusLabel)), Width = 220 });
+
+            DataGridSizingHelper.SetEnableSmartSizing(historyGrid, true);
+            Grid.SetRow(historyGrid, 2);
+            root.Children.Add(historyGrid);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            var closeButton = new Button
+            {
+                Content = "Закрыть",
+                MinWidth = 120,
+                IsCancel = true,
+                Style = TryFindResource("SecondaryButton") as Style
+            };
+            footer.Children.Add(closeButton);
+            Grid.SetRow(footer, 3);
+            root.Children.Add(footer);
+
+            dialog.ShowDialog();
+        }
+
         private bool TryGetSelectedDayEntry(out TimesheetRowViewModel row, out int day)
         {
             row = selectedTimesheetRow;
@@ -4794,6 +7434,7 @@ namespace ConstructionControl
             TimesheetWorkModeComboBox.SelectedIndex = 0;
 
             RefreshBrigadierNames();
+            RefreshSpecialties();
             RebuildTimesheetView();
             SortOtJournal();
             SaveState();
@@ -4833,7 +7474,7 @@ namespace ConstructionControl
                 RepeatPeriodMonths = 3,
                 IsBrigadier = person.IsBrigadier,
                 BrigadierName = person.IsBrigadier ? null : person.BrigadeName,
-                IsPendingRepeat = requireRepeat,
+                IsPendingRepeat = true,
                 IsScheduledRepeat = false,
                 IsRepeatCompleted = false
             };
@@ -5122,13 +7763,25 @@ namespace ConstructionControl
 
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
             currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+            currentObject.ProductionAutoFillProfiles ??= new List<ProductionAutoFillProfile>();
+            if (string.IsNullOrWhiteSpace(currentObject.SelectedProductionAutoFillProfileName)
+                && currentObject.ProductionAutoFillProfiles.Count > 0)
+            {
+                currentObject.SelectedProductionAutoFillProfileName = currentObject.ProductionAutoFillProfiles
+                    .Select(x => x.Name?.Trim())
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+            }
+            currentObject.ProductionTemplates ??= new List<ProductionJournalTemplate>();
             currentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+            EnsureReferenceMappingsStorage();
+            RefreshProductionAutoFillProfileOptions();
         }
 
         private void RefreshProductionJournalState()
         {
             EnsureProductionJournalStorage();
             NormalizeProductionJournalRows();
+            RefreshProductionBlockDisplayValues();
             ApplyProductionDisplayMerging();
             productionJournalRows.Clear();
 
@@ -5199,8 +7852,6 @@ namespace ConstructionControl
                     ?? Enumerable.Empty<string>());
             FillLookupCollection(productionWeatherOptions,
                 currentObject?.ProductionJournal?.Select(x => x.Weather));
-            FillLookupCollection(productionDeviationOptions,
-                currentObject?.ProductionJournal?.Select(x => x.Deviations));
 
             productionBlockOptions.Clear();
             if (currentObject != null)
@@ -5209,14 +7860,10 @@ namespace ConstructionControl
                     productionBlockOptions.Add(i.ToString());
             }
 
-            FillLookupCollection(productionMarkOptions,
-                (currentObject?.SummaryMarksByGroup?.Values
-                    .Where(x => x != null)
-                    .SelectMany(x => x ?? Enumerable.Empty<string>())
-                    ?? Enumerable.Empty<string>())
-                .Concat(LevelMarkHelper.GetDefaultMarks(currentObject)));
-
             RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
+            RefreshProductionAutoFillProfileOptions();
             productionLookupsDirty = false;
         }
 
@@ -5231,6 +7878,58 @@ namespace ConstructionControl
             {
                 target.Add(value);
             }
+        }
+
+        private void RefreshProductionAutoFillProfileOptions()
+        {
+            isRefreshingProductionProfileSelection = true;
+            productionAutoFillProfileNames.Clear();
+            if (currentObject?.ProductionAutoFillProfiles == null)
+            {
+                isRefreshingProductionProfileSelection = false;
+                return;
+            }
+
+            foreach (var name in currentObject.ProductionAutoFillProfiles
+                .Select(x => x.Name?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                productionAutoFillProfileNames.Add(name);
+            }
+
+            if (ProductionAutoFillProfileBox == null)
+            {
+                isRefreshingProductionProfileSelection = false;
+                return;
+            }
+
+            var preferred = currentObject.SelectedProductionAutoFillProfileName?.Trim();
+            if (!string.IsNullOrWhiteSpace(preferred)
+                && productionAutoFillProfileNames.Any(x => string.Equals(x, preferred, StringComparison.CurrentCultureIgnoreCase)))
+            {
+                ProductionAutoFillProfileBox.SelectedItem = productionAutoFillProfileNames
+                    .First(x => string.Equals(x, preferred, StringComparison.CurrentCultureIgnoreCase));
+                isRefreshingProductionProfileSelection = false;
+                return;
+            }
+
+            ProductionAutoFillProfileBox.SelectedItem = productionAutoFillProfileNames.FirstOrDefault();
+            isRefreshingProductionProfileSelection = false;
+        }
+
+        private void ProductionAutoFillProfileBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (currentObject == null || isRefreshingProductionProfileSelection)
+                return;
+
+            var selected = ProductionAutoFillProfileBox?.SelectedItem?.ToString()?.Trim() ?? string.Empty;
+            if (string.Equals(currentObject.SelectedProductionAutoFillProfileName ?? string.Empty, selected, StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            currentObject.SelectedProductionAutoFillProfileName = selected;
+            SaveState();
         }
 
         private void RefreshProductionElementOptions()
@@ -5275,14 +7974,175 @@ namespace ConstructionControl
                 ProductionElementsBox.Text = currentText;
         }
 
+        private void RefreshProductionMarkOptions()
+        {
+            var selectedWork = ProductionWorkBox?.Text?.Trim();
+            var currentMarksText = ProductionMarksBox?.Text?.Trim() ?? string.Empty;
+            var values = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(selectedWork))
+            {
+                values.AddRange(LevelMarkHelper.GetMarksForGroup(currentObject, selectedWork));
+                values.AddRange(currentObject?.ProductionJournal?
+                    .Where(x => string.Equals((x.WorkName ?? string.Empty).Trim(), selectedWork, StringComparison.CurrentCultureIgnoreCase))
+                    .SelectMany(x => LevelMarkHelper.ParseMarks(x.MarksText))
+                    ?? Enumerable.Empty<string>());
+            }
+            else
+            {
+                values.AddRange((currentObject?.SummaryMarksByGroup?.Values
+                        .Where(x => x != null)
+                        .SelectMany(x => x ?? Enumerable.Empty<string>())
+                        ?? Enumerable.Empty<string>())
+                    .Concat(LevelMarkHelper.GetDefaultMarks(currentObject)));
+
+                values.AddRange(currentObject?.ProductionJournal?
+                    .SelectMany(x => LevelMarkHelper.ParseMarks(x.MarksText))
+                    ?? Enumerable.Empty<string>());
+            }
+
+            FillLookupCollection(productionMarkOptions, values);
+
+            if (ProductionMarksBox == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(currentMarksText))
+            {
+                ProductionMarksBox.Text = productionMarkOptions.FirstOrDefault() ?? string.Empty;
+                return;
+            }
+
+            var normalized = NormalizeProductionMarksText(currentMarksText);
+            var typedMarks = LevelMarkHelper.ParseMarks(normalized);
+            if (typedMarks.Count == 0)
+            {
+                ProductionMarksBox.Text = productionMarkOptions.FirstOrDefault() ?? string.Empty;
+                return;
+            }
+
+            var allowed = typedMarks
+                .Where(mark => productionMarkOptions.Any(option =>
+                    string.Equals(option, mark, StringComparison.CurrentCultureIgnoreCase)))
+                .ToList();
+
+            if (allowed.Count == typedMarks.Count)
+            {
+                ProductionMarksBox.Text = string.Join(", ", allowed);
+                return;
+            }
+
+            ProductionMarksBox.Text = allowed.Count > 0
+                ? string.Join(", ", allowed)
+                : productionMarkOptions.FirstOrDefault() ?? string.Empty;
+        }
+
+        private List<string> GetDeviationOptionsForWork(string workName, bool includeCurrentJournal = true)
+        {
+            EnsureReferenceMappingsStorage();
+            var options = new List<string>();
+            var normalizedWork = workName?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(normalizedWork)
+                && currentObject?.ProductionDeviationsByType != null
+                && currentObject.ProductionDeviationsByType.TryGetValue(normalizedWork, out var mapped)
+                && mapped != null)
+            {
+                options.AddRange(mapped);
+            }
+            else if (!string.IsNullOrWhiteSpace(normalizedWork) && currentObject?.ProductionDeviationsByType != null)
+            {
+                var mappedFallback = currentObject.ProductionDeviationsByType.FirstOrDefault(x =>
+                    string.Equals((x.Key ?? string.Empty).Trim(), normalizedWork, StringComparison.CurrentCultureIgnoreCase));
+                if (!mappedFallback.Equals(default(KeyValuePair<string, List<string>>)))
+                    options.AddRange(mappedFallback.Value ?? new List<string>());
+            }
+
+            if (includeCurrentJournal)
+            {
+                if (!string.IsNullOrWhiteSpace(normalizedWork))
+                {
+                    options.AddRange(currentObject?.ProductionJournal?
+                        .Where(x => string.Equals((x.WorkName ?? string.Empty).Trim(), normalizedWork, StringComparison.CurrentCultureIgnoreCase))
+                        .Select(x => x.Deviations)
+                        ?? Enumerable.Empty<string>());
+                }
+                else
+                {
+                    options.AddRange(currentObject?.ProductionJournal?.Select(x => x.Deviations)
+                        ?? Enumerable.Empty<string>());
+                }
+            }
+
+            return options
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private string ResolveAutoFillDeviation(string workName, string typedDeviation)
+        {
+            if (!string.IsNullOrWhiteSpace(typedDeviation))
+                return typedDeviation.Trim();
+
+            var options = GetDeviationOptionsForWork(workName, includeCurrentJournal: true);
+            if (options.Count == 0)
+                return string.Empty;
+
+            var index = productionAutoRandom.Next(0, options.Count);
+            return options[index];
+        }
+
+        private void RefreshProductionDeviationOptions()
+        {
+            var selectedWork = ProductionWorkBox?.Text?.Trim();
+            var currentText = ProductionDeviationBox?.Text?.Trim() ?? string.Empty;
+            List<string> values;
+
+            if (!string.IsNullOrWhiteSpace(selectedWork))
+            {
+                values = GetDeviationOptionsForWork(selectedWork);
+            }
+            else
+            {
+                var allMapped = currentObject?.ProductionDeviationsByType?
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+                    .SelectMany(x => x.Value ?? new List<string>())
+                    ?? Enumerable.Empty<string>();
+                values = allMapped
+                    .Concat(currentObject?.ProductionJournal?.Select(x => x.Deviations) ?? Enumerable.Empty<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+            }
+
+            FillLookupCollection(productionDeviationOptions, values);
+
+            if (ProductionDeviationBox == null)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(currentText))
+            {
+                ProductionDeviationBox.Text = currentText;
+                return;
+            }
+
+            ProductionDeviationBox.Text = productionDeviationOptions.FirstOrDefault() ?? string.Empty;
+        }
+
         private void ProductionWorkBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
         }
 
         private void ProductionWorkBox_LostFocus(object sender, RoutedEventArgs e)
         {
             RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
         }
 
         private void InitializeInspectionJournal()
@@ -5299,6 +8159,7 @@ namespace ConstructionControl
                 return;
 
             currentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
+            currentObject.InspectionTemplates ??= new List<InspectionJournalTemplate>();
         }
 
         private void RefreshInspectionJournalState()
@@ -5370,8 +8231,11 @@ namespace ConstructionControl
             selectedInspectionRow = row;
             inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
-            InspectionJournalGrid.SelectedItem = row;
-            InspectionJournalGrid.ScrollIntoView(row);
+            if (InspectionJournalGrid != null && row != null && InspectionJournalGrid.Items.Contains(row))
+            {
+                InspectionJournalGrid.SelectedItem = row;
+                InspectionJournalGrid.ScrollIntoView(row);
+            }
             SaveState();
         }
 
@@ -5458,6 +8322,204 @@ namespace ConstructionControl
             row.ReminderPeriodDays = int.TryParse(InspectionPeriodDaysTextBox.Text?.Trim(), out var days) && days > 0 ? days : 1;
             row.LastCompletedDate = InspectionLastCompletedDatePicker.SelectedDate;
             row.Notes = InspectionNotesTextBox.Text?.Trim();
+        }
+
+        private void SaveInspectionTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            EnsureInspectionJournalStorage();
+            var name = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите название шаблона осмотра:",
+                "Сохранить шаблон",
+                (InspectionJournalNameBox?.Text ?? string.Empty).Trim())?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var template = new InspectionJournalTemplate
+            {
+                Name = name,
+                JournalName = InspectionJournalNameBox?.Text?.Trim() ?? string.Empty,
+                InspectionName = InspectionNameBox?.Text?.Trim() ?? string.Empty,
+                ReminderPeriodDays = int.TryParse(InspectionPeriodDaysTextBox?.Text?.Trim(), out var days) && days > 0 ? days : 7,
+                Notes = InspectionNotesTextBox?.Text?.Trim() ?? string.Empty
+            };
+
+            var existing = currentObject.InspectionTemplates
+                .FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase));
+            if (existing != null)
+                currentObject.InspectionTemplates.Remove(existing);
+
+            currentObject.InspectionTemplates.Add(template);
+            SaveState();
+        }
+
+        private void ApplyInspectionTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            var template = SelectInspectionTemplate();
+            if (template == null)
+                return;
+
+            InspectionJournalNameBox.Text = template.JournalName ?? string.Empty;
+            InspectionNameBox.Text = template.InspectionName ?? string.Empty;
+            InspectionReminderStartDatePicker.SelectedDate = DateTime.Today;
+            InspectionPeriodDaysTextBox.Text = Math.Max(1, template.ReminderPeriodDays).ToString(CultureInfo.InvariantCulture);
+            InspectionLastCompletedDatePicker.SelectedDate = DateTime.Today;
+            InspectionNotesTextBox.Text = template.Notes ?? string.Empty;
+        }
+
+        private void CreateInspectionFromTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            var template = SelectInspectionTemplate();
+            if (template == null)
+                return;
+
+            var countText = Microsoft.VisualBasic.Interaction.InputBox(
+                "Сколько записей добавить по шаблону?",
+                "Добавить осмотры по шаблону",
+                "1")?.Trim();
+            if (string.IsNullOrWhiteSpace(countText))
+                return;
+
+            if (!int.TryParse(countText, out var count) || count <= 0)
+                count = 1;
+
+            count = Math.Clamp(count, 1, 52);
+            var period = Math.Max(1, template.ReminderPeriodDays);
+            var startDate = InspectionReminderStartDatePicker?.SelectedDate ?? DateTime.Today;
+            var added = 0;
+
+            for (var i = 0; i < count; i++)
+            {
+                var row = new InspectionJournalEntry
+                {
+                    JournalName = template.JournalName ?? string.Empty,
+                    InspectionName = template.InspectionName ?? string.Empty,
+                    ReminderStartDate = startDate.AddDays(i * period),
+                    ReminderPeriodDays = period,
+                    LastCompletedDate = null,
+                    Notes = template.Notes ?? string.Empty
+                };
+
+                if (!ValidateInspectionRow(row, out _))
+                    continue;
+
+                currentObject.InspectionJournal.Add(row);
+                added++;
+            }
+
+            if (added == 0)
+            {
+                MessageBox.Show("Не удалось добавить записи по шаблону.");
+                return;
+            }
+
+            inspectionLookupsDirty = true;
+            RefreshInspectionJournalState();
+            SaveState();
+            MessageBox.Show($"Добавлено записей осмотров: {added}.");
+        }
+
+        private InspectionJournalTemplate SelectInspectionTemplate()
+        {
+            if (currentObject?.InspectionTemplates == null || currentObject.InspectionTemplates.Count == 0)
+            {
+                MessageBox.Show("Сначала сохраните хотя бы один шаблон осмотра.");
+                return null;
+            }
+
+            var selectedName = PromptSelectOption(
+                "Выберите шаблон осмотра",
+                "Шаблон",
+                currentObject.InspectionTemplates.Select(x => x.Name));
+
+            if (string.IsNullOrWhiteSpace(selectedName))
+                return null;
+
+            return currentObject.InspectionTemplates
+                .FirstOrDefault(x => string.Equals(x.Name, selectedName, StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        private void OpenInspectionReport_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject?.InspectionJournal == null || currentObject.InspectionJournal.Count == 0)
+            {
+                MessageBox.Show("Журнал осмотров пуст.");
+                return;
+            }
+
+            var activeRows = currentObject.InspectionJournal.Where(x => !x.IsCompletionHistory).ToList();
+            var completedRows = currentObject.InspectionJournal.Where(x => x.IsCompletionHistory).ToList();
+            var overdueRows = activeRows.Where(x => x.IsDue).OrderBy(x => x.NextReminderDate).ToList();
+            var dueTodayRows = activeRows.Where(x => !x.IsDue && x.NextReminderDate.Date == DateTime.Today.Date).ToList();
+
+            var dialog = new Window
+            {
+                Title = "Отчет по осмотрам",
+                Owner = this,
+                Width = 980,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            dialog.Content = root;
+
+            var summary = new TextBlock
+            {
+                Text = $"Активных: {activeRows.Count}  |  Просроченных: {overdueRows.Count}  |  На сегодня: {dueTodayRows.Count}  |  Выполнено (история): {completedRows.Count}",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            root.Children.Add(summary);
+
+            var tabs = new TabControl();
+            Grid.SetRow(tabs, 1);
+            root.Children.Add(tabs);
+
+            TabItem BuildTab(string header, IEnumerable<InspectionJournalEntry> rows)
+            {
+                var grid = new DataGrid
+                {
+                    AutoGenerateColumns = false,
+                    CanUserAddRows = false,
+                    CanUserDeleteRows = false,
+                    IsReadOnly = true,
+                    ItemsSource = rows.ToList(),
+                    ColumnWidth = DataGridLength.Auto
+                };
+                grid.Columns.Add(new DataGridTextColumn { Header = "Журнал", Binding = new Binding(nameof(InspectionJournalEntry.JournalDisplay)), Width = 280 });
+                grid.Columns.Add(new DataGridTextColumn { Header = "Осмотр", Binding = new Binding(nameof(InspectionJournalEntry.InspectionDisplay)), Width = 320 });
+                grid.Columns.Add(new DataGridTextColumn { Header = "Следующая дата", Binding = new Binding(nameof(InspectionJournalEntry.NextReminderDate)) { StringFormat = "dd.MM.yyyy" }, Width = 120 });
+                grid.Columns.Add(new DataGridTextColumn { Header = "Статус", Binding = new Binding(nameof(InspectionJournalEntry.ReminderStatusDisplay)), Width = 240 });
+                grid.Columns.Add(new DataGridTextColumn { Header = "Комментарий", Binding = new Binding(nameof(InspectionJournalEntry.NotesDisplay)), Width = 260 });
+                DataGridSizingHelper.SetEnableSmartSizing(grid, true);
+
+                return new TabItem
+                {
+                    Header = header,
+                    Content = grid
+                };
+            }
+
+            tabs.Items.Add(BuildTab("Просроченные", overdueRows));
+            tabs.Items.Add(BuildTab("На сегодня", dueTodayRows));
+            tabs.Items.Add(BuildTab("Выполненные", completedRows.OrderByDescending(x => x.LastCompletedDate ?? DateTime.MinValue)));
+
+            dialog.ShowDialog();
         }
 
         private bool ValidateInspectionRow(InspectionJournalEntry row, out string message)
@@ -5573,8 +8635,11 @@ namespace ConstructionControl
             selectedProductionRow = row;
             productionLookupsDirty = true;
             RefreshProductionJournalState();
-            ProductionJournalGrid.SelectedItem = row;
-            ProductionJournalGrid.ScrollIntoView(row);
+            if (ProductionJournalGrid != null && row != null && ProductionJournalGrid.Items.Contains(row))
+            {
+                ProductionJournalGrid.SelectedItem = row;
+                ProductionJournalGrid.ScrollIntoView(row);
+            }
             SaveState();
         }
 
@@ -5853,6 +8918,68 @@ namespace ConstructionControl
             return dialog.ShowDialog() == true ? result : null;
         }
 
+        private void EnsureProductionAutoFillProfilesStorage()
+        {
+            EnsureProductionJournalStorage();
+            currentObject.ProductionAutoFillProfiles ??= new List<ProductionAutoFillProfile>();
+
+            if (currentObject.ProductionAutoFillProfiles.Count == 0)
+            {
+                currentObject.ProductionAutoFillProfiles.Add(new ProductionAutoFillProfile
+                {
+                    Name = "Базовый",
+                    Settings = CloneProductionAutoFillSettings(currentObject.ProductionAutoFillSettings)
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(currentObject.SelectedProductionAutoFillProfileName))
+            {
+                currentObject.SelectedProductionAutoFillProfileName = currentObject.ProductionAutoFillProfiles
+                    .Select(x => x.Name?.Trim())
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                    ?? string.Empty;
+            }
+
+            RefreshProductionAutoFillProfileOptions();
+        }
+
+        private static ProductionAutoFillSettings CloneProductionAutoFillSettings(ProductionAutoFillSettings source)
+        {
+            source ??= new ProductionAutoFillSettings();
+            return new ProductionAutoFillSettings
+            {
+                MinQuantityPerRow = source.MinQuantityPerRow,
+                MaxQuantityPerRow = source.MaxQuantityPerRow,
+                MinRowsPerRun = source.MinRowsPerRun,
+                TargetRowsPerRun = source.TargetRowsPerRun,
+                MaxRowsPerRun = source.MaxRowsPerRun,
+                MaxItemsPerRow = source.MaxItemsPerRow,
+                PreferSelectedTypeOnly = source.PreferSelectedTypeOnly,
+                UseBalancedDistribution = source.UseBalancedDistribution,
+                PreferDemandDeficit = source.PreferDemandDeficit,
+                RespectSelectedBlocksAndMarks = source.RespectSelectedBlocksAndMarks,
+                AllowMixedMaterialsInRow = source.AllowMixedMaterialsInRow
+            };
+        }
+
+        private static void CopyProductionAutoFillSettings(ProductionAutoFillSettings source, ProductionAutoFillSettings target)
+        {
+            if (source == null || target == null)
+                return;
+
+            target.MinQuantityPerRow = source.MinQuantityPerRow;
+            target.MaxQuantityPerRow = source.MaxQuantityPerRow;
+            target.MinRowsPerRun = source.MinRowsPerRun;
+            target.TargetRowsPerRun = source.TargetRowsPerRun;
+            target.MaxRowsPerRun = source.MaxRowsPerRun;
+            target.MaxItemsPerRow = source.MaxItemsPerRow;
+            target.PreferSelectedTypeOnly = source.PreferSelectedTypeOnly;
+            target.UseBalancedDistribution = source.UseBalancedDistribution;
+            target.PreferDemandDeficit = source.PreferDemandDeficit;
+            target.RespectSelectedBlocksAndMarks = source.RespectSelectedBlocksAndMarks;
+            target.AllowMixedMaterialsInRow = source.AllowMixedMaterialsInRow;
+        }
+
         private void ConfigureProductionAutoFill_Click(object sender, RoutedEventArgs e)
         {
             if (currentObject == null)
@@ -5862,93 +8989,250 @@ namespace ConstructionControl
             }
 
             EnsureProductionJournalStorage();
+            EnsureProductionAutoFillProfilesStorage();
             var settings = currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+            var working = CloneProductionAutoFillSettings(settings);
+            var profileNames = new ObservableCollection<string>(currentObject.ProductionAutoFillProfiles
+                .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                .Select(x => x.Name.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
 
             var dialog = new Window
             {
                 Title = "Настройки автомастера ПР",
                 Owner = this,
-                Width = 520,
-                Height = 560,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                ResizeMode = ResizeMode.NoResize
+                Width = 620,
+                Height = 760,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
 
-            TextBox CreateNumericBox(string text, int rowIndex, string caption)
+            var profilePanel = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+            profilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            profilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            profilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            profilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            profilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(profilePanel, 0);
+            root.Children.Add(profilePanel);
+
+            profilePanel.Children.Add(new TextBlock
+            {
+                Text = "Профиль:",
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+
+            var profileBox = new ComboBox
+            {
+                Margin = new Thickness(0, 0, 8, 0),
+                ItemsSource = profileNames,
+                IsEditable = false
+            };
+            var initiallySelectedProfile = currentObject.SelectedProductionAutoFillProfileName?.Trim();
+            if (!string.IsNullOrWhiteSpace(initiallySelectedProfile)
+                && profileNames.Any(x => string.Equals(x, initiallySelectedProfile, StringComparison.CurrentCultureIgnoreCase)))
+            {
+                profileBox.SelectedItem = profileNames.First(x => string.Equals(x, initiallySelectedProfile, StringComparison.CurrentCultureIgnoreCase));
+            }
+            else
+            {
+                profileBox.SelectedItem = profileNames.FirstOrDefault();
+            }
+            Grid.SetColumn(profileBox, 1);
+            profilePanel.Children.Add(profileBox);
+
+            var applyProfileButton = new Button { Content = "Применить", MinWidth = 110, Style = FindResource("SecondaryButton") as Style };
+            Grid.SetColumn(applyProfileButton, 2);
+            profilePanel.Children.Add(applyProfileButton);
+            var saveProfileButton = new Button { Content = "Сохранить как", MinWidth = 130, Margin = new Thickness(8, 0, 0, 0), Style = FindResource("SecondaryButton") as Style };
+            Grid.SetColumn(saveProfileButton, 3);
+            profilePanel.Children.Add(saveProfileButton);
+            var deleteProfileButton = new Button { Content = "Удалить", MinWidth = 100, Margin = new Thickness(8, 0, 0, 0), Style = FindResource("SecondaryButton") as Style };
+            Grid.SetColumn(deleteProfileButton, 4);
+            profilePanel.Children.Add(deleteProfileButton);
+
+            var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            Grid.SetRow(scroll, 1);
+            root.Children.Add(scroll);
+
+            var contentPanel = new StackPanel();
+            scroll.Content = contentPanel;
+
+            TextBox CreateNumericBox(string text, string caption)
             {
                 var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
-                Grid.SetRow(panel, rowIndex);
                 panel.Children.Add(new TextBlock { Text = caption, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
                 var box = new TextBox { Text = text };
                 panel.Children.Add(box);
-                root.Children.Add(panel);
+                contentPanel.Children.Add(panel);
                 return box;
             }
 
-            var minBox = CreateNumericBox(settings.MinQuantityPerRow.ToString(), 0, "Минимум в строке");
-            var maxBox = CreateNumericBox(settings.MaxQuantityPerRow.ToString(), 1, "Максимум в строке");
-            var minRowsBox = CreateNumericBox(settings.MinRowsPerRun.ToString(), 2, "Минимум строк за один запуск");
-            var targetRowsBox = CreateNumericBox(settings.TargetRowsPerRun.ToString(), 3, "Целевое число строк");
-            var maxRowsBox = CreateNumericBox(settings.MaxRowsPerRun.ToString(), 4, "Максимум строк за один запуск");
-            var itemsPerRowBox = CreateNumericBox(settings.MaxItemsPerRow.ToString(), 5, "Максимум элементов в одной строке");
+            var minBox = CreateNumericBox(working.MinQuantityPerRow.ToString(CultureInfo.InvariantCulture), "Минимум в строке");
+            var maxBox = CreateNumericBox(working.MaxQuantityPerRow.ToString(CultureInfo.InvariantCulture), "Максимум в строке");
+            var minRowsBox = CreateNumericBox(working.MinRowsPerRun.ToString(CultureInfo.InvariantCulture), "Минимум строк за один запуск");
+            var targetRowsBox = CreateNumericBox(working.TargetRowsPerRun.ToString(CultureInfo.InvariantCulture), "Целевое число строк");
+            var maxRowsBox = CreateNumericBox(working.MaxRowsPerRun.ToString(CultureInfo.InvariantCulture), "Максимум строк за один запуск");
+            var itemsPerRowBox = CreateNumericBox(working.MaxItemsPerRow.ToString(CultureInfo.InvariantCulture), "Максимум элементов в одной строке");
 
             var preferTypeCheck = new CheckBox
             {
                 Content = "Брать материалы только из выбранного типа",
-                IsChecked = settings.PreferSelectedTypeOnly,
+                IsChecked = working.PreferSelectedTypeOnly,
                 Margin = new Thickness(0, 0, 0, 10)
             };
-            Grid.SetRow(preferTypeCheck, 6);
-            root.Children.Add(preferTypeCheck);
+            contentPanel.Children.Add(preferTypeCheck);
 
             var balanceCheck = new CheckBox
             {
                 Content = "Распределять количество более равномерно",
-                IsChecked = settings.UseBalancedDistribution,
+                IsChecked = working.UseBalancedDistribution,
                 Margin = new Thickness(0, 0, 0, 10)
             };
-            Grid.SetRow(balanceCheck, 7);
-            root.Children.Add(balanceCheck);
+            contentPanel.Children.Add(balanceCheck);
 
             var deficitCheck = new CheckBox
             {
                 Content = "Сначала закрывать дефицит по сводке",
-                IsChecked = settings.PreferDemandDeficit,
+                IsChecked = working.PreferDemandDeficit,
                 Margin = new Thickness(0, 0, 0, 10)
             };
-            Grid.SetRow(deficitCheck, 8);
-            root.Children.Add(deficitCheck);
+            contentPanel.Children.Add(deficitCheck);
 
             var selectedCellsCheck = new CheckBox
             {
                 Content = "Учитывать только выбранные блоки и отметки из формы",
-                IsChecked = settings.RespectSelectedBlocksAndMarks,
+                IsChecked = working.RespectSelectedBlocksAndMarks,
                 Margin = new Thickness(0, 0, 0, 10)
             };
-            Grid.SetRow(selectedCellsCheck, 9);
-            root.Children.Add(selectedCellsCheck);
+            contentPanel.Children.Add(selectedCellsCheck);
 
             var mixedRowsCheck = new CheckBox
             {
                 Content = "Разрешать несколько элементов в одной строке",
-                IsChecked = settings.AllowMixedMaterialsInRow
+                IsChecked = working.AllowMixedMaterialsInRow,
+                Margin = new Thickness(0, 0, 0, 10)
             };
-            Grid.SetRow(mixedRowsCheck, 10);
-            root.Children.Add(mixedRowsCheck);
+            contentPanel.Children.Add(mixedRowsCheck);
+
+            void LoadUiFromSettings(ProductionAutoFillSettings source)
+            {
+                minBox.Text = source.MinQuantityPerRow.ToString(CultureInfo.InvariantCulture);
+                maxBox.Text = source.MaxQuantityPerRow.ToString(CultureInfo.InvariantCulture);
+                minRowsBox.Text = source.MinRowsPerRun.ToString(CultureInfo.InvariantCulture);
+                targetRowsBox.Text = source.TargetRowsPerRun.ToString(CultureInfo.InvariantCulture);
+                maxRowsBox.Text = source.MaxRowsPerRun.ToString(CultureInfo.InvariantCulture);
+                itemsPerRowBox.Text = source.MaxItemsPerRow.ToString(CultureInfo.InvariantCulture);
+                preferTypeCheck.IsChecked = source.PreferSelectedTypeOnly;
+                balanceCheck.IsChecked = source.UseBalancedDistribution;
+                deficitCheck.IsChecked = source.PreferDemandDeficit;
+                selectedCellsCheck.IsChecked = source.RespectSelectedBlocksAndMarks;
+                mixedRowsCheck.IsChecked = source.AllowMixedMaterialsInRow;
+            }
+
+            void ReadUiToSettings(ProductionAutoFillSettings target)
+            {
+                target.MinQuantityPerRow = Math.Max(1, int.TryParse(minBox.Text, out var min) ? min : 4);
+                target.MaxQuantityPerRow = Math.Max(target.MinQuantityPerRow, int.TryParse(maxBox.Text, out var max) ? max : 8);
+                target.MinRowsPerRun = Math.Clamp(int.TryParse(minRowsBox.Text, out var minRows) ? minRows : 4, 1, 12);
+                target.TargetRowsPerRun = Math.Clamp(int.TryParse(targetRowsBox.Text, out var targetRows) ? targetRows : 5, target.MinRowsPerRun, 16);
+                target.MaxRowsPerRun = Math.Clamp(int.TryParse(maxRowsBox.Text, out var maxRows) ? maxRows : 6, target.TargetRowsPerRun, 20);
+                target.MaxItemsPerRow = Math.Clamp(int.TryParse(itemsPerRowBox.Text, out var maxItems) ? maxItems : 2, 1, 6);
+                target.PreferSelectedTypeOnly = preferTypeCheck.IsChecked == true;
+                target.UseBalancedDistribution = balanceCheck.IsChecked == true;
+                target.PreferDemandDeficit = deficitCheck.IsChecked == true;
+                target.RespectSelectedBlocksAndMarks = selectedCellsCheck.IsChecked == true;
+                target.AllowMixedMaterialsInRow = mixedRowsCheck.IsChecked == true;
+            }
+
+            ProductionAutoFillProfile FindProfile(string profileName)
+                => currentObject.ProductionAutoFillProfiles.FirstOrDefault(x =>
+                    string.Equals(x.Name, profileName, StringComparison.CurrentCultureIgnoreCase));
+
+            void ApplySelectedProfile()
+            {
+                var selectedProfileName = profileBox.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selectedProfileName))
+                    return;
+
+                var profile = FindProfile(selectedProfileName);
+                if (profile?.Settings == null)
+                    return;
+
+                currentObject.SelectedProductionAutoFillProfileName = selectedProfileName.Trim();
+                working = CloneProductionAutoFillSettings(profile.Settings);
+                LoadUiFromSettings(working);
+            }
+
+            applyProfileButton.Click += (_, _) => ApplySelectedProfile();
+            profileBox.SelectionChanged += (_, _) => ApplySelectedProfile();
+
+            saveProfileButton.Click += (_, _) =>
+            {
+                ReadUiToSettings(working);
+                var inputName = Microsoft.VisualBasic.Interaction.InputBox(
+                    "Введите название профиля автомастера ПР:",
+                    "Сохранить профиль",
+                    profileBox.Text?.Trim() ?? string.Empty)?.Trim();
+
+                if (string.IsNullOrWhiteSpace(inputName))
+                    return;
+
+                var existing = FindProfile(inputName);
+                if (existing == null)
+                {
+                    existing = new ProductionAutoFillProfile { Name = inputName };
+                    currentObject.ProductionAutoFillProfiles.Add(existing);
+                }
+
+                existing.Name = inputName;
+                existing.Settings = CloneProductionAutoFillSettings(working);
+
+                if (!profileNames.Contains(inputName))
+                    profileNames.Add(inputName);
+
+                var sortedNames = profileNames.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+                profileNames.Clear();
+                foreach (var name in sortedNames)
+                    profileNames.Add(name);
+
+                profileBox.SelectedItem = inputName;
+                currentObject.SelectedProductionAutoFillProfileName = inputName;
+                RefreshProductionAutoFillProfileOptions();
+                SaveState();
+            };
+
+            deleteProfileButton.Click += (_, _) =>
+            {
+                var selectedProfileName = profileBox.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selectedProfileName))
+                {
+                    MessageBox.Show("Выберите профиль для удаления.");
+                    return;
+                }
+
+                var profile = FindProfile(selectedProfileName);
+                if (profile == null)
+                    return;
+
+                if (MessageBox.Show($"Удалить профиль \"{selectedProfileName}\"?", "Автомастер ПР", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                    return;
+
+                currentObject.ProductionAutoFillProfiles.Remove(profile);
+                profileNames.Remove(selectedProfileName);
+                profileBox.SelectedItem = profileNames.FirstOrDefault();
+                currentObject.SelectedProductionAutoFillProfileName = profileBox.SelectedItem?.ToString() ?? string.Empty;
+                RefreshProductionAutoFillProfileOptions();
+                SaveState();
+            };
 
             var footer = new StackPanel
             {
@@ -5956,7 +9240,7 @@ namespace ConstructionControl
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 14, 0, 0)
             };
-            Grid.SetRow(footer, 11);
+            Grid.SetRow(footer, 2);
             root.Children.Add(footer);
 
             var saveButton = new Button { Content = "Сохранить", MinWidth = 120, IsDefault = true };
@@ -5966,17 +9250,9 @@ namespace ConstructionControl
 
             saveButton.Click += (_, _) =>
             {
-                settings.MinQuantityPerRow = Math.Max(1, int.TryParse(minBox.Text, out var min) ? min : 4);
-                settings.MaxQuantityPerRow = Math.Max(settings.MinQuantityPerRow, int.TryParse(maxBox.Text, out var max) ? max : 8);
-                settings.MinRowsPerRun = Math.Clamp(int.TryParse(minRowsBox.Text, out var minRows) ? minRows : 4, 1, 12);
-                settings.TargetRowsPerRun = Math.Clamp(int.TryParse(targetRowsBox.Text, out var targetRows) ? targetRows : 5, settings.MinRowsPerRun, 16);
-                settings.MaxRowsPerRun = Math.Clamp(int.TryParse(maxRowsBox.Text, out var maxRows) ? maxRows : 6, settings.TargetRowsPerRun, 20);
-                settings.MaxItemsPerRow = Math.Clamp(int.TryParse(itemsPerRowBox.Text, out var maxItems) ? maxItems : 2, 1, 6);
-                settings.PreferSelectedTypeOnly = preferTypeCheck.IsChecked == true;
-                settings.UseBalancedDistribution = balanceCheck.IsChecked == true;
-                settings.PreferDemandDeficit = deficitCheck.IsChecked == true;
-                settings.RespectSelectedBlocksAndMarks = selectedCellsCheck.IsChecked == true;
-                settings.AllowMixedMaterialsInRow = mixedRowsCheck.IsChecked == true;
+                ReadUiToSettings(working);
+                CopyProductionAutoFillSettings(working, settings);
+                currentObject.SelectedProductionAutoFillProfileName = profileBox.SelectedItem?.ToString() ?? currentObject.SelectedProductionAutoFillProfileName;
                 dialog.DialogResult = true;
             };
 
@@ -5994,7 +9270,8 @@ namespace ConstructionControl
             }
 
             EnsureProductionJournalStorage();
-            var settings = currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+            EnsureProductionAutoFillProfilesStorage();
+            var settings = ResolveProductionAutoFillSettingsForRun();
             var baseDate = ProductionDatePicker?.SelectedDate ?? DateTime.Today;
             var baseAction = string.IsNullOrWhiteSpace(ProductionActionBox?.Text) ? (productionActions.FirstOrDefault() ?? "Монтаж") : ProductionActionBox.Text.Trim();
             var baseWork = ProductionWorkBox?.Text?.Trim();
@@ -6051,17 +9328,19 @@ namespace ConstructionControl
             var addedRows = new List<ProductionJournalEntry>();
             foreach (var plannedItems in plannedRows)
             {
+                var rowWork = string.IsNullOrWhiteSpace(baseWork) ? groupForMarks : baseWork;
+                var rowDeviation = ResolveAutoFillDeviation(rowWork, baseDeviation);
                 var row = new ProductionJournalEntry
                 {
                     Date = baseDate,
                     ActionName = baseAction,
-                    WorkName = string.IsNullOrWhiteSpace(baseWork) ? groupForMarks : baseWork,
+                    WorkName = rowWork,
                     ElementsText = FormatProductionItems(plannedItems),
                     BlocksText = baseBlocks,
                     MarksText = baseMarks,
                     BrigadeName = baseBrigade,
                     Weather = baseWeather,
-                    Deviations = baseDeviation,
+                    Deviations = rowDeviation,
                     RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox?.IsChecked == true
                 };
 
@@ -6080,10 +9359,42 @@ namespace ConstructionControl
 
             selectedProductionRow = addedRows.Last();
             RefreshProductionJournalState();
-            ProductionJournalGrid.SelectedItem = selectedProductionRow;
-            ProductionJournalGrid.ScrollIntoView(selectedProductionRow);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (selectedProductionRow == null || ProductionJournalGrid == null)
+                    return;
+
+                if (ProductionJournalGrid.Items.Contains(selectedProductionRow))
+                {
+                    ProductionJournalGrid.SelectedItem = selectedProductionRow;
+                    ProductionJournalGrid.ScrollIntoView(selectedProductionRow);
+                }
+            }), DispatcherPriority.Background);
             SaveState();
             MessageBox.Show($"Автозаполнение добавило {addedRows.Count} строк(и) в ПР по выбранным блокам и отметкам.");
+        }
+
+        private ProductionAutoFillSettings ResolveProductionAutoFillSettingsForRun()
+        {
+            EnsureProductionAutoFillProfilesStorage();
+            var fallback = CloneProductionAutoFillSettings(currentObject?.ProductionAutoFillSettings);
+            if (currentObject?.ProductionAutoFillProfiles == null || currentObject.ProductionAutoFillProfiles.Count == 0)
+                return fallback;
+
+            var selectedProfileName = ProductionAutoFillProfileBox?.SelectedItem?.ToString()?.Trim();
+            if (string.IsNullOrWhiteSpace(selectedProfileName))
+                selectedProfileName = currentObject.SelectedProductionAutoFillProfileName?.Trim();
+
+            if (string.IsNullOrWhiteSpace(selectedProfileName))
+                return fallback;
+
+            var profile = currentObject.ProductionAutoFillProfiles.FirstOrDefault(x =>
+                string.Equals(x.Name?.Trim(), selectedProfileName, StringComparison.CurrentCultureIgnoreCase));
+            if (profile?.Settings == null)
+                return fallback;
+
+            currentObject.SelectedProductionAutoFillProfileName = profile.Name?.Trim() ?? string.Empty;
+            return CloneProductionAutoFillSettings(profile.Settings);
         }
 
         private string ResolveProductionAutoFillGroup(string currentWork)
@@ -6340,12 +9651,13 @@ namespace ConstructionControl
             ProductionWorkBox.Text = productionTargets.FirstOrDefault() ?? string.Empty;
             ProductionElementsBox.Text = string.Empty;
             ProductionBlocksBox.Text = productionBlockOptions.FirstOrDefault() ?? "1";
-            ProductionMarksBox.Text = productionMarkOptions.FirstOrDefault() ?? string.Empty;
             ProductionBrigadeBox.Text = timesheetAssignableBrigades.FirstOrDefault() ?? string.Empty;
             ProductionWeatherBox.Text = string.Empty;
             ProductionDeviationBox.Text = string.Empty;
             ProductionHiddenWorksCheckBox.IsChecked = false;
             RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
         }
 
         private void FillProductionForm(ProductionJournalEntry row)
@@ -6357,6 +9669,8 @@ namespace ConstructionControl
             ProductionActionBox.Text = row.ActionName ?? string.Empty;
             ProductionWorkBox.Text = row.WorkName ?? string.Empty;
             RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
             ProductionElementsBox.Text = row.ElementsText ?? string.Empty;
             ProductionBlocksBox.Text = row.BlocksText ?? string.Empty;
             ProductionMarksBox.Text = row.MarksText ?? string.Empty;
@@ -6380,16 +9694,236 @@ namespace ConstructionControl
             row.RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox.IsChecked == true;
         }
 
+        private void SaveProductionTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            EnsureProductionJournalStorage();
+            var name = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите название шаблона ПР:",
+                "Сохранить шаблон",
+                (ProductionWorkBox?.Text ?? string.Empty).Trim())?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var template = new ProductionJournalTemplate
+            {
+                Name = name,
+                ActionName = ProductionActionBox?.Text?.Trim() ?? string.Empty,
+                WorkName = ProductionWorkBox?.Text?.Trim() ?? string.Empty,
+                ElementsText = ProductionElementsBox?.Text?.Trim() ?? string.Empty,
+                BlocksText = ProductionBlocksBox?.Text?.Trim() ?? string.Empty,
+                MarksText = ProductionMarksBox?.Text?.Trim() ?? string.Empty,
+                BrigadeName = ProductionBrigadeBox?.Text?.Trim() ?? string.Empty,
+                Weather = ProductionWeatherBox?.Text?.Trim() ?? string.Empty,
+                Deviations = ProductionDeviationBox?.Text?.Trim() ?? string.Empty,
+                RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox?.IsChecked == true
+            };
+
+            var existing = currentObject.ProductionTemplates
+                .FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase));
+            if (existing != null)
+                currentObject.ProductionTemplates.Remove(existing);
+
+            currentObject.ProductionTemplates.Add(template);
+            SaveState();
+        }
+
+        private void ApplyProductionTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            var template = SelectProductionTemplate();
+            if (template == null)
+                return;
+
+            ProductionDatePicker.SelectedDate ??= DateTime.Today;
+            ProductionActionBox.Text = template.ActionName ?? string.Empty;
+            ProductionWorkBox.Text = template.WorkName ?? string.Empty;
+            RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
+            ProductionElementsBox.Text = template.ElementsText ?? string.Empty;
+            ProductionBlocksBox.Text = template.BlocksText ?? string.Empty;
+            ProductionMarksBox.Text = template.MarksText ?? string.Empty;
+            ProductionBrigadeBox.Text = template.BrigadeName ?? string.Empty;
+            ProductionWeatherBox.Text = template.Weather ?? string.Empty;
+            ProductionDeviationBox.Text = template.Deviations ?? string.Empty;
+            ProductionHiddenWorksCheckBox.IsChecked = template.RequiresHiddenWorkAct;
+        }
+
+        private void CreateProductionFromTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            var template = SelectProductionTemplate();
+            if (template == null)
+                return;
+
+            var countText = Microsoft.VisualBasic.Interaction.InputBox(
+                "Сколько одинаковых записей добавить по шаблону?",
+                "Добавить по шаблону ПР",
+                "1")?.Trim();
+            if (string.IsNullOrWhiteSpace(countText))
+                return;
+
+            if (!int.TryParse(countText, out var count) || count <= 0)
+                count = 1;
+
+            count = Math.Clamp(count, 1, 31);
+            var baseDate = ProductionDatePicker?.SelectedDate ?? DateTime.Today;
+            var added = 0;
+
+            for (var i = 0; i < count; i++)
+            {
+                var row = new ProductionJournalEntry
+                {
+                    Date = baseDate.AddDays(i),
+                    ActionName = template.ActionName ?? string.Empty,
+                    WorkName = template.WorkName ?? string.Empty,
+                    ElementsText = template.ElementsText ?? string.Empty,
+                    BlocksText = template.BlocksText ?? string.Empty,
+                    MarksText = template.MarksText ?? string.Empty,
+                    BrigadeName = template.BrigadeName ?? string.Empty,
+                    Weather = template.Weather ?? string.Empty,
+                    Deviations = template.Deviations ?? string.Empty,
+                    RequiresHiddenWorkAct = template.RequiresHiddenWorkAct
+                };
+
+                if (!ApplyProductionRowChanges(row))
+                    continue;
+
+                currentObject.ProductionJournal.Add(row);
+                added++;
+            }
+
+            if (added == 0)
+            {
+                MessageBox.Show("Не удалось добавить записи по шаблону. Проверьте доступные остатки.");
+                return;
+            }
+
+            productionLookupsDirty = true;
+            RefreshProductionJournalState();
+            SaveState();
+            MessageBox.Show($"Добавлено строк по шаблону: {added}.");
+        }
+
+        private ProductionJournalTemplate SelectProductionTemplate()
+        {
+            if (currentObject?.ProductionTemplates == null || currentObject.ProductionTemplates.Count == 0)
+            {
+                MessageBox.Show("Сначала сохраните хотя бы один шаблон ПР.");
+                return null;
+            }
+
+            var options = currentObject.ProductionTemplates
+                .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var selectedName = PromptSelectOption("Выберите шаблон ПР", "Шаблон", options.Select(x => x.Name));
+            if (string.IsNullOrWhiteSpace(selectedName))
+                return null;
+
+            return options.FirstOrDefault(x => string.Equals(x.Name, selectedName, StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        private string PromptSelectOption(string title, string caption, IEnumerable<string> options)
+        {
+            var items = (options ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (items.Count == 0)
+                return null;
+
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = this,
+                Width = 460,
+                Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
+
+            root.Children.Add(new TextBlock
+            {
+                Text = caption,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            var list = new ListBox
+            {
+                ItemsSource = items
+            };
+            Grid.SetRow(list, 1);
+            root.Children.Add(list);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            var okButton = new Button { Content = "Выбрать", MinWidth = 110, IsDefault = true };
+            var cancelButton = new Button { Content = "Отмена", MinWidth = 110, IsCancel = true, Style = FindResource("SecondaryButton") as Style, Margin = new Thickness(8, 0, 0, 0) };
+            footer.Children.Add(okButton);
+            footer.Children.Add(cancelButton);
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            string selected = null;
+            okButton.Click += (_, _) =>
+            {
+                selected = list.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selected))
+                    return;
+
+                dialog.DialogResult = true;
+            };
+
+            list.MouseDoubleClick += (_, _) =>
+            {
+                selected = list.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selected))
+                    return;
+
+                dialog.DialogResult = true;
+            };
+
+            return dialog.ShowDialog() == true ? selected : null;
+        }
+
         private bool ApplyProductionRowChanges(ProductionJournalEntry row)
         {
             if (row == null || currentObject?.ProductionJournal == null)
                 return false;
 
             ApplyProductionDefaults(row);
+            row.IsAutoCorrectedQuantity = false;
 
             var originalItems = ParseProductionItems(row.ElementsText);
             var adjustedMessages = new List<string>();
-            var adjustedItems = AdjustProductionItems(row, originalItems, adjustedMessages);
+            var adjustedItems = AdjustProductionItems(row, originalItems, adjustedMessages, out var hasCorrections);
+            row.IsAutoCorrectedQuantity = hasCorrections;
             row.ElementsText = FormatProductionItems(adjustedItems);
 
             if (!ValidateProductionRow(row, out var message))
@@ -6445,6 +9979,13 @@ namespace ConstructionControl
 
             if (string.IsNullOrWhiteSpace(row.Deviations))
             {
+                var mappedDeviation = GetDeviationOptionsForWork(row.WorkName, includeCurrentJournal: false)
+                    .FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(mappedDeviation))
+                {
+                    row.Deviations = mappedDeviation;
+                }
+
                 var previousDeviation = currentObject?.ProductionJournal?
                     .Where(x => !ReferenceEquals(x, row)
                         && string.Equals(x.ActionName?.Trim(), row.ActionName?.Trim(), StringComparison.CurrentCultureIgnoreCase)
@@ -6454,7 +9995,7 @@ namespace ConstructionControl
                     .Select(x => x.Deviations?.Trim())
                     .FirstOrDefault();
 
-                if (!string.IsNullOrWhiteSpace(previousDeviation))
+                if (string.IsNullOrWhiteSpace(row.Deviations) && !string.IsNullOrWhiteSpace(previousDeviation))
                     row.Deviations = previousDeviation;
             }
 
@@ -6506,6 +10047,8 @@ namespace ConstructionControl
             row.Deviations = snapshot.Deviations;
             row.RequiresHiddenWorkAct = snapshot.RequiresHiddenWorkAct;
             row.RemainingInfo = snapshot.RemainingInfo;
+            row.IsAutoCorrectedQuantity = snapshot.IsAutoCorrectedQuantity;
+            row.IsGeneratedCompanion = snapshot.IsGeneratedCompanion;
         }
 
         private bool ValidateProductionRow(ProductionJournalEntry row, out string message)
@@ -6588,9 +10131,10 @@ namespace ConstructionControl
                 .ToList();
         }
 
-        private List<ProductionItemQuantity> AdjustProductionItems(ProductionJournalEntry row, List<ProductionItemQuantity> items, List<string> adjustedMessages)
+        private List<ProductionItemQuantity> AdjustProductionItems(ProductionJournalEntry row, List<ProductionItemQuantity> items, List<string> adjustedMessages, out bool hasCorrections)
         {
             var result = new List<ProductionItemQuantity>();
+            hasCorrections = false;
 
             foreach (var item in items)
             {
@@ -6604,15 +10148,17 @@ namespace ConstructionControl
                     .Sum(x => x.Quantity);
 
                 var allowed = Math.Max(0, arrived - alreadyMounted);
-                var finalQuantity = Math.Min(item.Quantity, allowed);
+                var finalQuantity = CalculationCore.ClampToAvailable(item.Quantity, arrived, alreadyMounted);
                 if (finalQuantity <= 0)
                 {
+                    hasCorrections = true;
                     adjustedMessages?.Add($"\"{item.MaterialName}\" не добавлен: доступное количество закончилось.");
                     continue;
                 }
 
-                if (finalQuantity + 0.0001 < item.Quantity)
+                if (CalculationCore.HasDifference(finalQuantity, item.Quantity) && finalQuantity < item.Quantity)
                 {
+                    hasCorrections = true;
                     adjustedMessages?.Add($"\"{item.MaterialName}\" скорректирован до {FormatNumber(finalQuantity)}. Больше записать нельзя: пришло {FormatNumber(arrived)}, уже смонтировано {FormatNumber(alreadyMounted)}.");
                 }
 
@@ -6650,76 +10196,6 @@ namespace ConstructionControl
                 foreach (var row in dateGroup)
                     row.Weather = weather;
             }
-
-            var merged = new List<ProductionJournalEntry>();
-            foreach (var dateGroup in currentObject.ProductionJournal
-                .OrderBy(x => x.Date)
-                .GroupBy(x => x.Date.Date))
-            {
-                var map = new Dictionary<string, ProductionJournalEntry>(StringComparer.CurrentCultureIgnoreCase);
-                foreach (var row in dateGroup)
-                {
-                    var key = BuildProductionMergeKey(row);
-                    if (!map.TryGetValue(key, out var existing))
-                    {
-                        map[key] = row;
-                        continue;
-                    }
-
-                    existing.ElementsText = FormatProductionItems(MergeProductionItems(existing.ElementsText, row.ElementsText));
-                }
-
-                merged.AddRange(map.Values.OrderBy(x => x.WorkName).ThenBy(x => x.BlocksText).ThenBy(x => x.MarksText));
-            }
-
-            currentObject.ProductionJournal = merged;
-        }
-
-        private static string BuildProductionMergeKey(ProductionJournalEntry row)
-        {
-            return string.Join("|",
-                row.Date.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                (row.ActionName ?? string.Empty).Trim().ToUpperInvariant(),
-                (row.WorkName ?? string.Empty).Trim().ToUpperInvariant(),
-                NormalizeCsvText(row.BlocksText),
-                NormalizeCsvText(row.MarksText),
-                (row.BrigadeName ?? string.Empty).Trim().ToUpperInvariant(),
-                (row.Deviations ?? string.Empty).Trim().ToUpperInvariant(),
-                row.RequiresHiddenWorkAct ? "1" : "0");
-        }
-
-        private static string NormalizeCsvText(string text)
-        {
-            return string.Join("|", LevelMarkHelper.SplitText(text ?? string.Empty)
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
-                .Select(x => x.ToUpperInvariant()));
-        }
-
-        private List<ProductionItemQuantity> MergeProductionItems(string left, string right)
-        {
-            var merged = new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
-
-            void addItems(IEnumerable<ProductionItemQuantity> items)
-            {
-                foreach (var item in items.Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0))
-                {
-                    var key = item.MaterialName.Trim();
-                    if (!merged.ContainsKey(key))
-                        merged[key] = 0;
-                    merged[key] += item.Quantity;
-                }
-            }
-
-            addItems(ParseProductionItems(left));
-            addItems(ParseProductionItems(right));
-
-            return merged
-                .OrderBy(x => x.Key)
-                .Select(x => new ProductionItemQuantity { MaterialName = x.Key, Quantity = x.Value })
-                .ToList();
         }
 
         private void EnsureArmoringCompanionRow(ProductionJournalEntry row)
@@ -6768,7 +10244,8 @@ namespace ConstructionControl
                 BrigadeName = row.BrigadeName,
                 Weather = previousWeather,
                 Deviations = row.Deviations,
-                RequiresHiddenWorkAct = row.RequiresHiddenWorkAct
+                RequiresHiddenWorkAct = row.RequiresHiddenWorkAct,
+                IsGeneratedCompanion = true
             });
         }
 
@@ -6831,7 +10308,7 @@ namespace ConstructionControl
 
                 foreach (var item in items)
                 {
-                    var group = FindMaterialGroupByName(item.MaterialName);
+                    var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
                     if (string.IsNullOrWhiteSpace(group))
                         continue;
 
@@ -6890,6 +10367,39 @@ namespace ConstructionControl
             }
         }
 
+        private void RefreshProductionBlockDisplayValues()
+        {
+            if (currentObject?.ProductionJournal == null)
+                return;
+
+            foreach (var row in currentObject.ProductionJournal)
+                row.BlocksDisplayText = BuildProductionBlocksDisplayText(row?.BlocksText);
+        }
+
+        private string BuildProductionBlocksDisplayText(string blocksText)
+        {
+            var blocks = LevelMarkHelper.ParseBlocks(blocksText);
+            if (blocks.Count == 0)
+                return blocksText?.Trim() ?? string.Empty;
+
+            return string.Join(", ", blocks.Select(GetProductionBlockLabel));
+        }
+
+        private string GetProductionBlockLabel(int block)
+        {
+            if (block <= 0)
+                return string.Empty;
+
+            if (currentObject?.BlockAxesByNumber != null
+                && currentObject.BlockAxesByNumber.TryGetValue(block, out var axes)
+                && !string.IsNullOrWhiteSpace(axes))
+            {
+                return axes.Trim();
+            }
+
+            return block.ToString(CultureInfo.CurrentCulture);
+        }
+
         private string GetUnitForMaterial(string group, string materialName)
         {
             return journal
@@ -6939,13 +10449,17 @@ namespace ConstructionControl
             var parts = new List<string>();
             foreach (var item in items)
             {
-                var group = FindMaterialGroupByName(item.MaterialName);
+                var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
                 if (string.IsNullOrWhiteSpace(group))
                     continue;
 
                 var demandKey = BuildDemandKey(group, item.MaterialName);
-                var demand = GetOrCreateDemand(demandKey, GetUnitForMaterial(group, item.MaterialName));
-                var unit = demand?.Unit ?? GetUnitForMaterial(group, item.MaterialName);
+                var fallbackUnit = GetUnitForMaterial(group, item.MaterialName);
+                var demand = GetOrCreateDemand(demandKey, fallbackUnit);
+                if (demand != null && string.IsNullOrWhiteSpace(demand.Unit))
+                    demand.Unit = fallbackUnit;
+
+                var unit = !string.IsNullOrWhiteSpace(demand?.Unit) ? demand.Unit : fallbackUnit;
                 var plannedTotal = GetTotalDemandOnBuilding(demand);
                 if (plannedTotal <= 0)
                     continue;
@@ -6960,7 +10474,7 @@ namespace ConstructionControl
                         if (remaining <= 0)
                             continue;
 
-                        parts.Add($"{item.MaterialName}: Б{block} {mark} — остаток {FormatNumberByUnit(remaining, unit)}");
+                        parts.Add($"{item.MaterialName}: {GetProductionBlockLabel(block)} {mark} — остаток {FormatNumberByUnit(remaining, unit)}");
                     }
                 }
             }
@@ -6977,6 +10491,81 @@ namespace ConstructionControl
                 .Where(x => x != null)
                 .SelectMany(x => x.Values)
                 .Sum();
+        }
+
+        private string NormalizeAccessRole(string role)
+        {
+            var normalized = (role ?? string.Empty).Trim();
+            if (string.Equals(normalized, ProjectAccessRoles.View, StringComparison.CurrentCultureIgnoreCase)
+                || normalized.Contains("РџСЂРѕСЃ", StringComparison.OrdinalIgnoreCase))
+            {
+                return ProjectAccessRoles.View;
+            }
+
+            if (string.Equals(normalized, ProjectAccessRoles.Edit, StringComparison.CurrentCultureIgnoreCase)
+                || normalized.Contains("Р РµРґР°РєС‚", StringComparison.OrdinalIgnoreCase))
+            {
+                return ProjectAccessRoles.Edit;
+            }
+
+            return ProjectAccessRoles.Critical;
+        }
+
+        private string GetCurrentAccessRole()
+        {
+            EnsureProjectUiSettings();
+            return NormalizeAccessRole(currentObject?.UiSettings?.AccessRole);
+        }
+
+        private bool EnsureCanEditOperation(string operationName)
+        {
+            var role = GetCurrentAccessRole();
+            if (!string.Equals(role, ProjectAccessRoles.View, StringComparison.CurrentCultureIgnoreCase))
+                return true;
+
+            MessageBox.Show(
+                $"Операция \"{operationName}\" недоступна для роли \"{ProjectAccessRoles.View}\".",
+                "Недостаточно прав",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        private bool EnsureCanRunCriticalOperation(string operationName, bool requireCode = true)
+        {
+            if (!EnsureCanEditOperation(operationName))
+                return false;
+
+            var role = GetCurrentAccessRole();
+            if (!string.Equals(role, ProjectAccessRoles.Critical, StringComparison.CurrentCultureIgnoreCase))
+            {
+                MessageBox.Show(
+                    $"Операция \"{operationName}\" доступна только для роли \"{ProjectAccessRoles.Critical}\".",
+                    "Недостаточно прав",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (requireCode && (currentObject?.UiSettings?.RequireCodeForCriticalOperations ?? true))
+                return ConfirmOperationWithCode(operationName);
+
+            return true;
+        }
+
+        private bool ConfirmOperationWithCode(string operationName)
+        {
+            var code = Random.Shared.Next(100000, 1000000).ToString(CultureInfo.InvariantCulture);
+            var entered = Microsoft.VisualBasic.Interaction.InputBox(
+                $"Подтвердите операцию \"{operationName}\".\nВведите код: {code}",
+                "Подтверждение операции",
+                string.Empty)?.Trim();
+
+            if (string.Equals(entered, code, StringComparison.Ordinal))
+                return true;
+
+            MessageBox.Show("Код введен неверно. Операция отменена.", "Подтверждение операции", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
         }
 
 
@@ -7019,6 +10608,225 @@ namespace ConstructionControl
             SaveState(SaveTrigger.System);
         }
 
+        private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+        {
+            CommitOpenEdits();
+            var dialog = new SaveFileDialog
+            {
+                Filter = "ConstructionControl diagnostics (*.ccdiag)|*.ccdiag|ZIP (*.zip)|*.zip",
+                FileName = $"diagnostics_{DateTime.Now:yyyyMMdd_HHmm}.ccdiag"
+            };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var (issues, warnings) = ValidateDataIntegrity();
+            var report = BuildDiagnosticsReport(issues, warnings);
+            var changeLog = currentObject?.ChangeLog == null
+                ? string.Empty
+                : string.Join(Environment.NewLine, currentObject.ChangeLog
+                    .OrderByDescending(x => x.TimestampUtc)
+                    .Take(200)
+                    .Select(FormatChangeLogEntry));
+            var stateSnapshot = BuildCurrentStateSnapshotJson();
+
+            using (var stream = new FileStream(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                WriteTextEntry(archive, "diagnostics.txt", report);
+                WriteTextEntry(archive, "changelog.txt", changeLog);
+                WriteTextEntry(archive, "state_snapshot.json", stateSnapshot);
+            }
+
+            AppendChangeLog("Экспорт диагностики", $"Сформирован файл диагностики: {dialog.FileName}");
+            SaveState(SaveTrigger.System);
+            MessageBox.Show("Диагностика экспортирована.", "Надежность", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void CreateRecoveryPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureCanEditOperation("создание пакета восстановления"))
+                return;
+
+            CommitOpenEdits();
+            var dialog = new SaveFileDialog
+            {
+                Filter = "ConstructionControl recovery (*.ccrecovery)|*.ccrecovery",
+                FileName = $"recovery_{DateTime.Now:yyyyMMdd_HHmm}.ccrecovery"
+            };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var state = new AppState
+            {
+                SchemaVersion = AppState.LatestSchemaVersion,
+                SavedAtUtc = DateTime.UtcNow,
+                CurrentObject = currentObject,
+                Journal = journal
+            };
+
+            var stateJson = JsonSerializer.Serialize(state);
+            var (issues, warnings) = ValidateDataIntegrity();
+            var diagnostics = BuildDiagnosticsReport(issues, warnings);
+            var storageFiles = 0;
+
+            using (var stream = new FileStream(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                WriteTextEntry(archive, "state.json", stateJson);
+                WriteTextEntry(archive, "diagnostics.txt", diagnostics);
+                WriteTextEntry(archive, "metadata.json", JsonSerializer.Serialize(new
+                {
+                    CreatedAtUtc = DateTime.UtcNow,
+                    AppVersion = GetType().Assembly.GetName().Version?.ToString() ?? "unknown",
+                    SchemaVersion = AppState.LatestSchemaVersion,
+                    SaveFile = currentSaveFileName
+                }));
+                storageFiles = ExportProjectStorageToArchive(archive);
+            }
+
+            AppendChangeLog("Пакет восстановления", $"Создан пакет восстановления: {dialog.FileName} (файлов документов: {storageFiles}).");
+            SaveState(SaveTrigger.System);
+            MessageBox.Show("Пакет восстановления создан.", "Надежность", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void RestoreFromRecoveryPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureCanRunCriticalOperation("восстановление из пакета восстановления"))
+                return;
+
+            CommitOpenEdits();
+            var dialog = new OpenFileDialog
+            {
+                Filter = "ConstructionControl recovery (*.ccrecovery)|*.ccrecovery|ConstructionControl backup (*.ccbak)|*.ccbak"
+            };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            try
+            {
+                _ = CreateSafetyBackupBeforeOperation("before_restore_recovery_package");
+            }
+            catch (Exception backupEx)
+            {
+                MessageBox.Show(
+                    $"Не удалось создать предохранительный бэкап перед восстановлением.{Environment.NewLine}{backupEx.Message}",
+                    "Внимание",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            if (!TryLoadBackupState(dialog.FileName, out var state, out var restoredStorageFiles, out var importError) || state == null)
+            {
+                MessageBox.Show(
+                    string.IsNullOrWhiteSpace(importError)
+                        ? "Не удалось восстановить проект из пакета."
+                        : importError,
+                    "Ошибка восстановления",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            PushUndo();
+            RestoreState(state);
+            RebuildArchiveFromCurrentData();
+            AppendChangeLog("Восстановление", $"Восстановлены данные из пакета: {dialog.FileName}");
+            SaveState(SaveTrigger.System);
+            RefreshTreePreserveState();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            RefreshDocumentLibraries();
+            ApplyAllFilters();
+            RequestReminderRefresh(immediate: true);
+            MessageBox.Show($"Восстановление завершено. Восстановлено файлов ПДФ/смет: {restoredStorageFiles}.", "Восстановление", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private string BuildDiagnosticsReport(List<string> issues, List<string> warnings)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"Дата: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+            sb.AppendLine($"Пользователь: {Environment.UserName}");
+            sb.AppendLine($"Версия: {GetType().Assembly.GetName().Version}");
+            sb.AppendLine($"Файл проекта: {currentSaveFileName}");
+            sb.AppendLine($"Схема: {AppState.LatestSchemaVersion}");
+            sb.AppendLine($"Роль доступа: {GetCurrentAccessRole()}");
+            sb.AppendLine($"Безопасный старт: {(IsSafeStartupEnabled() ? "вкл" : "выкл")}");
+            sb.AppendLine();
+            sb.AppendLine($"Ошибок целостности: {issues?.Count ?? 0}");
+            if (issues != null)
+            {
+                foreach (var issue in issues.Take(200))
+                    sb.AppendLine($"[ERR] {issue}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine($"Предупреждений: {warnings?.Count ?? 0}");
+            if (warnings != null)
+            {
+                foreach (var warning in warnings.Take(200))
+                    sb.AppendLine($"[WRN] {warning}");
+            }
+
+            if (lastStorageIntegrityIssues.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Проблемы хранилища документов:");
+                foreach (var issue in lastStorageIntegrityIssues.Take(200))
+                    sb.AppendLine($"[DOC] {issue}");
+            }
+
+            if (tabOpenDiagnostics.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Диагностика открытия вкладок:");
+                foreach (var pair in tabOpenDiagnostics.OrderByDescending(x => x.Value))
+                    sb.AppendLine($"{pair.Key}: {pair.Value.TotalMilliseconds:0} ms");
+            }
+
+            if (currentObject != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Счетчики данных:");
+                sb.AppendLine($"Приход: {journal?.Count ?? 0}");
+                sb.AppendLine($"Потребность: {currentObject.Demand?.Count ?? 0}");
+                sb.AppendLine($"ОТ: {currentObject.OtJournal?.Count ?? 0}");
+                sb.AppendLine($"Табель: {currentObject.TimesheetPeople?.Count ?? 0}");
+                sb.AppendLine($"ПР: {currentObject.ProductionJournal?.Count ?? 0}");
+                sb.AppendLine($"Осмотры: {currentObject.InspectionJournal?.Count ?? 0}");
+                sb.AppendLine($"PDF узлы: {CountDocumentNodes(currentObject.PdfDocuments)}");
+                sb.AppendLine($"Сметы узлы: {CountDocumentNodes(currentObject.EstimateDocuments)}");
+            }
+
+            return sb.ToString();
+        }
+
+        private static int CountDocumentNodes(IEnumerable<DocumentTreeNode> nodes)
+        {
+            if (nodes == null)
+                return 0;
+
+            var total = 0;
+            foreach (var node in nodes)
+            {
+                if (node == null)
+                    continue;
+
+                total++;
+                if (node.Children != null && node.Children.Count > 0)
+                    total += CountDocumentNodes(node.Children);
+            }
+
+            return total;
+        }
+
+        private static void WriteTextEntry(ZipArchive archive, string entryName, string text)
+        {
+            var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+            using var stream = entry.Open();
+            using var writer = new StreamWriter(stream, Encoding.UTF8);
+            writer.Write(text ?? string.Empty);
+        }
+
         private void ShowChangeLog_Click(object sender, RoutedEventArgs e)
         {
             if (currentObject == null)
@@ -7046,6 +10854,9 @@ namespace ConstructionControl
 
         private void RestoreFromAutoBackup_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanRunCriticalOperation("восстановление из автосохранения"))
+                return;
+
             var latestBackup = GetLatestAutoBackupFile(currentSaveFileName);
             if (string.IsNullOrWhiteSpace(latestBackup) || !File.Exists(latestBackup))
             {
@@ -7141,16 +10952,32 @@ namespace ConstructionControl
             viewer.ShowDialog();
         }
 
-        private void CreateObject_Click(object sender, RoutedEventArgs e)
+        private void ObjectWizard_Click(object sender, RoutedEventArgs e)
         {
-            var w = new CreateObjectWindow { Owner = this };
-            if (w.ShowDialog() == true)
+            if (!EnsureCanEditOperation("мастер объекта"))
+                return;
+
+            CommitOpenEdits();
+            var hasCurrentObject = currentObject != null;
+            var working = CloneProjectObjectForWizard(currentObject);
+            var window = new ObjectSettingsWindow(working, allowCreateAsNew: hasCurrentObject)
+            {
+                Owner = this
+            };
+
+            if (window.ShowDialog() != true)
+                return;
+
+            var result = window.ResultObject ?? working;
+            if (!hasCurrentObject || window.CreateAsNewObject)
             {
                 currentObject = new ProjectObject
                 {
-                    Name = w.ObjectName,
-                    BlocksCount = 1   // ← КРИТИЧНО
+                    BlocksCount = 1,
+                    FloorsPerBlock = 1,
+                    SameFloorsInBlocks = true
                 };
+                ApplyObjectMetadata(currentObject, result);
 
                 journal.Clear();
                 EnsureOtJournalStorage();
@@ -7165,33 +10992,78 @@ namespace ConstructionControl
                 inspectionJournalRows.Clear();
                 RefreshDocumentLibraries();
                 AppendChangeLog("Создание объекта", $"Создан новый объект: {currentObject.Name}");
-                SaveState(SaveTrigger.System);
-                RefreshTreePreserveState();
-                ApplyProjectUiSettings();
-              
             }
-        }
-
-        private void ObjectSettings_Click(object sender, RoutedEventArgs e)
-        {
-            if (currentObject == null)
+            else
             {
-                MessageBox.Show("Сначала создайте объект");
-                return;
-            }
-
-            var w = new ObjectSettingsWindow(currentObject)
-            {
-                Owner = this
-            };
-
-            if (w.ShowDialog() == true)
-            {
+                ApplyObjectMetadata(currentObject, result);
                 AppendChangeLog("Настройки объекта", "Изменены параметры объекта.");
-                SaveState(SaveTrigger.System);
-                RefreshTreePreserveState();
             }
+
+            SaveState(SaveTrigger.System);
+            RefreshTreePreserveState();
+            ApplyProjectUiSettings();
+            EnsureProductionJournalStorage();
+            RefreshProductionJournalState();
+            RefreshSummaryTable();
         }
+
+        private static ProjectObject CloneProjectObjectForWizard(ProjectObject source)
+        {
+            if (source == null)
+            {
+                return new ProjectObject
+                {
+                    BlocksCount = 1,
+                    FloorsPerBlock = 1,
+                    SameFloorsInBlocks = true
+                };
+            }
+
+            var json = JsonSerializer.Serialize(source);
+            var clone = JsonSerializer.Deserialize<ProjectObject>(json);
+            if (clone == null)
+            {
+                clone = new ProjectObject
+                {
+                    BlocksCount = 1,
+                    FloorsPerBlock = 1,
+                    SameFloorsInBlocks = true
+                };
+            }
+
+            return clone;
+        }
+
+        private static void ApplyObjectMetadata(ProjectObject target, ProjectObject source)
+        {
+            if (target == null || source == null)
+                return;
+
+            target.Name = source.Name ?? string.Empty;
+            target.FullObjectName = source.FullObjectName ?? string.Empty;
+            target.BlocksCount = Math.Max(1, source.BlocksCount);
+            target.HasBasement = source.HasBasement;
+            target.SameFloorsInBlocks = source.SameFloorsInBlocks;
+            target.FloorsPerBlock = Math.Max(1, source.FloorsPerBlock);
+            target.FloorsByBlock = source.FloorsByBlock != null
+                ? new Dictionary<int, int>(source.FloorsByBlock)
+                : new Dictionary<int, int>();
+            target.BlockAxesByNumber = source.BlockAxesByNumber != null
+                ? new Dictionary<int, string>(source.BlockAxesByNumber)
+                : new Dictionary<int, string>();
+            target.GeneralContractorRepresentative = source.GeneralContractorRepresentative ?? string.Empty;
+            target.TechnicalSupervisorRepresentative = source.TechnicalSupervisorRepresentative ?? string.Empty;
+            target.ProjectOrganizationRepresentative = source.ProjectOrganizationRepresentative ?? string.Empty;
+            target.ProjectDocumentationName = source.ProjectDocumentationName ?? string.Empty;
+            target.MasterNames = source.MasterNames?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToList() ?? new List<string>();
+            target.ForemanNames = source.ForemanNames?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToList() ?? new List<string>();
+            target.ResponsibleForeman = source.ResponsibleForeman ?? string.Empty;
+            target.SiteManagerName = source.SiteManagerName ?? string.Empty;
+        }
+
+        private void CreateObject_Click(object sender, RoutedEventArgs e) => ObjectWizard_Click(sender, e);
+
+        private void ObjectSettings_Click(object sender, RoutedEventArgs e) => ObjectWizard_Click(sender, e);
 
         private void ApplyMaterialBindingChanges(IEnumerable<TreeSettingsWindow.MaterialBindingChange> changes)
         {
@@ -7303,6 +11175,9 @@ namespace ConstructionControl
 
         private void TreeSettings_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanEditOperation("база материалов"))
+                return;
+
             if (currentObject == null)
             {
                 MessageBox.Show("Сначала создайте объект");
@@ -7814,6 +11689,7 @@ namespace ConstructionControl
 
 
             SyncLegacyMaterialsFromCatalog();
+            RefreshJournalAnomalies();
             SaveState();
             RefreshTreePreserveState();
    
@@ -8741,6 +12617,7 @@ namespace ConstructionControl
 
 
             filteredJournal = data.ToList();
+            RefreshJournalAnomalies();
 
 
             RenderJvk();
@@ -8754,6 +12631,45 @@ namespace ConstructionControl
             RequestSummaryRefresh();
 
         }
+
+        private void RefreshJournalAnomalies()
+        {
+            if (journal == null || journal.Count == 0)
+                return;
+
+            var duplicateMap = journal
+                .Where(x => x != null)
+                .GroupBy(x => $"{x.Date:yyyy-MM-dd}|{(x.Ttn ?? string.Empty).Trim()}|{(x.MaterialGroup ?? string.Empty).Trim()}|{(x.MaterialName ?? string.Empty).Trim()}|{x.Quantity:0.###}")
+                .Where(x => x.Count() > 1)
+                .ToDictionary(x => x.Key, x => x.Count(), StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var row in journal.Where(x => x != null))
+            {
+                var notes = new List<string>();
+                if (string.IsNullOrWhiteSpace(row.MaterialGroup))
+                    notes.Add("Пустой тип");
+                if (string.IsNullOrWhiteSpace(row.MaterialName))
+                    notes.Add("Пустое наименование");
+                if (row.Quantity <= 0)
+                    notes.Add("Количество <= 0");
+
+                if (string.Equals(row.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(row.Ttn))
+                        notes.Add("Пустой ТТН");
+                    if (string.IsNullOrWhiteSpace(row.Supplier))
+                        notes.Add("Пустой поставщик");
+                }
+
+                var duplicateKey = $"{row.Date:yyyy-MM-dd}|{(row.Ttn ?? string.Empty).Trim()}|{(row.MaterialGroup ?? string.Empty).Trim()}|{(row.MaterialName ?? string.Empty).Trim()}|{row.Quantity:0.###}";
+                if (duplicateMap.ContainsKey(duplicateKey))
+                    notes.Add("Вероятный дубль записи");
+
+                row.IsAnomaly = notes.Count > 0;
+                row.AnomalyText = notes.Count == 0 ? string.Empty : string.Join("; ", notes);
+            }
+        }
+
         private void ArrivalClearFilters_Click(object sender, RoutedEventArgs e)
         {
             selectedArrivalTypes.Clear();
@@ -9056,9 +12972,10 @@ namespace ConstructionControl
             if (minutes > 240)
                 minutes = 240;
 
+            autoSaveTimer.Stop();
             autoSaveTimer.Interval = TimeSpan.FromMinutes(minutes);
-            if (!autoSaveTimer.IsEnabled)
-                autoSaveTimer.Start();
+            autoSaveTimer.Start();
+            UpdateStatusBar();
         }
 
         private void TryAutoSaveState()
@@ -9089,10 +13006,24 @@ namespace ConstructionControl
                 throw new InvalidOperationException("Файл проекта сейчас заблокирован другим экземпляром.");
 
             MarkSummaryDataDirty();
+            SaveGridColumnPreferencesForAll();
             var snapshotJson = BuildCurrentStateSnapshotJson();
             var json = BuildCurrentStateJson();
             SaveStateJsonTransactional(json, currentSaveFileName);
             lastSavedStateSnapshot = snapshotJson;
+            lastSuccessfulSaveLocalTime = DateTime.Now;
+
+            var saveReason = trigger switch
+            {
+                SaveTrigger.Auto => "Автосохранение выполнено",
+                SaveTrigger.System => "Системные изменения сохранены",
+                _ => "Данные сохранены"
+            };
+            SetLastOperationStatus(saveReason);
+            AddOperationLogEntry(
+                "Сохранение",
+                trigger == SaveTrigger.Auto ? "Авто" : trigger == SaveTrigger.System ? "Система" : "Ручное",
+                saveReason);
 
             if (trigger == SaveTrigger.Auto)
             {
@@ -9105,6 +13036,8 @@ namespace ConstructionControl
                     // Ошибка автобэкапа не должна ломать основное сохранение.
                 }
             }
+
+            UpdateStatusBar();
         }
 
         private void SaveStateJsonTransactional(string json, string targetPath)
@@ -9284,23 +13217,7 @@ namespace ConstructionControl
 
         private static void ApplyStateMigrations(AppState state)
         {
-            if (state == null)
-                return;
-
-            if (state.SchemaVersion <= 0)
-                state.SchemaVersion = 1;
-
-            if (state.SchemaVersion < 2)
-            {
-                state.CurrentObject ??= new ProjectObject();
-                state.CurrentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
-                state.SchemaVersion = 2;
-            }
-
-            state.SavedAtUtc = state.SavedAtUtc == default ? DateTime.UtcNow : state.SavedAtUtc;
-            state.Journal ??= new List<JournalRecord>();
-            state.CurrentObject ??= new ProjectObject();
-            state.CurrentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+            AppStateMigration.Apply(state);
         }
 
         private void WriteAutoBackupSnapshot(string json)
@@ -9409,6 +13326,12 @@ namespace ConstructionControl
                 var removeCount = currentObject.ChangeLog.Count - MaxChangeLogEntries;
                 currentObject.ChangeLog.RemoveRange(0, removeCount);
             }
+
+            if (!string.IsNullOrWhiteSpace(action))
+                lastOperationStatusText = string.IsNullOrWhiteSpace(details) ? action.Trim() : $"{action.Trim()}: {details.Trim()}";
+
+            AddOperationLogEntry("Журнал изменений", action, details);
+            UpdateStatusBar();
         }
 
         private static string FormatChangeLogEntry(ProjectChangeLogEntry entry)
@@ -9515,6 +13438,17 @@ namespace ConstructionControl
                         var path = ResolveDocumentPath(node);
                         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                             warnings.Add($"{caption}: не найден файл \"{node.Name}\".");
+                        else if (!string.IsNullOrWhiteSpace(node.ContentHash))
+                        {
+                            if (TryComputeFileHash(path, out var hash, out var size))
+                            {
+                                if (!string.Equals(hash, node.ContentHash, StringComparison.OrdinalIgnoreCase))
+                                    warnings.Add($"{caption}: изменилось содержимое файла \"{node.Name}\" (хэш не совпадает).");
+
+                                if (node.FileSizeBytes.HasValue && node.FileSizeBytes.Value != size)
+                                    warnings.Add($"{caption}: изменился размер файла \"{node.Name}\".");
+                            }
+                        }
                     }
 
                     ValidateDocumentNodes(node.Children, caption);
@@ -9525,6 +13459,178 @@ namespace ConstructionControl
             ValidateDocumentNodes(currentObject.EstimateDocuments, "Сметы");
 
             return (issues, warnings);
+        }
+
+        private List<DiagnosticsMetricRow> BuildDiagnosticsMetricRows()
+        {
+            EnsureProjectUiSettings();
+
+            return new List<DiagnosticsMetricRow>
+            {
+                new() { Metric = "Объект", Value = string.IsNullOrWhiteSpace(currentObject?.Name) ? "Не создан" : currentObject.Name },
+                new() { Metric = "Файл проекта", Value = string.IsNullOrWhiteSpace(currentSaveFileName) ? "—" : currentSaveFileName },
+                new() { Metric = "Каталог данных", Value = string.IsNullOrWhiteSpace(currentObject?.UiSettings?.DataRootDirectory) ? "По умолчанию" : currentObject.UiSettings.DataRootDirectory },
+                new() { Metric = "Автосохранение", Value = $"{Math.Max(1, currentObject?.UiSettings?.AutoSaveIntervalMinutes ?? 5)} мин" },
+                new() { Metric = "Последнее сохранение", Value = lastSuccessfulSaveLocalTime?.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) ?? "Нет данных" },
+                new() { Metric = "Роль доступа", Value = GetAccessRoleDisplayName(GetCurrentAccessRole()) },
+                new() { Metric = "Блокировка", Value = isLocked ? "Включена" : "Выключена" },
+                new() { Metric = "Безопасный старт", Value = IsSafeStartupEnabled() ? "Да" : "Нет" },
+                new() { Metric = "Последняя операция", Value = string.IsNullOrWhiteSpace(lastOperationStatusText) ? "Готово" : lastOperationStatusText },
+                new() { Metric = "Записей прихода", Value = (journal?.Count ?? 0).ToString(CultureInfo.CurrentCulture) },
+                new() { Metric = "Записей ОТ", Value = (currentObject?.OtJournal?.Count ?? 0).ToString(CultureInfo.CurrentCulture) },
+                new() { Metric = "Сотрудников табеля", Value = (currentObject?.TimesheetPeople?.Count ?? 0).ToString(CultureInfo.CurrentCulture) },
+                new() { Metric = "Записей ПР", Value = (currentObject?.ProductionJournal?.Count ?? 0).ToString(CultureInfo.CurrentCulture) },
+                new() { Metric = "Записей осмотров", Value = (currentObject?.InspectionJournal?.Count ?? 0).ToString(CultureInfo.CurrentCulture) },
+                new() { Metric = "Проблем хранения", Value = lastStorageIntegrityIssues.Count.ToString(CultureInfo.CurrentCulture) }
+            };
+        }
+
+        private void OpenDiagnosticsDashboard_Click(object sender, RoutedEventArgs e)
+        {
+            var (issues, warnings) = ValidateDataIntegrity();
+            var metrics = BuildDiagnosticsMetricRows();
+            var integrityRows = issues.Select(x => new DiagnosticsMetricRow { Metric = "Ошибка", Value = x })
+                .Concat(warnings.Select(x => new DiagnosticsMetricRow { Metric = "Предупреждение", Value = x }))
+                .Concat(lastStorageIntegrityIssues.Select(x => new DiagnosticsMetricRow { Metric = "Хранилище", Value = x }))
+                .ToList();
+
+            if (integrityRows.Count == 0)
+                integrityRows.Add(new DiagnosticsMetricRow { Metric = "Состояние", Value = "Проблем не найдено" });
+
+            var timings = tabOpenDiagnostics.Count == 0
+                ? new List<DiagnosticsMetricRow> { new() { Metric = "Открытие вкладок", Value = "Нет данных" } }
+                : tabOpenDiagnostics
+                    .OrderByDescending(x => x.Value)
+                    .Select(x => new DiagnosticsMetricRow { Metric = x.Key, Value = $"{x.Value.TotalMilliseconds:F0} мс" })
+                    .ToList();
+
+            var changeLogRows = (currentObject?.ChangeLog ?? new List<ProjectChangeLogEntry>())
+                .OrderByDescending(x => x.TimestampUtc)
+                .Take(100)
+                .Select(x => new DiagnosticsMetricRow
+                {
+                    Metric = $"{x.TimestampUtc.ToLocalTime():dd.MM HH:mm}",
+                    Value = $"{x.Action}{(string.IsNullOrWhiteSpace(x.Details) ? string.Empty : $" — {x.Details}")}"
+                })
+                .ToList();
+
+            if (changeLogRows.Count == 0)
+                changeLogRows.Add(new DiagnosticsMetricRow { Metric = "Журнал", Value = "Пока пуст" });
+
+            var window = new Window
+            {
+                Title = "Панель диагностики",
+                Owner = this,
+                Width = 1180,
+                Height = 760,
+                MinWidth = 980,
+                MinHeight = 620,
+                Background = (Brush)FindResource("AppBgBrush"),
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var header = new Border
+            {
+                Background = (Brush)FindResource("SurfaceBrush"),
+                BorderBrush = (Brush)FindResource("StrokeBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(16),
+                Margin = new Thickness(0, 0, 0, 12),
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = "Диагностика проекта", FontSize = 22, FontWeight = FontWeights.SemiBold },
+                        new TextBlock
+                        {
+                            Text = "Сводка состояния, проблемы целостности, время открытия вкладок, журнал изменений и внутренние операции.",
+                            Margin = new Thickness(0, 8, 0, 0),
+                            Foreground = (Brush)FindResource("TextSecondaryBrush"),
+                            TextWrapping = TextWrapping.Wrap
+                        }
+                    }
+                }
+            };
+            Grid.SetRow(header, 0);
+            root.Children.Add(header);
+
+            var tabs = new TabControl();
+            Grid.SetRow(tabs, 1);
+
+            tabs.Items.Add(CreateDiagnosticsTab("Состояние", metrics));
+            tabs.Items.Add(CreateDiagnosticsTab("Проблемы", integrityRows));
+            tabs.Items.Add(CreateDiagnosticsTab("Вкладки", timings));
+            tabs.Items.Add(CreateDiagnosticsTab("Изменения", changeLogRows));
+            tabs.Items.Add(CreateOperationLogTab());
+
+            root.Children.Add(tabs);
+            window.Content = root;
+            window.ShowDialog();
+        }
+
+        private TabItem CreateDiagnosticsTab(string header, IEnumerable<DiagnosticsMetricRow> rows)
+        {
+            var grid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = rows?.ToList()
+            };
+            grid.Columns.Add(new DataGridTextColumn { Header = "Параметр", Binding = new Binding(nameof(DiagnosticsMetricRow.Metric)), Width = 220 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Значение", Binding = new Binding(nameof(DiagnosticsMetricRow.Value)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+
+            return new TabItem
+            {
+                Header = header,
+                Content = new Border
+                {
+                    Margin = new Thickness(0, 10, 0, 0),
+                    Background = (Brush)FindResource("SurfaceBrush"),
+                    BorderBrush = (Brush)FindResource("StrokeBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(8),
+                    Child = grid
+                }
+            };
+        }
+
+        private TabItem CreateOperationLogTab()
+        {
+            var grid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = true,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = operationLogEntries
+            };
+            grid.Columns.Add(new DataGridTextColumn { Header = "Время", Binding = new Binding(nameof(OperationLogEntry.TimestampLocal)) { StringFormat = "dd.MM.yyyy HH:mm:ss" }, Width = 150 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(OperationLogEntry.Kind)), Width = 180 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Статус", Binding = new Binding(nameof(OperationLogEntry.Status)), Width = 140 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Подробности", Binding = new Binding(nameof(OperationLogEntry.Details)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+
+            return new TabItem
+            {
+                Header = "Операции",
+                Content = new Border
+                {
+                    Margin = new Thickness(0, 10, 0, 0),
+                    Background = (Brush)FindResource("SurfaceBrush"),
+                    BorderBrush = (Brush)FindResource("StrokeBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(8),
+                    Child = grid
+                }
+            };
         }
         private AppState CloneState()
         {
@@ -9776,6 +13882,8 @@ namespace ConstructionControl
             EnsureProjectUiSettings();
             EnsureDocumentLibraries();
             RefreshDocumentLibraries();
+            RefreshArrivalFilterTemplates();
+            RefreshJournalAnomalies();
 
         }
 
@@ -9915,6 +14023,9 @@ namespace ConstructionControl
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanEditOperation("сохранение"))
+                return;
+
             CommitOpenEdits();
             AppendChangeLog("Сохранение", "Пользователь сохранил проект.");
             SaveState(SaveTrigger.Manual);
@@ -9923,6 +14034,9 @@ namespace ConstructionControl
 
         private void SaveAs_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanEditOperation("сохранение как"))
+                return;
+
             CommitOpenEdits();
 
             var dlg = new SaveFileDialog
@@ -9955,24 +14069,13 @@ namespace ConstructionControl
             MessageBox.Show("Проект сохранён в новый файл.");
         }
 
-        private static string BuildStorageRootPath(string saveFileName)
-        {
-            if (string.IsNullOrWhiteSpace(saveFileName))
-                return string.Empty;
-
-            var fullSavePath = System.IO.Path.GetFullPath(saveFileName);
-            var folder = System.IO.Path.GetDirectoryName(fullSavePath);
-            var baseName = System.IO.Path.GetFileNameWithoutExtension(fullSavePath);
-            if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(baseName))
-                return string.Empty;
-
-            return System.IO.Path.Combine(folder, $"{baseName}_files");
-        }
-
         private void CopyProjectStorage(string sourceSaveFileName, string targetSaveFileName)
         {
-            var sourceRoot = BuildStorageRootPath(sourceSaveFileName);
-            var targetRoot = BuildStorageRootPath(targetSaveFileName);
+            var sourceRoot = BuildStorageRootPathForCurrentSettings(sourceSaveFileName, createIfMissing: false);
+            if (string.IsNullOrWhiteSpace(sourceRoot) || !Directory.Exists(sourceRoot))
+                sourceRoot = BuildLegacyStorageRootPath(sourceSaveFileName);
+
+            var targetRoot = BuildStorageRootPathForCurrentSettings(targetSaveFileName, createIfMissing: true);
             if (string.IsNullOrWhiteSpace(sourceRoot) || string.IsNullOrWhiteSpace(targetRoot))
                 return;
 
@@ -9996,6 +14099,9 @@ namespace ConstructionControl
 
         private void AppSettings_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanEditOperation("настройки интерфейса"))
+                return;
+
             if (currentObject == null)
             {
                 MessageBox.Show("Сначала создайте объект");
@@ -10013,10 +14119,496 @@ namespace ConstructionControl
             if (window.ShowDialog() != true)
                 return;
 
-            currentObject.UiSettings = window.ResultSettings ?? new ProjectUiSettings();
+            var previousSettings = currentObject.UiSettings ?? new ProjectUiSettings();
+            var previousDataRoot = NormalizeDataRootPath(previousSettings.DataRootDirectory);
+            var updatedSettings = window.ResultSettings ?? new ProjectUiSettings();
+            updatedSettings.OtStatusFilter = previousSettings.OtStatusFilter;
+            updatedSettings.OtSpecialtyFilter = previousSettings.OtSpecialtyFilter;
+            updatedSettings.OtBrigadeFilter = previousSettings.OtBrigadeFilter;
+            updatedSettings.TabDisplayModes = previousSettings.TabDisplayModes ?? new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+            updatedSettings.GridColumnPreferences = previousSettings.GridColumnPreferences ?? new Dictionary<string, List<GridColumnPreference>>(StringComparer.CurrentCultureIgnoreCase);
+            updatedSettings.DataRootDirectory = NormalizeDataRootPath(updatedSettings.DataRootDirectory);
+            currentObject.UiSettings = updatedSettings;
+            MigrateProjectDataFolders(previousDataRoot, updatedSettings.DataRootDirectory);
             ApplyProjectUiSettings();
+            RefreshDocumentLibraries();
             AppendChangeLog("Настройки интерфейса", "Изменены настройки интерфейса проекта.");
             SaveState(SaveTrigger.System);
+        }
+
+        private void MigrateProjectDataFolders(string oldDataRootPath, string newDataRootPath)
+        {
+            if (string.IsNullOrWhiteSpace(currentSaveFileName))
+                return;
+
+            var oldRoot = NormalizeDataRootPath(oldDataRootPath);
+            var newRoot = NormalizeDataRootPath(newDataRootPath);
+            if (string.Equals(oldRoot, newRoot, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var key = BuildProjectInstanceKey(currentSaveFileName);
+            var oldStorageRoot = System.IO.Path.Combine(oldRoot, "storage", key);
+            var newStorageRoot = System.IO.Path.Combine(newRoot, "storage", key);
+            if (!string.Equals(oldStorageRoot, newStorageRoot, StringComparison.OrdinalIgnoreCase))
+                CopyDirectorySafe(oldStorageRoot, newStorageRoot);
+
+            var oldRuntimeRoot = System.IO.Path.Combine(oldRoot, "runtime", key);
+            var newRuntimeRoot = System.IO.Path.Combine(newRoot, "runtime", key);
+            if (!string.Equals(oldRuntimeRoot, newRuntimeRoot, StringComparison.OrdinalIgnoreCase))
+                CopyDirectorySafe(oldRuntimeRoot, newRuntimeRoot);
+        }
+
+        private ObservableCollection<string> BuildProfessionReferenceOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            if (currentObject?.OtInstructionNumbersByProfession != null)
+                values.AddRange(currentObject.OtInstructionNumbersByProfession.Keys);
+
+            if (currentObject?.OtJournal != null)
+            {
+                values.AddRange(currentObject.OtJournal
+                    .Select(x => x.Profession)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+                values.AddRange(currentObject.OtJournal
+                    .Select(x => x.Specialty)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            if (currentObject?.TimesheetPeople != null)
+            {
+                values.AddRange(currentObject.TimesheetPeople
+                    .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Specialty))
+                    .Select(x => x.Specialty));
+            }
+
+            values.AddRange(professions);
+            values.AddRange(specialties);
+
+            return new ObservableCollection<string>(values
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
+        }
+
+        private ObservableCollection<string> BuildProductionTypeReferenceOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            if (currentObject?.ProductionDeviationsByType != null)
+                values.AddRange(currentObject.ProductionDeviationsByType.Keys);
+
+            values.AddRange(productionTargets);
+
+            if (currentObject?.MaterialCatalog != null)
+            {
+                values.AddRange(currentObject.MaterialCatalog
+                    .Where(x => string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.TypeName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            if (currentObject?.ProductionJournal != null)
+            {
+                values.AddRange(currentObject.ProductionJournal
+                    .Select(x => x.WorkName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            return new ObservableCollection<string>(values
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
+        }
+
+        private ObservableCollection<OtInstructionReferenceRow> BuildOtInstructionReferenceRows()
+        {
+            EnsureReferenceMappingsStorage();
+            var rows = new List<OtInstructionReferenceRow>();
+
+            if (currentObject?.OtInstructionNumbersByProfession != null)
+            {
+                foreach (var pair in currentObject.OtInstructionNumbersByProfession
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+                    .OrderBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    rows.Add(new OtInstructionReferenceRow
+                    {
+                        Profession = pair.Key.Trim(),
+                        InstructionNumbers = pair.Value.Trim()
+                    });
+                }
+            }
+
+            if (rows.Count == 0 && currentObject?.OtJournal != null)
+            {
+                var seen = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var row in currentObject.OtJournal
+                    .Where(x => !string.IsNullOrWhiteSpace(x.InstructionNumbers))
+                    .OrderByDescending(x => x.InstructionDate))
+                {
+                    var profession = string.IsNullOrWhiteSpace(row.Profession) ? row.Specialty?.Trim() : row.Profession.Trim();
+                    if (string.IsNullOrWhiteSpace(profession) || !seen.Add(profession))
+                        continue;
+
+                    rows.Add(new OtInstructionReferenceRow
+                    {
+                        Profession = profession,
+                        InstructionNumbers = row.InstructionNumbers.Trim()
+                    });
+                }
+            }
+
+            if (rows.Count == 0)
+                rows.Add(new OtInstructionReferenceRow());
+
+            return new ObservableCollection<OtInstructionReferenceRow>(rows);
+        }
+
+        private ObservableCollection<ProductionDeviationReferenceRow> BuildProductionDeviationReferenceRows()
+        {
+            EnsureReferenceMappingsStorage();
+            var rows = new List<ProductionDeviationReferenceRow>();
+            var pairSet = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            if (currentObject?.ProductionDeviationsByType != null)
+            {
+                foreach (var pair in currentObject.ProductionDeviationsByType)
+                {
+                    var type = pair.Key?.Trim();
+                    if (string.IsNullOrWhiteSpace(type))
+                        continue;
+
+                    foreach (var deviation in pair.Value ?? new List<string>())
+                    {
+                        var normalizedDeviation = deviation?.Trim();
+                        if (string.IsNullOrWhiteSpace(normalizedDeviation))
+                            continue;
+
+                        var key = $"{type}|||{normalizedDeviation}";
+                        if (!pairSet.Add(key))
+                            continue;
+
+                        rows.Add(new ProductionDeviationReferenceRow
+                        {
+                            MaterialType = type,
+                            Deviation = normalizedDeviation
+                        });
+                    }
+                }
+            }
+
+            if (rows.Count == 0 && currentObject?.ProductionJournal != null)
+            {
+                foreach (var row in currentObject.ProductionJournal
+                    .Where(x => !string.IsNullOrWhiteSpace(x.WorkName) && !string.IsNullOrWhiteSpace(x.Deviations))
+                    .OrderByDescending(x => x.Date))
+                {
+                    var type = row.WorkName.Trim();
+                    var deviation = row.Deviations.Trim();
+                    var key = $"{type}|||{deviation}";
+                    if (!pairSet.Add(key))
+                        continue;
+
+                    rows.Add(new ProductionDeviationReferenceRow
+                    {
+                        MaterialType = type,
+                        Deviation = deviation
+                    });
+                }
+            }
+
+            if (rows.Count == 0)
+                rows.Add(new ProductionDeviationReferenceRow());
+
+            return new ObservableCollection<ProductionDeviationReferenceRow>(rows);
+        }
+
+        private void ReferenceCatalogs_Click(object sender, RoutedEventArgs e)
+        {
+            if (!EnsureCanEditOperation("редактирование справочников"))
+                return;
+
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            CommitOpenEdits();
+            EnsureOtJournalStorage();
+            EnsureProductionJournalStorage();
+            EnsureReferenceMappingsStorage();
+
+            var professionOptions = BuildProfessionReferenceOptions();
+            var materialTypeOptions = BuildProductionTypeReferenceOptions();
+            var otRows = BuildOtInstructionReferenceRows();
+            var prRows = BuildProductionDeviationReferenceRows();
+
+            var window = new Window
+            {
+                Title = "Справочники",
+                Owner = this,
+                Width = 980,
+                Height = 700,
+                MinWidth = 860,
+                MinHeight = 620,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = TryFindResource("AppBgBrush") as Brush ?? Brushes.WhiteSmoke
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            window.Content = root;
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "Справочник используется для автоподстановки в журналах ОТ и ПР.",
+                Margin = new Thickness(0, 0, 0, 10),
+                Foreground = TryFindResource("TextSecondaryBrush") as Brush ?? new SolidColorBrush(Color.FromRgb(107, 114, 128))
+            });
+
+            var tabs = new TabControl();
+            Grid.SetRow(tabs, 1);
+            root.Children.Add(tabs);
+
+            var otTab = new TabItem { Header = "ОТ: профессии и инструкции" };
+            var otHost = new Grid { Margin = new Thickness(10) };
+            otHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            otHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            otTab.Content = otHost;
+
+            var otButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var addOtButton = new Button
+            {
+                Content = "Добавить строку",
+                Style = TryFindResource("PrimaryButton") as Style
+            };
+            var deleteOtButton = new Button
+            {
+                Content = "Удалить строку",
+                Style = TryFindResource("SecondaryButton") as Style,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            otButtons.Children.Add(addOtButton);
+            otButtons.Children.Add(deleteOtButton);
+            otHost.Children.Add(otButtons);
+
+            var otGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = otRows,
+                ColumnWidth = DataGridLength.SizeToHeader
+            };
+            Grid.SetRow(otGrid, 1);
+            DataGridSizingHelper.SetEnableSmartSizing(otGrid, true);
+
+            var professionCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            professionCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(OtInstructionReferenceRow.Profession)));
+            var professionEditFactory = new FrameworkElementFactory(typeof(ComboBox));
+            professionEditFactory.SetValue(ComboBox.IsEditableProperty, true);
+            professionEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            professionEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            professionEditFactory.SetValue(ComboBox.ItemsSourceProperty, professionOptions);
+            professionEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(OtInstructionReferenceRow.Profession))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            otGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Профессия",
+                Width = 280,
+                CellTemplate = new DataTemplate { VisualTree = professionCellFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = professionEditFactory }
+            });
+            otGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Номера инструкций",
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                Binding = new Binding(nameof(OtInstructionReferenceRow.InstructionNumbers))
+                {
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                }
+            });
+            otHost.Children.Add(otGrid);
+
+            addOtButton.Click += (_, _) => otRows.Add(new OtInstructionReferenceRow());
+            deleteOtButton.Click += (_, _) =>
+            {
+                if (otGrid.SelectedItem is OtInstructionReferenceRow selected)
+                    otRows.Remove(selected);
+            };
+
+            var prTab = new TabItem { Header = "ПР: тип и отклонения" };
+            var prHost = new Grid { Margin = new Thickness(10) };
+            prHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            prHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            prTab.Content = prHost;
+
+            var prButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var addPrButton = new Button
+            {
+                Content = "Добавить строку",
+                Style = TryFindResource("PrimaryButton") as Style
+            };
+            var deletePrButton = new Button
+            {
+                Content = "Удалить строку",
+                Style = TryFindResource("SecondaryButton") as Style,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            prButtons.Children.Add(addPrButton);
+            prButtons.Children.Add(deletePrButton);
+            prHost.Children.Add(prButtons);
+
+            var prGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = prRows,
+                ColumnWidth = DataGridLength.SizeToHeader
+            };
+            Grid.SetRow(prGrid, 1);
+            DataGridSizingHelper.SetEnableSmartSizing(prGrid, true);
+
+            var typeCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            typeCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(ProductionDeviationReferenceRow.MaterialType)));
+            var typeEditFactory = new FrameworkElementFactory(typeof(ComboBox));
+            typeEditFactory.SetValue(ComboBox.IsEditableProperty, true);
+            typeEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            typeEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            typeEditFactory.SetValue(ComboBox.ItemsSourceProperty, materialTypeOptions);
+            typeEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(ProductionDeviationReferenceRow.MaterialType))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            prGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Тип материала",
+                Width = 280,
+                CellTemplate = new DataTemplate { VisualTree = typeCellFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = typeEditFactory }
+            });
+            prGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Отклонение",
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                Binding = new Binding(nameof(ProductionDeviationReferenceRow.Deviation))
+                {
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                }
+            });
+            prHost.Children.Add(prGrid);
+
+            addPrButton.Click += (_, _) => prRows.Add(new ProductionDeviationReferenceRow());
+            deletePrButton.Click += (_, _) =>
+            {
+                if (prGrid.SelectedItem is ProductionDeviationReferenceRow selected)
+                    prRows.Remove(selected);
+            };
+
+            tabs.Items.Add(otTab);
+            tabs.Items.Add(prTab);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            var cancelButton = new Button
+            {
+                Content = "Отмена",
+                MinWidth = 120,
+                IsCancel = true,
+                Style = TryFindResource("SecondaryButton") as Style
+            };
+            var saveButton = new Button
+            {
+                Content = "Сохранить",
+                MinWidth = 140,
+                Margin = new Thickness(8, 0, 0, 0),
+                Style = TryFindResource("PrimaryButton") as Style
+            };
+            footer.Children.Add(cancelButton);
+            footer.Children.Add(saveButton);
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            saveButton.Click += (_, _) =>
+            {
+                var otMap = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var row in otRows)
+                {
+                    var profession = row?.Profession?.Trim();
+                    var numbers = row?.InstructionNumbers?.Trim();
+                    if (string.IsNullOrWhiteSpace(profession) || string.IsNullOrWhiteSpace(numbers))
+                        continue;
+
+                    otMap[profession] = numbers;
+                }
+
+                var productionMap = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var row in prRows)
+                {
+                    var materialType = row?.MaterialType?.Trim();
+                    var deviation = row?.Deviation?.Trim();
+                    if (string.IsNullOrWhiteSpace(materialType) || string.IsNullOrWhiteSpace(deviation))
+                        continue;
+
+                    if (!productionMap.TryGetValue(materialType, out var list))
+                    {
+                        list = new List<string>();
+                        productionMap[materialType] = list;
+                    }
+
+                    if (!list.Contains(deviation, StringComparer.CurrentCultureIgnoreCase))
+                        list.Add(deviation);
+                }
+
+                currentObject.OtInstructionNumbersByProfession = otMap.ToDictionary(x => x.Key, x => x.Value);
+                currentObject.ProductionDeviationsByType = productionMap.ToDictionary(
+                    x => x.Key,
+                    x => x.Value
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Select(v => v.Trim())
+                        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                        .ToList());
+                EnsureReferenceMappingsStorage();
+
+                if (currentObject.OtJournal != null)
+                {
+                    foreach (var row in currentObject.OtJournal.Where(x => string.IsNullOrWhiteSpace(x.InstructionNumbers)))
+                        FillInstructionNumbersFromTemplate(row);
+                }
+
+                RefreshSpecialties();
+                RefreshProfessions();
+                RefreshOtFilterOptions();
+                productionLookupsDirty = true;
+                RefreshProductionJournalLookups(force: true);
+                RefreshProductionDeviationOptions();
+                SaveState(SaveTrigger.System);
+                AppendChangeLog("Справочники", "Обновлены справочники ОТ и ПР.");
+                window.DialogResult = true;
+            };
+
+            window.ShowDialog();
         }
 
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -10031,6 +14623,7 @@ namespace ConstructionControl
             RefreshSummaryTable();
             RefreshArrivalTypes();
             RefreshArrivalNames();
+            RefreshArrivalFilterTemplates();
             EnsureSelectedTabInitialized();
             RequestArrivalFilterRefresh(immediate: true);
             RequestReminderRefresh(immediate: true);
@@ -10072,6 +14665,9 @@ namespace ConstructionControl
 
         private void ImportAllData_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanRunCriticalOperation("импорт резервной копии"))
+                return;
+
             CommitOpenEdits();
 
             var dlg = new OpenFileDialog
@@ -10117,7 +14713,10 @@ namespace ConstructionControl
               RefreshDocumentLibraries();
               ApplyAllFilters();
 
-              MessageBox.Show($"Импорт завершен. Восстановлено файлов ПДФ/смет: {restoredStorageFiles}.", "Импорт", MessageBoxButton.OK, MessageBoxImage.Information);
+              var integrityWarning = lastStorageIntegrityIssues.Count > 0
+                  ? $"{Environment.NewLine}{Environment.NewLine}Проверка целостности: найдены проблемы ({lastStorageIntegrityIssues.Count})."
+                  : string.Empty;
+              MessageBox.Show($"Импорт завершен. Восстановлено файлов ПДФ/смет: {restoredStorageFiles}.{integrityWarning}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Information);
           }
 
         private int ExportProjectStorageToArchive(ZipArchive archive)
@@ -10127,6 +14726,7 @@ namespace ConstructionControl
                 return 0;
 
             var exported = 0;
+            var manifest = new List<DocumentStorageManifestEntry>();
             foreach (var sourceFile in Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories))
             {
                 var relativePath = System.IO.Path.GetRelativePath(storageRoot, sourceFile).Replace('\\', '/');
@@ -10135,6 +14735,24 @@ namespace ConstructionControl
                 using var output = entry.Open();
                 input.CopyTo(output);
                 exported++;
+
+                if (TryComputeFileHash(sourceFile, out var hash, out var size))
+                {
+                    manifest.Add(new DocumentStorageManifestEntry
+                    {
+                        RelativePath = relativePath,
+                        Hash = hash,
+                        Size = size
+                    });
+                }
+            }
+
+            if (manifest.Count > 0)
+            {
+                var manifestEntry = archive.CreateEntry("storage_manifest.json", CompressionLevel.Optimal);
+                using var manifestStream = manifestEntry.Open();
+                using var writer = new StreamWriter(manifestStream);
+                writer.Write(JsonSerializer.Serialize(manifest));
             }
 
             return exported;
@@ -10220,6 +14838,7 @@ namespace ConstructionControl
 
         private int ImportProjectStorageFromArchive(ZipArchive archive)
         {
+            lastStorageIntegrityIssues.Clear();
             var storageEntries = archive.Entries
                 .Where(entry => !string.IsNullOrWhiteSpace(entry.Name)
                     && entry.FullName.StartsWith("storage/", StringComparison.OrdinalIgnoreCase))
@@ -10271,19 +14890,73 @@ namespace ConstructionControl
                 restored++;
             }
 
+            ValidateImportedStorageManifest(archive, fullRoot);
+
             return restored;
+        }
+
+        private void ValidateImportedStorageManifest(ZipArchive archive, string storageRoot)
+        {
+            if (archive == null || string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
+                return;
+
+            var manifestEntry = archive.GetEntry("storage_manifest.json");
+            if (manifestEntry == null)
+                return;
+
+            try
+            {
+                using var stream = manifestEntry.Open();
+                using var reader = new StreamReader(stream);
+                var json = reader.ReadToEnd();
+                var entries = JsonSerializer.Deserialize<List<DocumentStorageManifestEntry>>(json) ?? new List<DocumentStorageManifestEntry>();
+                foreach (var item in entries)
+                {
+                    if (item == null || string.IsNullOrWhiteSpace(item.RelativePath))
+                        continue;
+
+                    var candidate = item.RelativePath.Replace('/', System.IO.Path.DirectorySeparatorChar).TrimStart(System.IO.Path.DirectorySeparatorChar);
+                    var absolutePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(storageRoot, candidate));
+                    if (!File.Exists(absolutePath))
+                    {
+                        lastStorageIntegrityIssues.Add($"Отсутствует файл из манифеста: {item.RelativePath}");
+                        continue;
+                    }
+
+                    if (!TryComputeFileHash(absolutePath, out var hash, out var size))
+                    {
+                        lastStorageIntegrityIssues.Add($"Не удалось проверить файл: {item.RelativePath}");
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(item.Hash)
+                        && !string.Equals(item.Hash, hash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        lastStorageIntegrityIssues.Add($"Хэш не совпадает: {item.RelativePath}");
+                    }
+
+                    if (item.Size > 0 && item.Size != size)
+                        lastStorageIntegrityIssues.Add($"Размер не совпадает: {item.RelativePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                lastStorageIntegrityIssues.Add($"Ошибка чтения манифеста целостности: {ex.Message}");
+            }
         }
 
         private void LockToggle_Checked(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
             LockButton_Checked(sender, e);
+            UpdateStatusBar();
         }
 
         private void LockToggle_Unchecked(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
             LockButton_Unchecked(sender, e);
+            UpdateStatusBar();
         }
 
 
@@ -10297,6 +14970,9 @@ namespace ConstructionControl
 
         private void ClearObject_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanRunCriticalOperation("очистка объекта", requireCode: false))
+                return;
+
             if (currentObject == null)
             {
                 MessageBox.Show("Сначала создайте объект");
@@ -10406,6 +15082,9 @@ namespace ConstructionControl
 
         private void ImportExcel_Click(object sender, RoutedEventArgs e)
         {
+            if (!EnsureCanEditOperation("импорт Excel"))
+                return;
+
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "Excel files (*.xlsx)|*.xlsx",
@@ -11552,6 +16231,260 @@ namespace ConstructionControl
             mainPart.Document.Save();
         }
 
+        private void OpenSummaryBalanceWindow_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            EnsureProjectUiSettings();
+            currentObject.SummaryBalanceHistory ??= new List<SummaryBalanceHistoryEntry>();
+
+            var settings = currentObject.UiSettings ?? new ProjectUiSettings();
+            var sourceRows = BuildSummaryBalanceItems(includeOverage: true, includeDeficit: true, onlyMainCategory: settings.SummaryReminderOnlyMain);
+            var editableRows = new ObservableCollection<SummaryBalanceEditorRow>(
+                sourceRows.Select(x => new SummaryBalanceEditorRow
+                {
+                    Category = x.Category ?? string.Empty,
+                    Group = x.Group ?? string.Empty,
+                    Material = x.Material ?? string.Empty,
+                    Unit = x.Unit ?? string.Empty,
+                    Quantity = x.Quantity,
+                    IsOverage = x.IsOverage
+                }));
+            var historyRows = new ObservableCollection<SummaryBalanceHistoryEntry>(
+                currentObject.SummaryBalanceHistory
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Take(500));
+
+            var dialog = new Window
+            {
+                Title = "Дефициты / излишки",
+                Owner = this,
+                Width = 1220,
+                Height = 760,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
+
+            var caption = new TextBlock
+            {
+                Text = "Текущие позиции по сводке и история с причинами.",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(caption, 0);
+            root.Children.Add(caption);
+
+            var contentGrid = new Grid();
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.56, GridUnitType.Star) });
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.44, GridUnitType.Star) });
+            Grid.SetRow(contentGrid, 1);
+            root.Children.Add(contentGrid);
+
+            var currentGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = false,
+                ItemsSource = editableRows
+            };
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(SummaryBalanceEditorRow.Group)), Width = 170, IsReadOnly = true });
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Наименование", Binding = new Binding(nameof(SummaryBalanceEditorRow.Material)), Width = 240, IsReadOnly = true });
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Сценарий", Binding = new Binding(nameof(SummaryBalanceEditorRow.Scenario)), Width = 120, IsReadOnly = true });
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Количество", Binding = new Binding(nameof(SummaryBalanceEditorRow.Quantity)) { StringFormat = "0.###" }, Width = 110, IsReadOnly = true });
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Ед.", Binding = new Binding(nameof(SummaryBalanceEditorRow.Unit)), Width = 70, IsReadOnly = true });
+            currentGrid.Columns.Add(new DataGridTextColumn { Header = "Причина", Binding = new Binding(nameof(SummaryBalanceEditorRow.Reason)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            DataGridSizingHelper.SetEnableSmartSizing(currentGrid, true);
+            Grid.SetRow(currentGrid, 0);
+            contentGrid.Children.Add(currentGrid);
+
+            var historyGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = historyRows
+            };
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Когда", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.CreatedAt)) { StringFormat = "dd.MM.yyyy HH:mm" }, Width = 140 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.Group)), Width = 160 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Наименование", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.Material)), Width = 220 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Сценарий", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.IsOverage)) { Converter = new BoolToScenarioConverter() }, Width = 110 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Количество", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.Quantity)) { StringFormat = "0.###" }, Width = 110 });
+            historyGrid.Columns.Add(new DataGridTextColumn { Header = "Причина", Binding = new Binding(nameof(SummaryBalanceHistoryEntry.Reason)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            DataGridSizingHelper.SetEnableSmartSizing(historyGrid, true);
+            Grid.SetRow(historyGrid, 1);
+            contentGrid.Children.Add(historyGrid);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            var saveButton = new Button { Content = "Сохранить причины в историю", MinWidth = 230 };
+            var closeButton = new Button { Content = "Закрыть", MinWidth = 110, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+            footer.Children.Add(saveButton);
+            footer.Children.Add(closeButton);
+
+            saveButton.Click += (_, _) =>
+            {
+                foreach (var row in editableRows.Where(x => !string.IsNullOrWhiteSpace(x.Reason)))
+                {
+                    currentObject.SummaryBalanceHistory.Add(new SummaryBalanceHistoryEntry
+                    {
+                        CreatedAt = DateTime.Now,
+                        Group = row.Group ?? string.Empty,
+                        Material = row.Material ?? string.Empty,
+                        Unit = row.Unit ?? string.Empty,
+                        Quantity = row.Quantity,
+                        IsOverage = row.IsOverage,
+                        Reason = row.Reason?.Trim() ?? string.Empty
+                    });
+                }
+
+                currentObject.SummaryBalanceHistory = currentObject.SummaryBalanceHistory
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Take(5000)
+                    .ToList();
+
+                historyRows.Clear();
+                foreach (var historyItem in currentObject.SummaryBalanceHistory.OrderByDescending(x => x.CreatedAt).Take(500))
+                    historyRows.Add(historyItem);
+
+                SaveState();
+                MessageBox.Show("История обновлена.");
+            };
+
+            dialog.ShowDialog();
+        }
+
+        private void OpenSummaryComparisonWindow_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            var rows = BuildSummaryComparisonRows();
+            if (rows.Count == 0)
+            {
+                MessageBox.Show("Нет данных для сравнения.");
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Сравнение план / пришло / смонтировано / остаток",
+                Owner = this,
+                Width = 1080,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var grid = new Grid { Margin = new Thickness(14) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            dialog.Content = grid;
+
+            var caption = new TextBlock
+            {
+                Text = "Позиции по всем типам. Остаток = Пришло - Смонтировано.",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(caption, 0);
+            grid.Children.Add(caption);
+
+            var dg = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                ItemsSource = rows
+            };
+            dg.Columns.Add(new DataGridTextColumn { Header = "Тип", Binding = new Binding(nameof(SummaryComparisonRow.Тип)), Width = 170 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Наименование", Binding = new Binding(nameof(SummaryComparisonRow.Наименование)), Width = 230 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "План", Binding = new Binding(nameof(SummaryComparisonRow.План)) { StringFormat = "0.###" }, Width = 110 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Пришло", Binding = new Binding(nameof(SummaryComparisonRow.Пришло)) { StringFormat = "0.###" }, Width = 110 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Смонтировано", Binding = new Binding(nameof(SummaryComparisonRow.Смонтировано)) { StringFormat = "0.###" }, Width = 130 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Остаток", Binding = new Binding(nameof(SummaryComparisonRow.Остаток)) { StringFormat = "0.###" }, Width = 110 });
+            dg.Columns.Add(new DataGridTextColumn { Header = "Ед.", Binding = new Binding(nameof(SummaryComparisonRow.Ед)), Width = 70 });
+            DataGridSizingHelper.SetEnableSmartSizing(dg, true);
+            Grid.SetRow(dg, 1);
+            grid.Children.Add(dg);
+
+            dialog.ShowDialog();
+        }
+
+        private List<SummaryComparisonRow> BuildSummaryComparisonRows()
+        {
+            var keys = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            if (currentObject?.Demand != null)
+            {
+                foreach (var key in currentObject.Demand.Keys.Where(x => !string.IsNullOrWhiteSpace(x)))
+                    keys.Add(key.Trim());
+            }
+
+            foreach (var row in journal.Where(x => !string.IsNullOrWhiteSpace(x.MaterialGroup) && !string.IsNullOrWhiteSpace(x.MaterialName)))
+                keys.Add(BuildDemandKey(row.MaterialGroup.Trim(), row.MaterialName.Trim()));
+
+            return keys
+                .Select(key =>
+                {
+                    var parts = key.Split(new[] { "::" }, 2, StringSplitOptions.None);
+                    var group = parts[0].Trim();
+                    var material = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+                    if (string.IsNullOrWhiteSpace(group) || string.IsNullOrWhiteSpace(material))
+                        return null;
+
+                    var unit = GetUnitForMaterial(group, material);
+                    var demand = GetOrCreateDemand(key, unit);
+                    var plan = NormalizeQuantityByUnit(
+                        BuildSummaryBlocks(group).SelectMany(x => x.Levels.Select(level => GetDemandValue(demand, x.Block, level))).Sum(),
+                        unit);
+                    var arrived = NormalizeQuantityByUnit(
+                        journal.Where(x =>
+                                string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
+                                && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase))
+                            .Sum(x => x.Quantity),
+                        unit);
+                    var mounted = NormalizeQuantityByUnit(
+                        GetMountedQuantityFromProductionJournal(material),
+                        unit);
+
+                    return new SummaryComparisonRow
+                    {
+                        Тип = group,
+                        Наименование = material,
+                        Ед = unit,
+                        План = plan,
+                        Пришло = arrived,
+                        Смонтировано = mounted,
+                        Остаток = arrived - mounted
+                    };
+                })
+                .Where(x => x != null)
+                .OrderBy(x => x.Тип, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.Наименование, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
         private void SummaryModeSwitch_Changed(object sender, RoutedEventArgs e)
         {
             summaryMountedMode = SummaryMountedModeSwitch?.IsChecked == true;
@@ -11786,6 +16719,9 @@ namespace ConstructionControl
             {
                 currentObject.UiSettings ??= new ProjectUiSettings();
                 currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+                currentObject.UiSettings.TabDisplayModes ??= new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+                currentObject.UiSettings.GridColumnPreferences ??= new Dictionary<string, List<GridColumnPreference>>(StringComparer.CurrentCultureIgnoreCase);
+                EnsureReferenceMappingsStorage();
             }
 
             if (currentObject?.UiSettings != null && currentObject.UiSettings.ReminderSnoozeMinutes <= 0)
@@ -11793,11 +16729,44 @@ namespace ConstructionControl
 
             if (currentObject?.UiSettings != null && currentObject.UiSettings.AutoSaveIntervalMinutes <= 0)
                 currentObject.UiSettings.AutoSaveIntervalMinutes = 5;
+
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.DataRootDirectory = NormalizeDataRootPath(currentObject.UiSettings.DataRootDirectory);
+
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.UiDensityMode))
+                currentObject.UiSettings.UiDensityMode = "Стандартный";
+
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.AccessRole))
+            {
+                currentObject.UiSettings.AccessRole = ProjectAccessRoles.Critical;
+                if (!currentObject.UiSettings.RequireCodeForCriticalOperations)
+                    currentObject.UiSettings.RequireCodeForCriticalOperations = true;
+            }
+
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.AccessRole = NormalizeAccessRole(currentObject.UiSettings.AccessRole);
+
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.OtStatusFilter))
+                currentObject.UiSettings.OtStatusFilter = "Все";
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.OtSpecialtyFilter))
+                currentObject.UiSettings.OtSpecialtyFilter = "Все";
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.OtBrigadeFilter))
+                currentObject.UiSettings.OtBrigadeFilter = "Все";
+
+            if (currentObject?.UiSettings != null
+                && !currentObject.UiSettings.SummaryReminderOnOverage
+                && !currentObject.UiSettings.SummaryReminderOnDeficit
+                && !currentObject.UiSettings.SummaryReminderOnlyMain)
+            {
+                currentObject.UiSettings.SummaryReminderOnOverage = true;
+                currentObject.UiSettings.SummaryReminderOnlyMain = true;
+            }
         }
 
         private void ApplyProjectUiSettings()
         {
             EnsureProjectUiSettings();
+            ApplyUiDensityMode();
             UpdateAutoSaveTimerInterval();
 
             if (currentObject?.UiSettings == null)
@@ -11811,9 +16780,1376 @@ namespace ConstructionControl
                 TreePinToggle.IsChecked = isTreePinned;
 
             UpdateTreePanelState(forceVisible: isTreePinned);
-            if (!IsSafeStartupEnabled())
-                StartPreviewWarmupAsync();
+            ApplySavedTabDisplayModes();
+            ApplyGridColumnPreferencesForAll();
             RequestReminderRefresh(immediate: true);
+            UpdateStatusBar();
+        }
+
+        private void UpdateStatusBar()
+        {
+            if (StatusBarObjectText == null)
+                return;
+
+            var objectName = string.IsNullOrWhiteSpace(currentObject?.Name) ? "Не создан" : currentObject.Name.Trim();
+            var fileText = string.IsNullOrWhiteSpace(currentSaveFileName)
+                ? "—"
+                : System.IO.Path.GetFileName(currentSaveFileName);
+            var autoSaveMinutes = Math.Max(1, currentObject?.UiSettings?.AutoSaveIntervalMinutes ?? 5);
+            var lastSaveText = lastSuccessfulSaveLocalTime.HasValue
+                ? lastSuccessfulSaveLocalTime.Value.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture)
+                : "Нет данных";
+            var processingText = processingOverlayDepth > 0
+                ? processingOverlayPendingText
+                : "Ожидание";
+
+            StatusBarObjectText.Text = objectName;
+            StatusBarFileText.Text = fileText;
+            StatusBarAutoSaveText.Text = $"{autoSaveMinutes} мин";
+            StatusBarRoleText.Text = GetAccessRoleDisplayName(GetCurrentAccessRole());
+            StatusBarLockText.Text = isLocked ? "Вкл" : "Выкл";
+            StatusBarLastSaveText.Text = lastSaveText;
+            StatusBarOperationText.Text = string.IsNullOrWhiteSpace(lastOperationStatusText) ? "Готово" : lastOperationStatusText;
+            StatusBarProcessingText.Text = processingText;
+        }
+
+        private static string GetAccessRoleDisplayName(string role)
+        {
+            if (string.Equals(role, ProjectAccessRoles.View, StringComparison.CurrentCultureIgnoreCase))
+                return "Просмотр";
+            if (string.Equals(role, ProjectAccessRoles.Edit, StringComparison.CurrentCultureIgnoreCase))
+                return "Редактирование";
+
+            return "Полный";
+        }
+
+        private void SetLastOperationStatus(string text)
+        {
+            lastOperationStatusText = string.IsNullOrWhiteSpace(text) ? "Готово" : text.Trim();
+            UpdateStatusBar();
+        }
+
+        private void AddOperationLogEntry(string kind, string status, string details)
+        {
+            var entry = new OperationLogEntry
+            {
+                TimestampLocal = DateTime.Now,
+                Kind = string.IsNullOrWhiteSpace(kind) ? "Система" : kind.Trim(),
+                Status = string.IsNullOrWhiteSpace(status) ? "Информация" : status.Trim(),
+                Details = string.IsNullOrWhiteSpace(details) ? "—" : details.Trim()
+            };
+
+            operationLogEntries.Insert(0, entry);
+            while (operationLogEntries.Count > 300)
+                operationLogEntries.RemoveAt(operationLogEntries.Count - 1);
+        }
+
+        private string NormalizeUiDensityMode(string densityMode)
+        {
+            var normalized = (densityMode ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return "Стандартный";
+
+            if (string.Equals(normalized, "Компактный", StringComparison.CurrentCultureIgnoreCase)
+                || normalized.Contains("РљРѕРјРї", StringComparison.Ordinal)
+                || string.Equals(normalized, "compact", StringComparison.CurrentCultureIgnoreCase))
+            {
+                return "Компактный";
+            }
+
+            return "Стандартный";
+        }
+
+        private void ApplyUiDensityMode()
+        {
+            var mode = NormalizeUiDensityMode(currentObject?.UiSettings?.UiDensityMode);
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.UiDensityMode = mode;
+
+            var resources = Application.Current?.Resources;
+            if (resources == null)
+                return;
+
+            var compact = string.Equals(mode, "Компактный", StringComparison.CurrentCultureIgnoreCase);
+
+            void Assign(string targetKey, string standardKey, string compactKey)
+            {
+                var sourceKey = compact ? compactKey : standardKey;
+                if (resources.Contains(sourceKey))
+                    resources[targetKey] = resources[sourceKey];
+            }
+
+            Assign("AppFontSize", "AppFontSizeStandard", "AppFontSizeCompact");
+            Assign("ControlHeight", "ControlHeightStandard", "ControlHeightCompact");
+            Assign("TextBoxPadding", "TextBoxPaddingStandard", "TextBoxPaddingCompact");
+            Assign("ComboPadding", "ComboPaddingStandard", "ComboPaddingCompact");
+            Assign("ButtonPadding", "ButtonPaddingStandard", "ButtonPaddingCompact");
+            Assign("TabPadding", "TabPaddingStandard", "TabPaddingCompact");
+            Assign("DataGridRowMinHeight", "DataGridRowMinHeightStandard", "DataGridRowMinHeightCompact");
+            Assign("DataGridCellPadding", "DataGridCellPaddingStandard", "DataGridCellPaddingCompact");
+        }
+
+        private void ApplySavedTabDisplayModes()
+        {
+            if (currentObject?.UiSettings?.TabDisplayModes == null)
+                return;
+
+            if (currentObject.UiSettings.TabDisplayModes.TryGetValue("Приход", out var arrivalMode))
+                arrivalMatrixMode = string.Equals(arrivalMode, "Матрица", StringComparison.CurrentCultureIgnoreCase);
+
+            UpdateArrivalViewMode();
+
+            if (currentObject.UiSettings.TabDisplayModes.TryGetValue(ActiveTabModeKey, out var tabHeader))
+            {
+                var tab = GetTabByHeader(tabHeader);
+                if (tab != null && MainTabs != null && !ReferenceEquals(MainTabs.SelectedItem, tab))
+                    MainTabs.SelectedItem = tab;
+            }
+        }
+
+        private void SetTabDisplayMode(string tabHeader, string mode)
+        {
+            if (string.IsNullOrWhiteSpace(tabHeader))
+                return;
+
+            EnsureProjectUiSettings();
+            currentObject?.UiSettings?.TabDisplayModes?.TryAdd(tabHeader, mode ?? string.Empty);
+            if (currentObject?.UiSettings?.TabDisplayModes != null)
+                currentObject.UiSettings.TabDisplayModes[tabHeader] = mode ?? string.Empty;
+        }
+
+        private TabItem GetTabByHeader(string header)
+        {
+            if (string.IsNullOrWhiteSpace(header))
+                return null;
+
+            if (string.Equals(header, "Сводка", StringComparison.CurrentCultureIgnoreCase))
+                return SummaryTab;
+            if (string.Equals(header, "ЖВК", StringComparison.CurrentCultureIgnoreCase))
+                return JvkTab;
+            if (string.Equals(header, "Приход", StringComparison.CurrentCultureIgnoreCase))
+                return ArrivalTab;
+            if (string.Equals(header, "ОТ", StringComparison.CurrentCultureIgnoreCase))
+                return OtTab;
+            if (string.Equals(header, "Табель", StringComparison.CurrentCultureIgnoreCase))
+                return TimesheetTab;
+            if (string.Equals(header, "ПР", StringComparison.CurrentCultureIgnoreCase))
+                return ProductionTab;
+            if (string.Equals(header, "Осмотры", StringComparison.CurrentCultureIgnoreCase))
+                return InspectionTab;
+            if (string.Equals(header, "ПДФ", StringComparison.CurrentCultureIgnoreCase))
+                return PdfTab;
+            if (string.Equals(header, "Сметы", StringComparison.CurrentCultureIgnoreCase))
+                return EstimateTab;
+
+            return null;
+        }
+
+        private Dictionary<string, DataGrid> GetManagedGridMap()
+        {
+            var map = new Dictionary<string, DataGrid>(StringComparer.CurrentCultureIgnoreCase);
+            if (ArrivalLegacyGrid != null)
+                map[GridPrefArrival] = ArrivalLegacyGrid;
+            if (OtJournalGrid != null)
+                map[GridPrefOt] = OtJournalGrid;
+            if (TimesheetGrid != null)
+                map[GridPrefTimesheet] = TimesheetGrid;
+            if (ProductionJournalGrid != null)
+                map[GridPrefProduction] = ProductionJournalGrid;
+            if (InspectionJournalGrid != null)
+                map[GridPrefInspection] = InspectionJournalGrid;
+            return map;
+        }
+
+        private string GetGridPreferenceKey(DataGrid grid)
+        {
+            if (ReferenceEquals(grid, ArrivalLegacyGrid))
+                return GridPrefArrival;
+            if (ReferenceEquals(grid, OtJournalGrid))
+                return GridPrefOt;
+            if (ReferenceEquals(grid, TimesheetGrid))
+                return GridPrefTimesheet;
+            if (ReferenceEquals(grid, ProductionJournalGrid))
+                return GridPrefProduction;
+            if (ReferenceEquals(grid, InspectionJournalGrid))
+                return GridPrefInspection;
+            return string.Empty;
+        }
+
+        private static string GetColumnHeaderKey(DataGridColumn column)
+        {
+            if (column?.Header == null)
+                return string.Empty;
+
+            return column.Header.ToString()?.Trim() ?? string.Empty;
+        }
+
+        private static double GetColumnWidthValue(DataGridColumn column)
+        {
+            if (column == null)
+                return double.NaN;
+
+            if (column.Width.IsAbsolute && column.Width.Value > 0)
+                return Math.Round(column.Width.Value, 2);
+
+            if (column.ActualWidth > 0)
+                return Math.Round(column.ActualWidth, 2);
+
+            return double.NaN;
+        }
+
+        private void SaveGridColumnPreferencesForAll()
+        {
+            foreach (var grid in GetManagedGridMap().Values)
+                SaveGridColumnPreferences(grid);
+        }
+
+        private void SaveGridColumnPreferences(DataGrid grid)
+        {
+            if (isApplyingColumnPreferences || grid == null || currentObject?.UiSettings == null)
+                return;
+
+            var key = GetGridPreferenceKey(grid);
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            EnsureProjectUiSettings();
+
+            var list = grid.Columns
+                .OrderBy(x => x.DisplayIndex)
+                .Select(x => new GridColumnPreference
+                {
+                    Header = GetColumnHeaderKey(x),
+                    IsVisible = x.Visibility == Visibility.Visible,
+                    DisplayIndex = x.DisplayIndex,
+                    Width = GetColumnWidthValue(x)
+                })
+                .ToList();
+
+            currentObject.UiSettings.GridColumnPreferences[key] = list;
+        }
+
+        private void ApplyGridColumnPreferencesForAll()
+        {
+            foreach (var grid in GetManagedGridMap().Values)
+                ApplyGridColumnPreferences(grid);
+        }
+
+        private void ApplyGridColumnPreferences(DataGrid grid)
+        {
+            if (grid == null || currentObject?.UiSettings?.GridColumnPreferences == null)
+                return;
+
+            var key = GetGridPreferenceKey(grid);
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            if (!currentObject.UiSettings.GridColumnPreferences.TryGetValue(key, out var prefs) || prefs == null || prefs.Count == 0)
+                return;
+
+            var prefByHeader = prefs
+                .Where(x => !string.IsNullOrWhiteSpace(x.Header))
+                .GroupBy(x => x.Header.Trim(), StringComparer.CurrentCultureIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.First(), StringComparer.CurrentCultureIgnoreCase);
+
+            isApplyingColumnPreferences = true;
+            try
+            {
+                var ordered = grid.Columns
+                    .Select(x =>
+                    {
+                        var header = GetColumnHeaderKey(x);
+                        prefByHeader.TryGetValue(header, out var pref);
+                        return new { Column = x, Preference = pref };
+                    })
+                    .OrderBy(x => x.Preference?.DisplayIndex ?? int.MaxValue)
+                    .ThenBy(x => x.Column.DisplayIndex)
+                    .ToList();
+
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    ordered[i].Column.DisplayIndex = i;
+
+                    var pref = ordered[i].Preference;
+                    if (pref == null)
+                        continue;
+
+                    ordered[i].Column.Visibility = pref.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+                    if (!double.IsNaN(pref.Width) && pref.Width > 20)
+                        ordered[i].Column.Width = new DataGridLength(pref.Width);
+                }
+            }
+            catch
+            {
+                // Настройки колонок не должны ломать вкладку
+            }
+            finally
+            {
+                isApplyingColumnPreferences = false;
+            }
+        }
+
+        private DataGrid GetCurrentTabGrid()
+        {
+            if (MainTabs?.SelectedItem is not TabItem tab)
+                return null;
+
+            return GetGridByTabHeader(tab.Header?.ToString());
+        }
+
+        private DataGrid GetGridByTabHeader(string header)
+        {
+            header ??= string.Empty;
+            if (string.Equals(header, "Приход", StringComparison.CurrentCultureIgnoreCase))
+                return ArrivalLegacyGrid;
+            if (string.Equals(header, "ОТ", StringComparison.CurrentCultureIgnoreCase))
+                return OtJournalGrid;
+            if (string.Equals(header, "Табель", StringComparison.CurrentCultureIgnoreCase))
+                return TimesheetGrid;
+            if (string.Equals(header, "ПР", StringComparison.CurrentCultureIgnoreCase))
+                return ProductionJournalGrid;
+            if (string.Equals(header, "Осмотры", StringComparison.CurrentCultureIgnoreCase))
+                return InspectionJournalGrid;
+
+            return null;
+        }
+
+        private static bool TryParsePositiveWidth(string text, out double width)
+        {
+            width = 0;
+            var normalized = (text ?? string.Empty).Trim().Replace(',', '.');
+            if (!double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                return false;
+
+            if (parsed <= 20)
+                return false;
+
+            width = parsed;
+            return true;
+        }
+
+        private void OpenColumnManager_Click(object sender, RoutedEventArgs e)
+        {
+            if (isOpeningCommandDialog)
+                return;
+
+            var grid = GetCurrentTabGrid();
+            if (grid == null || grid.Columns.Count == 0)
+            {
+                MessageBox.Show("Для текущей вкладки нет настраиваемой таблицы.");
+                return;
+            }
+
+            isOpeningCommandDialog = true;
+            try
+            {
+                ShowColumnManagerDialog(grid);
+            }
+            finally
+            {
+                isOpeningCommandDialog = false;
+            }
+        }
+
+        private void ShowColumnManagerDialog(DataGrid grid)
+        {
+            if (grid == null)
+                return;
+
+            var rows = new ObservableCollection<ColumnManagerRow>(
+                grid.Columns
+                    .OrderBy(x => x.DisplayIndex)
+                    .Select((x, idx) => new ColumnManagerRow
+                    {
+                        Header = string.IsNullOrWhiteSpace(GetColumnHeaderKey(x)) ? $"Колонка {idx + 1}" : GetColumnHeaderKey(x),
+                        IsVisible = x.Visibility == Visibility.Visible,
+                        WidthText = GetColumnWidthValue(x).ToString("0.##", CultureInfo.InvariantCulture),
+                        Order = idx + 1
+                    }));
+
+            var dialog = new Window
+            {
+                Title = "Менеджер колонок",
+                Owner = this,
+                Width = 760,
+                Height = 620,
+                MinWidth = 680,
+                MinHeight = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResize
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var hint = new TextBlock
+            {
+                Text = "Управление колонками текущей вкладки: видимость, порядок, ширина.",
+                Margin = new Thickness(0, 0, 0, 10),
+                Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105))
+            };
+            Grid.SetRow(hint, 0);
+            root.Children.Add(hint);
+
+            var body = new Grid();
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(body, 1);
+            root.Children.Add(body);
+
+            var rowsGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = false,
+                SelectionMode = DataGridSelectionMode.Single,
+                SelectionUnit = DataGridSelectionUnit.FullRow,
+                ItemsSource = rows
+            };
+            rowsGrid.Columns.Add(new DataGridTextColumn { Header = "№", Binding = new Binding(nameof(ColumnManagerRow.Order)), IsReadOnly = true, Width = 48 });
+            rowsGrid.Columns.Add(new DataGridCheckBoxColumn { Header = "Показать", Binding = new Binding(nameof(ColumnManagerRow.IsVisible)), Width = 88 });
+            rowsGrid.Columns.Add(new DataGridTextColumn { Header = "Колонка", Binding = new Binding(nameof(ColumnManagerRow.Header)), IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            rowsGrid.Columns.Add(new DataGridTextColumn { Header = "Ширина", Binding = new Binding(nameof(ColumnManagerRow.WidthText)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 110 });
+            Grid.SetColumn(rowsGrid, 0);
+            body.Children.Add(rowsGrid);
+
+            var actions = new StackPanel
+            {
+                Margin = new Thickness(10, 0, 0, 0),
+                Width = 132
+            };
+            Grid.SetColumn(actions, 1);
+            body.Children.Add(actions);
+
+            void RefreshOrder()
+            {
+                for (var i = 0; i < rows.Count; i++)
+                    rows[i].Order = i + 1;
+            }
+
+            var moveUpButton = new Button { Content = "Вверх", MinWidth = 120, Style = FindResource("SecondaryButton") as Style, Margin = new Thickness(0, 0, 0, 8) };
+            moveUpButton.Click += (_, _) =>
+            {
+                if (rowsGrid.SelectedItem is not ColumnManagerRow selected)
+                    return;
+
+                var index = rows.IndexOf(selected);
+                if (index <= 0)
+                    return;
+
+                rows.Move(index, index - 1);
+                RefreshOrder();
+                rowsGrid.SelectedItem = selected;
+            };
+            actions.Children.Add(moveUpButton);
+
+            var moveDownButton = new Button { Content = "Вниз", MinWidth = 120, Style = FindResource("SecondaryButton") as Style };
+            moveDownButton.Click += (_, _) =>
+            {
+                if (rowsGrid.SelectedItem is not ColumnManagerRow selected)
+                    return;
+
+                var index = rows.IndexOf(selected);
+                if (index < 0 || index >= rows.Count - 1)
+                    return;
+
+                rows.Move(index, index + 1);
+                RefreshOrder();
+                rowsGrid.SelectedItem = selected;
+            };
+            actions.Children.Add(moveDownButton);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            var cancelButton = new Button { Content = "Отмена", MinWidth = 120, Style = FindResource("SecondaryButton") as Style, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+            var applyButton = new Button { Content = "Применить", MinWidth = 130, IsDefault = true };
+            footer.Children.Add(cancelButton);
+            footer.Children.Add(applyButton);
+
+            applyButton.Click += (_, _) =>
+            {
+                var columnQueues = grid.Columns
+                    .GroupBy(x => GetColumnHeaderKey(x), StringComparer.CurrentCultureIgnoreCase)
+                    .ToDictionary(
+                        x => x.Key,
+                        x => new Queue<DataGridColumn>(x.OrderBy(c => c.DisplayIndex)),
+                        StringComparer.CurrentCultureIgnoreCase);
+
+                isApplyingColumnPreferences = true;
+                try
+                {
+                    var nextDisplayIndex = 0;
+                    foreach (var row in rows)
+                    {
+                        if (!columnQueues.TryGetValue(row.Header, out var queue) || queue.Count == 0)
+                            continue;
+
+                        var column = queue.Dequeue();
+                        column.Visibility = row.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+                        if (TryParsePositiveWidth(row.WidthText, out var width))
+                            column.Width = new DataGridLength(width);
+                        column.DisplayIndex = nextDisplayIndex++;
+                    }
+                }
+                finally
+                {
+                    isApplyingColumnPreferences = false;
+                }
+
+                SaveGridColumnPreferences(grid);
+                SaveState(SaveTrigger.System);
+                dialog.DialogResult = true;
+            };
+
+            dialog.Content = root;
+            dialog.ShowDialog();
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e == null)
+                return;
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab)
+                && EstimateExcelHost?.Visibility == Visibility.Visible
+                && estimateExcelWindowHandle != IntPtr.Zero)
+            {
+                return;
+            }
+
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            var ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+            if (ctrl && shift && key == Key.M)
+            {
+                OpenColumnManager_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
+
+            if (ctrl && key == Key.K)
+            {
+                OpenCommandPalette_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
+
+            if (ctrl && key == Key.F)
+            {
+                OpenGlobalSearch_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
+
+            if (ctrl && key == Key.S)
+            {
+                if (shift)
+                    SaveAs_Click(this, new RoutedEventArgs());
+                else
+                    SaveButton_Click(this, new RoutedEventArgs());
+
+                e.Handled = true;
+                return;
+            }
+
+            if (key == Key.F5)
+            {
+                RefreshButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+        }
+
+        private void OpenGlobalSearch_Click(object sender, RoutedEventArgs e)
+        {
+            var initialQuery = GlobalSearchTextBox?.Text?.Trim() ?? string.Empty;
+            ShowGlobalSearchDialog(initialQuery);
+        }
+
+        private void GlobalSearchTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter)
+                return;
+
+            OpenGlobalSearch_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+
+        private void DigitsOnlyTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !DigitsInputRegex.IsMatch(e.Text ?? string.Empty);
+        }
+
+        private void ProductionBlocksBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (ProductionBlocksBox == null)
+                return;
+
+            var normalized = NormalizeProductionBlocksText(ProductionBlocksBox.Text);
+            if (!string.Equals(ProductionBlocksBox.Text, normalized, StringComparison.CurrentCulture))
+                ProductionBlocksBox.Text = normalized;
+        }
+
+        private void ProductionMarksBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (ProductionMarksBox == null)
+                return;
+
+            var normalized = NormalizeProductionMarksText(ProductionMarksBox.Text);
+            if (!string.Equals(ProductionMarksBox.Text, normalized, StringComparison.CurrentCulture))
+                ProductionMarksBox.Text = normalized;
+        }
+
+        private static string NormalizeProductionBlocksText(string text)
+        {
+            var blocks = LevelMarkHelper.ParseBlocks(text)
+                .Where(x => x > 0)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+
+            return blocks.Count == 0 ? string.Empty : string.Join(", ", blocks);
+        }
+
+        private static string NormalizeProductionMarksText(string text)
+        {
+            var marks = LevelMarkHelper.ParseMarks(text)
+                .Select(NormalizeProductionMarkToken)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            return marks.Count == 0 ? string.Empty : string.Join(", ", marks);
+        }
+
+        private static string NormalizeProductionMarkToken(string token)
+        {
+            var normalized = (token ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return string.Empty;
+
+            var numericCandidate = normalized.Replace(',', '.');
+            if (!Regex.IsMatch(numericCandidate, @"^[+-]?\d+(\.\d+)?$"))
+                return normalized;
+
+            if (!double.TryParse(numericCandidate, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+                return normalized;
+
+            if (Math.Abs(value) < 0.0000001)
+                return "0.000";
+
+            var signPrefix = value > 0 ? "+" : string.Empty;
+            return $"{signPrefix}{value:0.000}";
+        }
+
+        private void OpenCommandPalette_Click(object sender, RoutedEventArgs e)
+        {
+            if (isOpeningCommandDialog)
+                return;
+
+            isOpeningCommandDialog = true;
+            try
+            {
+                ShowCommandPaletteDialog();
+            }
+            finally
+            {
+                isOpeningCommandDialog = false;
+            }
+        }
+
+        private void ShowGlobalSearchDialog(string initialQuery)
+        {
+            var dialog = new Window
+            {
+                Title = "Глобальный поиск",
+                Owner = this,
+                Width = 880,
+                Height = 620,
+                MinWidth = 760,
+                MinHeight = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResize
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var queryBox = new TextBox
+            {
+                MinHeight = 36,
+                Tag = "Введите материал, ФИО, ТТН или дату",
+                Text = (initialQuery ?? string.Empty).Trim()
+            };
+            Grid.SetRow(queryBox, 0);
+            root.Children.Add(queryBox);
+
+            var resultRows = new ObservableCollection<GlobalSearchResult>();
+            var resultGrid = new DataGrid
+            {
+                Margin = new Thickness(0, 10, 0, 0),
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                SelectionMode = DataGridSelectionMode.Single,
+                SelectionUnit = DataGridSelectionUnit.FullRow,
+                ItemsSource = resultRows
+            };
+            resultGrid.Columns.Add(new DataGridTextColumn { Header = "Вкладка", Binding = new Binding(nameof(GlobalSearchResult.TabHeader)), Width = 130 });
+            resultGrid.Columns.Add(new DataGridTextColumn { Header = "Запись", Binding = new Binding(nameof(GlobalSearchResult.Title)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            resultGrid.Columns.Add(new DataGridTextColumn { Header = "Описание", Binding = new Binding(nameof(GlobalSearchResult.Description)), Width = new DataGridLength(1.3, DataGridLengthUnitType.Star) });
+            Grid.SetRow(resultGrid, 1);
+            root.Children.Add(resultGrid);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            var closeButton = new Button
+            {
+                Content = "Закрыть",
+                MinWidth = 120,
+                IsCancel = true,
+                Style = FindResource("SecondaryButton") as Style,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var openButton = new Button
+            {
+                Content = "Перейти",
+                MinWidth = 120,
+                IsDefault = true
+            };
+            footer.Children.Add(closeButton);
+            footer.Children.Add(openButton);
+
+            void ApplySearch()
+            {
+                var query = queryBox.Text?.Trim() ?? string.Empty;
+                var found = BuildGlobalSearchResults(query).Take(500).ToList();
+                resultRows.Clear();
+                foreach (var row in found)
+                    resultRows.Add(row);
+
+                if (resultRows.Count > 0)
+                    resultGrid.SelectedIndex = 0;
+            }
+
+            void NavigateSelected()
+            {
+                if (resultGrid.SelectedItem is not GlobalSearchResult selected || selected.NavigateAction == null)
+                    return;
+
+                dialog.DialogResult = true;
+                dialog.Close();
+                selected.NavigateAction();
+            }
+
+            queryBox.TextChanged += (_, _) => ApplySearch();
+            queryBox.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter)
+                {
+                    if (resultRows.Count == 0)
+                    {
+                        ApplySearch();
+                        if (resultRows.Count == 0)
+                        {
+                            args.Handled = true;
+                            return;
+                        }
+                    }
+
+                    NavigateSelected();
+                    args.Handled = true;
+                }
+                else if (args.Key == Key.Down)
+                {
+                    if (resultGrid.Items.Count > 0)
+                    {
+                        var nextIndex = Math.Min(resultGrid.Items.Count - 1, Math.Max(0, resultGrid.SelectedIndex + 1));
+                        resultGrid.SelectedIndex = nextIndex;
+                        resultGrid.ScrollIntoView(resultGrid.SelectedItem);
+                        args.Handled = true;
+                    }
+                }
+                else if (args.Key == Key.Up)
+                {
+                    if (resultGrid.Items.Count > 0)
+                    {
+                        var nextIndex = Math.Max(0, resultGrid.SelectedIndex - 1);
+                        resultGrid.SelectedIndex = nextIndex;
+                        resultGrid.ScrollIntoView(resultGrid.SelectedItem);
+                        args.Handled = true;
+                    }
+                }
+            };
+
+            resultGrid.MouseDoubleClick += (_, _) => NavigateSelected();
+            resultGrid.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter)
+                {
+                    NavigateSelected();
+                    args.Handled = true;
+                }
+            };
+
+            openButton.Click += (_, _) => NavigateSelected();
+
+            dialog.Content = root;
+            ApplySearch();
+            dialog.ShowDialog();
+        }
+
+        private List<GlobalSearchResult> BuildGlobalSearchResults(string query)
+        {
+            var normalizedQuery = (query ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
+                return new List<GlobalSearchResult>();
+
+            var tokens = normalizedQuery
+                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            var results = new List<GlobalSearchResult>();
+            bool Match(params string[] values)
+            {
+                var haystack = string.Join(" ", (values ?? Array.Empty<string>()).Where(x => !string.IsNullOrWhiteSpace(x)));
+                if (string.IsNullOrWhiteSpace(haystack))
+                    return false;
+
+                return tokens.All(token => haystack.IndexOf(token, StringComparison.CurrentCultureIgnoreCase) >= 0);
+            }
+
+            foreach (var row in journal)
+            {
+                if (!Match(
+                    row.MaterialGroup,
+                    row.MaterialName,
+                    row.Ttn,
+                    row.Supplier,
+                    row.Passport,
+                    row.Stb,
+                    row.Date.ToString("dd.MM.yyyy")))
+                {
+                    continue;
+                }
+
+                results.Add(new GlobalSearchResult
+                {
+                    TabHeader = "Приход",
+                    Title = $"{row.MaterialGroup} / {row.MaterialName}",
+                    Description = $"{row.Date:dd.MM.yyyy}; ТТН: {row.Ttn}; Кол-во: {FormatNumberByUnit(row.Quantity, row.Unit)}",
+                    NavigateAction = () => NavigateToArrivalRecord(row)
+                });
+            }
+
+            if (currentObject?.OtJournal != null)
+            {
+                foreach (var row in currentObject.OtJournal)
+                {
+                    if (!Match(
+                        row.FullName,
+                        row.Specialty,
+                        row.Profession,
+                        row.InstructionType,
+                        row.InstructionNumbers,
+                        row.StatusLabel,
+                        row.InstructionDate.ToString("dd.MM.yyyy")))
+                    {
+                        continue;
+                    }
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "ОТ",
+                        Title = row.FullName ?? "Без ФИО",
+                        Description = $"{row.InstructionType}; профессия: {row.Profession}; дата: {row.InstructionDate:dd.MM.yyyy}",
+                        NavigateAction = () => NavigateToOtRow(row)
+                    });
+                }
+            }
+
+            if (currentObject?.TimesheetPeople != null)
+            {
+                foreach (var row in currentObject.TimesheetPeople)
+                {
+                    if (!Match(row.FullName, row.Specialty, row.Rank, row.BrigadeName, row.DailyWorkHours.ToString()))
+                        continue;
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "Табель",
+                        Title = row.FullName ?? "Без ФИО",
+                        Description = $"{row.Specialty}; разряд: {row.Rank}; часов/день: {row.DailyWorkHours}",
+                        NavigateAction = () => NavigateToTimesheetPerson(row)
+                    });
+                }
+            }
+
+            if (currentObject?.ProductionJournal != null)
+            {
+                foreach (var row in currentObject.ProductionJournal)
+                {
+                    if (!Match(
+                        row.ActionName,
+                        row.WorkName,
+                        row.ElementsText,
+                        row.BlocksText,
+                        row.MarksText,
+                        row.BrigadeName,
+                        row.Weather,
+                        row.Deviations,
+                        row.Date.ToString("dd.MM.yyyy")))
+                    {
+                        continue;
+                    }
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "ПР",
+                        Title = $"{row.Date:dd.MM.yyyy} | {row.ActionName} {row.WorkName}",
+                        Description = $"{row.ElementsText}; блоки: {row.BlocksText}; отметки: {row.MarksText}",
+                        NavigateAction = () => NavigateToProductionRow(row)
+                    });
+                }
+            }
+
+            if (currentObject?.InspectionJournal != null)
+            {
+                foreach (var row in currentObject.InspectionJournal)
+                {
+                    if (!Match(
+                        row.JournalName,
+                        row.InspectionName,
+                        row.ReminderStatus,
+                        row.ReminderStartDate.ToString("dd.MM.yyyy"),
+                        row.NextReminderDate.ToString("dd.MM.yyyy")))
+                    {
+                        continue;
+                    }
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "Осмотры",
+                        Title = $"{row.JournalName} — {row.InspectionName}",
+                        Description = $"Напоминать с {row.ReminderStartDate:dd.MM.yyyy}; период: {row.ReminderPeriodDays} дн.",
+                        NavigateAction = () => NavigateToInspectionRow(row)
+                    });
+                }
+            }
+
+            if (currentObject?.Demand != null)
+            {
+                foreach (var pair in currentObject.Demand)
+                {
+                    var parts = (pair.Key ?? string.Empty).Split(new[] { "::" }, StringSplitOptions.None);
+                    var group = parts.Length > 0 ? parts[0] : string.Empty;
+                    var material = parts.Length > 1 ? parts[1] : string.Empty;
+                    if (!Match(group, material, pair.Value?.Unit))
+                        continue;
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "Сводка",
+                        Title = $"{group} / {material}",
+                        Description = $"Ед.: {pair.Value?.Unit}",
+                        NavigateAction = () => SelectMainTab(SummaryTab)
+                    });
+                }
+            }
+
+            return results
+                .OrderBy(x => x.TabHeader, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(x => x.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private void NavigateToArrivalRecord(JournalRecord row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(ArrivalTab);
+            if (arrivalMatrixMode)
+            {
+                arrivalMatrixMode = false;
+                SetTabDisplayMode("Приход", "Таблица");
+                UpdateArrivalViewMode();
+            }
+
+            filteredJournal = journal.ToList();
+            if (ArrivalLegacyGrid != null)
+                ArrivalLegacyGrid.ItemsSource = filteredJournal;
+
+            Dispatcher.BeginInvoke(new Action(() => SelectGridItem(ArrivalLegacyGrid, row)), DispatcherPriority.Background);
+        }
+
+        private void NavigateToOtRow(OtJournalEntry row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(OtTab);
+            Dispatcher.BeginInvoke(new Action(() => SelectGridItem(OtJournalGrid, row)), DispatcherPriority.Background);
+        }
+
+        private void NavigateToTimesheetPerson(TimesheetPersonEntry row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(TimesheetTab);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                EnsureTabInitialized(TimesheetTab);
+                var target = timesheetRows.FirstOrDefault(x => x.PersonId == row.PersonId)
+                    ?? timesheetRows.FirstOrDefault(x => string.Equals(x.FullName, row.FullName, StringComparison.CurrentCultureIgnoreCase));
+                if (target != null)
+                    SelectGridItem(TimesheetGrid, target);
+            }), DispatcherPriority.Background);
+        }
+
+        private void NavigateToProductionRow(ProductionJournalEntry row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(ProductionTab);
+            Dispatcher.BeginInvoke(new Action(() => SelectGridItem(ProductionJournalGrid, row)), DispatcherPriority.Background);
+        }
+
+        private void NavigateToInspectionRow(InspectionJournalEntry row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(InspectionTab);
+            Dispatcher.BeginInvoke(new Action(() => SelectGridItem(InspectionJournalGrid, row)), DispatcherPriority.Background);
+        }
+
+        private static void SelectGridItem(DataGrid grid, object item)
+        {
+            if (grid == null || item == null)
+                return;
+
+            if (!grid.Items.Contains(item))
+                return;
+
+            grid.SelectedItem = item;
+            grid.ScrollIntoView(item);
+            if (grid.SelectedCells.Count == 0 && grid.Columns.Count > 0)
+                grid.SelectedCells.Add(new DataGridCellInfo(item, grid.Columns[0]));
+            grid.Focus();
+        }
+
+        private void ShowCommandPaletteDialog()
+        {
+            var actions = BuildCommandPaletteActions();
+            var visibleActions = new ObservableCollection<CommandPaletteAction>(actions);
+
+            var dialog = new Window
+            {
+                Title = "Командная палитра",
+                Owner = this,
+                Width = 760,
+                Height = 560,
+                MinWidth = 700,
+                MinHeight = 480,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResize
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var filterBox = new TextBox
+            {
+                MinHeight = 36,
+                Tag = "Введите действие или клавиши, например: сохранить, вкладка, Ctrl+K"
+            };
+            Grid.SetRow(filterBox, 0);
+            root.Children.Add(filterBox);
+
+            var list = new DataGrid
+            {
+                Margin = new Thickness(0, 10, 0, 0),
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                IsReadOnly = true,
+                SelectionMode = DataGridSelectionMode.Single,
+                SelectionUnit = DataGridSelectionUnit.FullRow,
+                ItemsSource = visibleActions
+            };
+            list.Columns.Add(new DataGridTextColumn { Header = "Команда", Binding = new Binding(nameof(CommandPaletteAction.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            list.Columns.Add(new DataGridTextColumn { Header = "Клавиши", Binding = new Binding(nameof(CommandPaletteAction.Shortcut)), Width = 130 });
+            list.Columns.Add(new DataGridTextColumn { Header = "Описание", Binding = new Binding(nameof(CommandPaletteAction.Hint)), Width = new DataGridLength(1.2, DataGridLengthUnitType.Star) });
+            Grid.SetRow(list, 1);
+            root.Children.Add(list);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            var closeButton = new Button
+            {
+                Content = "Закрыть",
+                MinWidth = 120,
+                IsCancel = true,
+                Style = FindResource("SecondaryButton") as Style,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var runButton = new Button
+            {
+                Content = "Выполнить",
+                MinWidth = 120,
+                IsDefault = true
+            };
+            footer.Children.Add(closeButton);
+            footer.Children.Add(runButton);
+
+            void ApplyFilter()
+            {
+                var text = filterBox.Text?.Trim() ?? string.Empty;
+                var tokens = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var filtered = actions.Where(action =>
+                {
+                    if (tokens.Length == 0)
+                        return true;
+
+                    var source = $"{action.Name} {action.Shortcut} {action.Hint}";
+                    return tokens.All(token => source.IndexOf(token, StringComparison.CurrentCultureIgnoreCase) >= 0);
+                }).ToList();
+
+                visibleActions.Clear();
+                foreach (var action in filtered)
+                    visibleActions.Add(action);
+
+                if (visibleActions.Count > 0)
+                    list.SelectedIndex = 0;
+            }
+
+            void ExecuteSelectedAction()
+            {
+                if (list.SelectedItem is not CommandPaletteAction selected || selected.ExecuteAction == null)
+                    return;
+
+                dialog.DialogResult = true;
+                dialog.Close();
+                selected.ExecuteAction();
+            }
+
+            filterBox.TextChanged += (_, _) => ApplyFilter();
+            filterBox.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter)
+                {
+                    ExecuteSelectedAction();
+                    args.Handled = true;
+                    return;
+                }
+
+                if (args.Key == Key.Down)
+                {
+                    if (list.Items.Count > 0)
+                    {
+                        list.SelectedIndex = Math.Min(list.Items.Count - 1, Math.Max(0, list.SelectedIndex + 1));
+                        list.ScrollIntoView(list.SelectedItem);
+                        args.Handled = true;
+                    }
+                    return;
+                }
+
+                if (args.Key == Key.Up)
+                {
+                    if (list.Items.Count > 0)
+                    {
+                        list.SelectedIndex = Math.Max(0, list.SelectedIndex - 1);
+                        list.ScrollIntoView(list.SelectedItem);
+                        args.Handled = true;
+                    }
+                }
+            };
+
+            list.MouseDoubleClick += (_, _) => ExecuteSelectedAction();
+            list.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter)
+                {
+                    ExecuteSelectedAction();
+                    args.Handled = true;
+                }
+            };
+            runButton.Click += (_, _) => ExecuteSelectedAction();
+
+            dialog.Content = root;
+            ApplyFilter();
+            dialog.ShowDialog();
+        }
+
+        private List<CommandPaletteAction> BuildCommandPaletteActions()
+        {
+            return new List<CommandPaletteAction>
+            {
+                new()
+                {
+                    Name = "Сохранить",
+                    Shortcut = "Ctrl+S",
+                    Hint = "Сохранить текущий объект",
+                    ExecuteAction = () => SaveButton_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Сохранить как",
+                    Shortcut = "Ctrl+Shift+S",
+                    Hint = "Сохранить объект в новый файл",
+                    ExecuteAction = () => SaveAs_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Обновить",
+                    Shortcut = "F5",
+                    Hint = "Пересчитать и обновить текущие данные",
+                    ExecuteAction = () => RefreshButton_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Глобальный поиск",
+                    Shortcut = "Ctrl+F",
+                    Hint = "Поиск по материалам, ФИО, ТТН, датам",
+                    ExecuteAction = () => OpenGlobalSearch_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Менеджер колонок",
+                    Shortcut = "Ctrl+Shift+M",
+                    Hint = "Показать/скрыть колонки, изменить порядок и ширину",
+                    ExecuteAction = () => OpenColumnManager_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Настройки интерфейса",
+                    Shortcut = string.Empty,
+                    Hint = "Открыть параметры интерфейса",
+                    ExecuteAction = () => AppSettings_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Name = "Плотность: Стандартный",
+                    Shortcut = string.Empty,
+                    Hint = "Обычные отступы и высота строк",
+                    ExecuteAction = () => SetUiDensityMode("Стандартный")
+                },
+                new()
+                {
+                    Name = "Плотность: Компактный",
+                    Shortcut = string.Empty,
+                    Hint = "Уплотненный режим для больших таблиц",
+                    ExecuteAction = () => SetUiDensityMode("Компактный")
+                },
+                new()
+                {
+                    Name = "Открыть вкладку Сводка",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку Сводка",
+                    ExecuteAction = () => SelectMainTab(SummaryTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку ЖВК",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку ЖВК",
+                    ExecuteAction = () => SelectMainTab(JvkTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку Приход",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку Приход",
+                    ExecuteAction = () => SelectMainTab(ArrivalTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку ОТ",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку ОТ",
+                    ExecuteAction = () => SelectMainTab(OtTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку Табель",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку Табель",
+                    ExecuteAction = () => SelectMainTab(TimesheetTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку ПР",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку ПР",
+                    ExecuteAction = () => SelectMainTab(ProductionTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку Осмотры",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку Осмотры",
+                    ExecuteAction = () => SelectMainTab(InspectionTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку ПДФ",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку ПДФ-документы",
+                    ExecuteAction = () => SelectMainTab(PdfTab)
+                },
+                new()
+                {
+                    Name = "Открыть вкладку Сметы",
+                    Shortcut = string.Empty,
+                    Hint = "Перейти на вкладку Сметы",
+                    ExecuteAction = () => SelectMainTab(EstimateTab)
+                }
+            };
+        }
+
+        private void SetUiDensityMode(string mode)
+        {
+            EnsureProjectUiSettings();
+            if (currentObject?.UiSettings == null)
+                return;
+
+            currentObject.UiSettings.UiDensityMode = mode ?? "Стандартный";
+            ApplyUiDensityMode();
+            SaveState(SaveTrigger.System);
         }
         private List<SummaryBlockInfo> BuildSummaryBlocks(string group)
         {
@@ -12709,6 +19045,279 @@ namespace ConstructionControl
         }
         private HashSet<string> selectedArrivalTypes = new();
         private HashSet<string> selectedArrivalNames = new();
+        private void EnsureArrivalFilterTemplatesStorage()
+        {
+            currentObject ??= new ProjectObject();
+            currentObject.ArrivalFilterTemplates ??= new List<ArrivalFilterTemplate>();
+        }
+
+        private void RefreshArrivalFilterTemplates()
+        {
+            arrivalFilterTemplateNames.Clear();
+            EnsureArrivalFilterTemplatesStorage();
+
+            foreach (var name in currentObject.ArrivalFilterTemplates
+                         .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                         .Select(x => x.Name.Trim())
+                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                arrivalFilterTemplateNames.Add(name);
+            }
+
+            if (ArrivalTemplateBox != null)
+            {
+                suppressArrivalTemplateSelectionChange = true;
+                ArrivalTemplateBox.ItemsSource = arrivalFilterTemplateNames;
+                if (arrivalFilterTemplateNames.Count == 0)
+                    ArrivalTemplateBox.SelectedItem = null;
+                suppressArrivalTemplateSelectionChange = false;
+            }
+        }
+
+        private void SaveArrivalFilterTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            EnsureArrivalFilterTemplatesStorage();
+            var name = Microsoft.VisualBasic.Interaction.InputBox(
+                "Введите название шаблона фильтра:",
+                "Сохранить шаблон",
+                ArrivalTemplateBox?.Text?.Trim() ?? string.Empty)?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var template = BuildCurrentArrivalFilterTemplate(name);
+            var existing = currentObject.ArrivalFilterTemplates.FirstOrDefault(x =>
+                string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase));
+
+            if (existing != null)
+                currentObject.ArrivalFilterTemplates.Remove(existing);
+
+            currentObject.ArrivalFilterTemplates.Add(template);
+            RefreshArrivalFilterTemplates();
+            suppressArrivalTemplateSelectionChange = true;
+            if (ArrivalTemplateBox != null)
+                ArrivalTemplateBox.SelectedItem = name;
+            suppressArrivalTemplateSelectionChange = false;
+            SaveState();
+        }
+
+        private ArrivalFilterTemplate BuildCurrentArrivalFilterTemplate(string name)
+        {
+            return new ArrivalFilterTemplate
+            {
+                Name = name?.Trim() ?? string.Empty,
+                SelectedTypes = selectedArrivalTypes.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList(),
+                SelectedNames = selectedArrivalNames.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList(),
+                ShowMain = ArrivalMainCheck?.IsChecked == true,
+                ShowExtra = ArrivalExtraCheck?.IsChecked == true,
+                ShowLowCost = ArrivalLowCostCheck?.IsChecked == true,
+                ShowInternal = ArrivalInternalCheck?.IsChecked == true,
+                DateFrom = ArrivalDateFrom?.SelectedDate,
+                DateTo = ArrivalDateTo?.SelectedDate,
+                SearchText = ArrivalSearchBox?.Text?.Trim() ?? string.Empty
+            };
+        }
+
+        private void ArrivalTemplateBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (suppressArrivalTemplateSelectionChange || currentObject?.ArrivalFilterTemplates == null)
+                return;
+
+            var name = ArrivalTemplateBox?.SelectedItem?.ToString();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var template = currentObject.ArrivalFilterTemplates.FirstOrDefault(x =>
+                string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase));
+            if (template == null)
+                return;
+
+            ApplyArrivalFilterTemplate(template);
+            RequestArrivalFilterRefresh(immediate: true);
+        }
+
+        private void ApplyArrivalFilterTemplate(ArrivalFilterTemplate template)
+        {
+            if (template == null)
+                return;
+
+            selectedArrivalTypes = template.SelectedTypes?.Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase) ?? new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            selectedArrivalNames = template.SelectedNames?.Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .ToHashSet(StringComparer.CurrentCultureIgnoreCase) ?? new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            if (ArrivalMainCheck != null) ArrivalMainCheck.IsChecked = template.ShowMain;
+            if (ArrivalExtraCheck != null) ArrivalExtraCheck.IsChecked = template.ShowExtra;
+            if (ArrivalLowCostCheck != null) ArrivalLowCostCheck.IsChecked = template.ShowLowCost;
+            if (ArrivalInternalCheck != null) ArrivalInternalCheck.IsChecked = template.ShowInternal;
+            if (ArrivalDateFrom != null) ArrivalDateFrom.SelectedDate = template.DateFrom;
+            if (ArrivalDateTo != null) ArrivalDateTo.SelectedDate = template.DateTo;
+            if (ArrivalSearchBox != null) ArrivalSearchBox.Text = template.SearchText ?? string.Empty;
+
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+        }
+
+        private void DeleteArrivalFilterTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject?.ArrivalFilterTemplates == null || currentObject.ArrivalFilterTemplates.Count == 0)
+                return;
+
+            var name = ArrivalTemplateBox?.SelectedItem?.ToString();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show("Выберите шаблон для удаления.");
+                return;
+            }
+
+            var existing = currentObject.ArrivalFilterTemplates.FirstOrDefault(x =>
+                string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase));
+            if (existing == null)
+                return;
+
+            currentObject.ArrivalFilterTemplates.Remove(existing);
+            RefreshArrivalFilterTemplates();
+            SaveState();
+        }
+
+        private void BatchEditArrivalRows_Click(object sender, RoutedEventArgs e)
+        {
+            if (ArrivalLegacyGrid == null)
+                return;
+
+            var selectedRows = ArrivalLegacyGrid.SelectedItems?.OfType<JournalRecord>().ToList() ?? new List<JournalRecord>();
+            if (selectedRows.Count == 0)
+            {
+                MessageBox.Show("Выберите строки в таблице прихода для пакетного изменения.");
+                return;
+            }
+
+            var typeOptions = journal
+                .Select(x => x.MaterialGroup?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            var supplierOptions = journal
+                .Select(x => x.Supplier?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var dialog = new Window
+            {
+                Title = $"Пакетное редактирование ({selectedRows.Count} строк)",
+                Owner = this,
+                Width = 520,
+                Height = 330,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            var root = new Grid { Margin = new Thickness(14) };
+            for (var i = 0; i < 4; i++)
+                root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            dialog.Content = root;
+
+            var applyDateCheck = new CheckBox { Content = "Изменить дату", Margin = new Thickness(0, 0, 0, 6) };
+            var datePicker = new DatePicker { IsEnabled = false, SelectedDate = DateTime.Today };
+            applyDateCheck.Checked += (_, _) => datePicker.IsEnabled = true;
+            applyDateCheck.Unchecked += (_, _) => datePicker.IsEnabled = false;
+            Grid.SetRow(applyDateCheck, 0);
+            Grid.SetRow(datePicker, 1);
+            root.Children.Add(applyDateCheck);
+            root.Children.Add(datePicker);
+
+            var typePanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            typePanel.Children.Add(new TextBlock { Text = "Новый тип (если нужно)", FontWeight = FontWeights.SemiBold });
+            var typeBox = new ComboBox
+            {
+                IsEditable = true,
+                IsTextSearchEnabled = true,
+                StaysOpenOnEdit = true,
+                ItemsSource = typeOptions
+            };
+            typePanel.Children.Add(typeBox);
+            Grid.SetRow(typePanel, 2);
+            root.Children.Add(typePanel);
+
+            var supplierPanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            supplierPanel.Children.Add(new TextBlock { Text = "Новый поставщик (если нужно)", FontWeight = FontWeights.SemiBold });
+            var supplierBox = new ComboBox
+            {
+                IsEditable = true,
+                IsTextSearchEnabled = true,
+                StaysOpenOnEdit = true,
+                ItemsSource = supplierOptions
+            };
+            supplierPanel.Children.Add(supplierBox);
+            Grid.SetRow(supplierPanel, 3);
+            root.Children.Add(supplierPanel);
+
+            var hint = new TextBlock
+            {
+                Text = "Пустое поле означает: не менять это значение.",
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(hint, 4);
+            root.Children.Add(hint);
+
+            var footer = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            Grid.SetRow(footer, 5);
+            root.Children.Add(footer);
+
+            var applyButton = new Button { Content = "Применить", MinWidth = 120 };
+            var cancelButton = new Button { Content = "Отмена", MinWidth = 110, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+            footer.Children.Add(applyButton);
+            footer.Children.Add(cancelButton);
+
+            applyButton.Click += (_, _) =>
+            {
+                var newType = typeBox.Text?.Trim();
+                var newSupplier = supplierBox.Text?.Trim();
+                var shouldUpdateDate = applyDateCheck.IsChecked == true && datePicker.SelectedDate.HasValue;
+
+                foreach (var row in selectedRows)
+                {
+                    if (shouldUpdateDate)
+                        row.Date = datePicker.SelectedDate.Value.Date;
+                    if (!string.IsNullOrWhiteSpace(newType))
+                        row.MaterialGroup = newType;
+                    if (!string.IsNullOrWhiteSpace(newSupplier))
+                        row.Supplier = newSupplier;
+                }
+
+                dialog.DialogResult = true;
+                dialog.Close();
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            RebuildArchiveFromCurrentData();
+            RefreshJournalAnomalies();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            ApplyAllFilters();
+            SaveState();
+        }
 
         private void RefreshArrivalTypes()
         {
@@ -12822,6 +19431,212 @@ namespace ConstructionControl
 
 
             MessageBox.Show("Экспорт завершён");
+        }
+
+        private void ExportSelectedRangeToExcel_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetActiveGridForRangeExport();
+            if (grid == null)
+            {
+                MessageBox.Show("На текущей вкладке нет таблицы для экспорта выделения.");
+                return;
+            }
+
+            if (!TryBuildSelectedRangeData(grid, out var headers, out var rows))
+            {
+                MessageBox.Show("Сначала выделите диапазон или строки в таблице.");
+                return;
+            }
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "Excel (*.xlsx)|*.xlsx",
+                FileName = $"Выделение_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
+            };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Выделение");
+            for (var c = 0; c < headers.Count; c++)
+                ws.Cell(1, c + 1).Value = headers[c];
+            ws.Range(1, 1, 1, headers.Count).Style.Font.Bold = true;
+            ws.Range(1, 1, 1, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF2F7");
+
+            for (var r = 0; r < rows.Count; r++)
+            {
+                var row = rows[r];
+                for (var c = 0; c < row.Count; c++)
+                    ws.Cell(r + 2, c + 1).Value = row[c];
+            }
+
+            ws.Columns().AdjustToContents();
+            ws.Range(1, 1, Math.Max(1, rows.Count + 1), headers.Count).SetAutoFilter();
+            wb.SaveAs(dialog.FileName);
+            MessageBox.Show("Экспорт выделенного в Excel выполнен.");
+        }
+
+        private void ExportSelectedRangeToWord_Click(object sender, RoutedEventArgs e)
+        {
+            var grid = GetActiveGridForRangeExport();
+            if (grid == null)
+            {
+                MessageBox.Show("На текущей вкладке нет таблицы для экспорта выделения.");
+                return;
+            }
+
+            if (!TryBuildSelectedRangeData(grid, out var headers, out var rows))
+            {
+                MessageBox.Show("Сначала выделите диапазон или строки в таблице.");
+                return;
+            }
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "Word (*.docx)|*.docx",
+                FileName = $"Выделение_{DateTime.Now:yyyyMMdd_HHmm}.docx"
+            };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            using var document = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(
+                dialog.FileName,
+                DocumentFormat.OpenXml.WordprocessingDocumentType.Document);
+            var mainPart = document.AddMainDocumentPart();
+            mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+            var body = new DocumentFormat.OpenXml.Wordprocessing.Body();
+            mainPart.Document.Append(body);
+
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text("Экспорт выделенного диапазона"))));
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text($"Дата: {DateTime.Now:dd.MM.yyyy HH:mm}"))));
+            body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text(string.Empty))));
+
+            foreach (var row in rows)
+            {
+                var pieces = headers.Zip(row, (h, v) => $"{h}: {v}");
+                body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(
+                        new DocumentFormat.OpenXml.Wordprocessing.Text($"• {string.Join("; ", pieces)}"))));
+            }
+
+            mainPart.Document.Save();
+            MessageBox.Show("Экспорт выделенного в Word выполнен.");
+        }
+
+        private DataGrid GetActiveGridForRangeExport()
+        {
+            if (ReferenceEquals(MainTabs?.SelectedItem, ArrivalTab))
+                return arrivalMatrixMode ? null : ArrivalLegacyGrid;
+            if (ReferenceEquals(MainTabs?.SelectedItem, OtTab))
+                return OtJournalGrid;
+            if (ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab))
+                return TimesheetGrid;
+            if (ReferenceEquals(MainTabs?.SelectedItem, ProductionTab))
+                return ProductionJournalGrid;
+            if (ReferenceEquals(MainTabs?.SelectedItem, InspectionTab))
+                return InspectionJournalGrid;
+            return null;
+        }
+
+        private bool TryBuildSelectedRangeData(DataGrid grid, out List<string> headers, out List<List<string>> rows)
+        {
+            headers = new List<string>();
+            rows = new List<List<string>>();
+            if (grid == null)
+                return false;
+
+            var selectedCells = grid.SelectedCells?.ToList() ?? new List<DataGridCellInfo>();
+            var selectedItems = grid.SelectedItems?.Cast<object>().ToList() ?? new List<object>();
+
+            var targetColumns = new List<DataGridColumn>();
+            var targetItems = new List<object>();
+
+            if (selectedCells.Count > 0)
+            {
+                targetColumns = selectedCells
+                    .Select(x => x.Column)
+                    .Where(x => x != null)
+                    .Distinct()
+                    .OrderBy(x => x.DisplayIndex)
+                    .ToList();
+
+                targetItems = selectedCells
+                    .Select(x => x.Item)
+                    .Where(x => x != null)
+                    .Distinct()
+                    .OrderBy(x => grid.Items.IndexOf(x))
+                    .ToList();
+            }
+            else if (selectedItems.Count > 0)
+            {
+                targetItems = selectedItems.OrderBy(x => grid.Items.IndexOf(x)).ToList();
+                targetColumns = grid.Columns
+                    .Where(x => x.Visibility == Visibility.Visible)
+                    .OrderBy(x => x.DisplayIndex)
+                    .ToList();
+            }
+            else if (grid.CurrentItem != null)
+            {
+                targetItems.Add(grid.CurrentItem);
+                targetColumns = grid.Columns
+                    .Where(x => x.Visibility == Visibility.Visible)
+                    .OrderBy(x => x.DisplayIndex)
+                    .ToList();
+            }
+
+            if (targetItems.Count == 0 || targetColumns.Count == 0)
+                return false;
+
+            headers = targetColumns
+                .Select(x => x.Header?.ToString() ?? string.Empty)
+                .ToList();
+
+            foreach (var item in targetItems)
+            {
+                var line = new List<string>();
+                foreach (var column in targetColumns)
+                    line.Add(ExtractGridCellText(column, item));
+                rows.Add(line);
+            }
+
+            return rows.Count > 0;
+        }
+
+        private string ExtractGridCellText(DataGridColumn column, object item)
+        {
+            if (column == null || item == null)
+                return string.Empty;
+
+            if (column is DataGridBoundColumn boundColumn
+                && boundColumn.Binding is Binding binding
+                && !string.IsNullOrWhiteSpace(binding.Path?.Path))
+            {
+                var path = binding.Path.Path.Trim();
+                var property = item.GetType().GetProperty(path);
+                var value = property?.GetValue(item);
+                return value?.ToString() ?? string.Empty;
+            }
+
+            if (item is TimesheetRowViewModel timesheetRow
+                && int.TryParse(column.Header?.ToString(), out var day)
+                && day > 0)
+            {
+                return timesheetRow.GetDayValue(day);
+            }
+
+            var cellContent = column.GetCellContent(item);
+            if (cellContent is TextBlock textBlock)
+                return textBlock.Text ?? string.Empty;
+            if (cellContent is CheckBox checkBox)
+                return checkBox.IsChecked == true ? "Да" : "Нет";
+
+            return string.Empty;
         }
         void ExportArrival(IXLWorkbook wb)
         {

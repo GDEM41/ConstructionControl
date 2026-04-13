@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  build-and-check:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore ConstructionControl.slnx
+
+      - name: Build
+        run: dotnet build ConstructionControl.slnx -c Release --no-restore
+
+      - name: Logic auto tests
+        run: dotnet run --project ConstructionControl.LogicTests/ConstructionControl.LogicTests.csproj -c Release --no-build
+
+      - name: Migration format check
+        shell: pwsh
+        run: ./scripts/check-migration.ps1 -Configuration Release
+
+      - name: Smoke checks
+        shell: pwsh
+        run: ./scripts/smoke-ui.ps1 -Configuration Release

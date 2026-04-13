@@ -15,6 +15,15 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="TextTrimming" Value="None"/>
         </Style>
+        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
     </Window.Resources>
 
     <Border Background="{StaticResource SurfaceBrush}"
@@ -35,21 +44,34 @@
                                Foreground="{StaticResource TextBrush}"
                                Margin="0,0,0,14"/>
 
+                    <Border x:Name="CreateAsNewBorder"
+                            Visibility="Collapsed"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource StrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="10"
+                            Margin="0,0,0,12">
+                        <CheckBox x:Name="CreateAsNewCheck"
+                                  Content="Создать новый объект (не перезаписывать текущий)"
+                                  Foreground="{StaticResource TextBrush}"/>
+                    </Border>
+
                     <UniformGrid Columns="2" Margin="0,0,0,10">
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Название объекта" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="NameBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="NameBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                         <StackPanel Margin="10,0,0,10">
                             <TextBlock Text="Полное название объекта" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="FullObjectNameBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="FullObjectNameBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                     </UniformGrid>
 
                     <UniformGrid Columns="2" Margin="0,0,0,10">
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Количество блоков" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="BlocksBox" Height="34" Padding="10,6" TextChanged="BlocksBox_TextChanged"/>
+                            <TextBox x:Name="BlocksBox" Height="40" Padding="12,8" TextChanged="BlocksBox_TextChanged"/>
                         </StackPanel>
                         <StackPanel Margin="10,0,0,10">
                             <CheckBox x:Name="BasementCheck" Content="Есть подвал" VerticalAlignment="Center" Margin="0,20,0,0"/>
@@ -65,7 +87,7 @@
 
                     <StackPanel x:Name="SameFloorsPanel" Margin="0,0,0,10">
                         <TextBlock Text="Этажей в блоке" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="FloorsPerBlockBox" Height="34" Width="220" HorizontalAlignment="Left" Padding="10,6"/>
+                        <TextBox x:Name="FloorsPerBlockBox" Height="40" Width="220" HorizontalAlignment="Left" Padding="12,8"/>
                     </StackPanel>
 
                     <DataGrid x:Name="FloorsByBlockGrid"
@@ -98,29 +120,29 @@
                     <UniformGrid Columns="2" Margin="0,0,0,10">
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Представитель генподрядной организации" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="GeneralContractorRepresentativeBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="GeneralContractorRepresentativeBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                         <StackPanel Margin="10,0,0,10">
                             <TextBlock Text="Представитель технического надзора" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="TechnicalSupervisorRepresentativeBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="TechnicalSupervisorRepresentativeBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                     </UniformGrid>
 
                     <UniformGrid Columns="2" Margin="0,0,0,10">
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Представитель проектной организации" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="ProjectOrganizationRepresentativeBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="ProjectOrganizationRepresentativeBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                         <StackPanel Margin="10,0,0,10">
                             <TextBlock Text="Наименование проектной документации" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                            <TextBox x:Name="ProjectDocumentationNameBox" Height="34" Padding="10,6"/>
+                            <TextBox x:Name="ProjectDocumentationNameBox" Height="40" Padding="12,8"/>
                         </StackPanel>
                     </UniformGrid>
 
                     <TextBlock Text="Мастера" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,2,0,6"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Количество мастеров" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0"/>
-                        <ComboBox x:Name="MasterCountComboBox" Width="90" SelectionChanged="MasterCountComboBox_SelectionChanged"/>
+                        <ComboBox x:Name="MasterCountComboBox" Width="90" Height="40" SelectionChanged="MasterCountComboBox_SelectionChanged"/>
                     </StackPanel>
                     <DataGrid x:Name="MastersGrid"
                               local:DataGridSizingHelper.EnableSmartSizing="False"
@@ -137,9 +159,9 @@
                     <TextBlock Text="Прорабы" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,2,0,6"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Количество прорабов" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0"/>
-                        <ComboBox x:Name="ForemanCountComboBox" Width="90" SelectionChanged="ForemanCountComboBox_SelectionChanged"/>
+                        <ComboBox x:Name="ForemanCountComboBox" Width="90" Height="40" SelectionChanged="ForemanCountComboBox_SelectionChanged"/>
                         <TextBlock Text="Ответственный" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="18,0,10,0"/>
-                        <ComboBox x:Name="ResponsibleForemanComboBox" Width="280" DisplayMemberPath="FullName"/>
+                        <ComboBox x:Name="ResponsibleForemanComboBox" Width="280" Height="40" DisplayMemberPath="FullName"/>
                     </StackPanel>
                     <DataGrid x:Name="ForemenGrid"
                               local:DataGridSizingHelper.EnableSmartSizing="False"
@@ -155,7 +177,7 @@
 
                     <StackPanel Margin="0,0,0,6">
                         <TextBlock Text="ФИО начальника участка" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="SiteManagerNameBox" Height="34" Padding="10,6"/>
+                        <TextBox x:Name="SiteManagerNameBox" Height="40" Padding="12,8"/>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

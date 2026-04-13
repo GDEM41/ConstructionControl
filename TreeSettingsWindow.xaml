@@ -29,6 +29,10 @@
                            Foreground="{StaticResource TextSecondaryBrush}"
                            Margin="0,6,0,0"
                            TextWrapping="Wrap"/>
+                <TextBlock Text="Массовое редактирование: выделите диапазон строк (Shift + клик) и измените значение в любой колонке. Значение применится ко всем выделенным строкам."
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,6,0,0"
+                           TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
@@ -51,17 +55,21 @@
                         Click="RemoveEntry_Click"
                         Margin="0,0,14,0"
                         Padding="12,6"/>
-                <Button Content="Переименовать тип для всех"
-                        Click="RenameTypeForAll_Click"
+                <Button Content="Тип по выделению"
+                        Click="ApplyTypeToSelection_Click"
                         Margin="0,0,10,0"
                         Padding="12,6"/>
-                <Button Content="Применить разбиение к другим"
+                <Button Content="Подтип по выделению"
+                        Click="ApplySubTypeToSelection_Click"
+                        Margin="0,0,10,0"
+                        Padding="12,6"/>
+                <Button Content="Авто по выделению"
+                        Click="ApplyAutoSplitToSelection_Click"
+                        Margin="0,0,10,0"
+                        Padding="12,6"/>
+                <Button Content="Разбиение по выделению"
                         Click="ApplySplitToOthers_Click"
                                                 Margin="0,0,8,0"
-                        Padding="12,6"/>
-                <Button Content="Применить подтип к материалам"
-                        Click="ApplySubTypeToOthers_Click"
-                        Margin="0,0,14,0"
                         Padding="12,6"/>
                 
                 <TextBlock Text="Уровни разбиения:"
@@ -83,6 +91,8 @@
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
                   HeadersVisibility="Column"
                   IsReadOnly="False"
                   GridLinesVisibility="Horizontal"

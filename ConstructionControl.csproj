@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,14 +30,19 @@
   <ItemGroup>
     <Compile Remove="build_obj\**\*.cs" />
     <Compile Remove="build_check\**\*.cs" />
+    <Compile Remove="ConstructionControl.LogicTests\**\*.cs" />
     <EmbeddedResource Remove="build_obj\**" />
     <EmbeddedResource Remove="build_check\**" />
+    <EmbeddedResource Remove="ConstructionControl.LogicTests\**" />
     <None Remove="build_obj\**" />
     <None Remove="build_check\**" />
+    <None Remove="ConstructionControl.LogicTests\**" />
     <Page Remove="build_obj\**\*.xaml" />
     <Page Remove="build_check\**\*.xaml" />
+    <Page Remove="ConstructionControl.LogicTests\**\*.xaml" />
     <Resource Remove="build_obj\**" />
     <Resource Remove="build_check\**" />
+    <Resource Remove="ConstructionControl.LogicTests\**" />
   </ItemGroup>
 
 </Project>
