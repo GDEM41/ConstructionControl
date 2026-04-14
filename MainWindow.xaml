@@ -4,7 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ConstructionControl"
         Title="Журнал входного контроля"
-        Icon="/installer/assets/MasterPRO.ico"
+        Icon="pack://application:,,,/installer/assets/MasterPRO.ico"
         Height="700"
         Width="1300"
         MinWidth="1360"

@@ -66,6 +66,25 @@
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"/>
 
+                    <Grid Margin="0,2,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="220"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Режим уведомлений"
+                                   VerticalAlignment="Center"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"/>
+                        <ComboBox x:Name="ReminderPresentationModeBox"
+                                  Grid.Column="1"
+                                  Height="40"
+                                  VerticalContentAlignment="Center">
+                            <ComboBoxItem Content="Только окно уведомлений" Tag="overlay"/>
+                            <ComboBoxItem Content="Только подсветка вкладок" Tag="tabs"/>
+                            <ComboBoxItem Content="Комбинированный" Tag="combined"/>
+                        </ComboBox>
+                    </Grid>
+
                     <CheckBox x:Name="SafeStartupModeCheckBox" FontWeight="SemiBold">
                         <TextBlock Text="Безопасный старт (минимальная нагрузка)" TextWrapping="Wrap"/>
                     </CheckBox>
@@ -199,6 +218,83 @@
                                       Style="{StaticResource AppSecondaryButton}"
                                       Click="BrowseDataRootButton_Click">Обзор...</Button>
                           </Grid>
+                      </Grid>
+
+                      <Separator Margin="0,4,0,10"/>
+
+                      <TextBlock Text="Внешние программы"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextBrush}"
+                                 Margin="0,0,0,8"/>
+
+                      <Grid Margin="0,2,0,12">
+                          <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                          </Grid.RowDefinitions>
+                          <TextBlock Text="Путь к PlanMaker.exe"
+                                     VerticalAlignment="Center"
+                                     FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextBrush}"
+                                     TextWrapping="Wrap"/>
+                          <Grid Grid.Row="1" Margin="0,8,0,0">
+                              <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*"/>
+                                  <ColumnDefinition Width="Auto"/>
+                              </Grid.ColumnDefinitions>
+                              <TextBox x:Name="SpreadsheetEditorPathBox"
+                                       Height="40"
+                                       Padding="10,2"
+                                       VerticalContentAlignment="Center"
+                                       Tag="Оставьте пустым для автоопределения"
+                                       TextChanged="ExternalEditorPathBox_TextChanged"/>
+                              <Button Grid.Column="1"
+                                      Margin="8,0,0,0"
+                                      MinWidth="110"
+                                      Style="{StaticResource AppSecondaryButton}"
+                                      Click="BrowseSpreadsheetEditorButton_Click">Обзор...</Button>
+                          </Grid>
+                          <TextBlock x:Name="SpreadsheetEditorHintText"
+                                     Grid.Row="2"
+                                     Margin="0,8,0,0"
+                                     Foreground="{StaticResource TextSecondaryBrush}"
+                                     TextWrapping="Wrap"/>
+                      </Grid>
+
+                      <Grid Margin="0,2,0,12">
+                          <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                              <RowDefinition Height="Auto"/>
+                          </Grid.RowDefinitions>
+                          <TextBlock Text="Путь к PDFXEdit.exe"
+                                     VerticalAlignment="Center"
+                                     FontWeight="SemiBold"
+                                     Foreground="{StaticResource TextBrush}"
+                                     TextWrapping="Wrap"/>
+                          <Grid Grid.Row="1" Margin="0,8,0,0">
+                              <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*"/>
+                                  <ColumnDefinition Width="Auto"/>
+                              </Grid.ColumnDefinitions>
+                              <TextBox x:Name="PdfEditorPathBox"
+                                       Height="40"
+                                       Padding="10,2"
+                                       VerticalContentAlignment="Center"
+                                       Tag="Оставьте пустым для автоопределения"
+                                       TextChanged="ExternalEditorPathBox_TextChanged"/>
+                              <Button Grid.Column="1"
+                                      Margin="8,0,0,0"
+                                      MinWidth="110"
+                                      Style="{StaticResource AppSecondaryButton}"
+                                      Click="BrowsePdfEditorButton_Click">Обзор...</Button>
+                          </Grid>
+                          <TextBlock x:Name="PdfEditorHintText"
+                                     Grid.Row="2"
+                                     Margin="0,8,0,0"
+                                     Foreground="{StaticResource TextSecondaryBrush}"
+                                     TextWrapping="Wrap"/>
                       </Grid>
 
                       <Separator Margin="0,4,0,10"/>

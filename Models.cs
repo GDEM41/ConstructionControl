@@ -13,7 +13,7 @@ namespace ConstructionControl
 {
     public class ProjectObject
     {
-        public Dictionary<string, MaterialDemand> Demand = new();
+        public Dictionary<string, MaterialDemand> Demand { get; set; } = new();
 
         public ObjectArchive Archive { get; set; } = new();
 
@@ -136,6 +136,7 @@ namespace ConstructionControl
         public bool DisableTree { get; set; }
         public bool PinTreeByDefault { get; set; }
         public bool ShowReminderPopup { get; set; } = true;
+        public string ReminderPresentationMode { get; set; } = ReminderPresentationModes.Overlay;
         public int ReminderSnoozeMinutes { get; set; } = 15;
         public int AutoSaveIntervalMinutes { get; set; } = 5;
         public bool HideReminderDetails { get; set; }
@@ -148,6 +149,8 @@ namespace ConstructionControl
         public bool SummaryReminderOnlyMain { get; set; } = true;
         public bool AutoFitCurrentTabColumns { get; set; } = true;
         public string DataRootDirectory { get; set; } = string.Empty;
+        public string PreferredPdfEditorPath { get; set; } = string.Empty;
+        public string PreferredSpreadsheetEditorPath { get; set; } = string.Empty;
         public bool CheckUpdatesOnStart { get; set; }
         public string UpdateFeedUrl { get; set; } = string.Empty;
         public string OtStatusFilter { get; set; } = "Все";
@@ -181,6 +184,13 @@ namespace ConstructionControl
                 _ => "Критические операции"
             };
         }
+    }
+
+    public static class ReminderPresentationModes
+    {
+        public const string Overlay = "overlay";
+        public const string Tabs = "tabs";
+        public const string Combined = "combined";
     }
 
     public class GridColumnPreference

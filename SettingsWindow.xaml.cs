@@ -22,6 +22,7 @@ namespace ConstructionControl
             DisableTreeCheckBox.IsChecked = settings.DisableTree;
             PinTreeCheckBox.IsChecked = settings.PinTreeByDefault;
             ReminderPopupCheckBox.IsChecked = settings.ShowReminderPopup;
+            SelectReminderPresentationMode(settings.ReminderPresentationMode);
             ReminderSnoozeMinutesBox.Text = settings.ReminderSnoozeMinutes > 0
                 ? settings.ReminderSnoozeMinutes.ToString()
                 : "15";
@@ -35,12 +36,15 @@ namespace ConstructionControl
             SummaryReminderOverageCheckBox.IsChecked = settings.SummaryReminderOnOverage;
             SummaryReminderDeficitCheckBox.IsChecked = settings.SummaryReminderOnDeficit;
             SummaryReminderMainOnlyCheckBox.IsChecked = settings.SummaryReminderOnlyMain;
+            SpreadsheetEditorPathBox.Text = ExternalToolPaths.NormalizeConfiguredExecutablePath(settings.PreferredSpreadsheetEditorPath);
+            PdfEditorPathBox.Text = ExternalToolPaths.NormalizeConfiguredExecutablePath(settings.PreferredPdfEditorPath);
             CheckUpdatesOnStartCheckBox.IsChecked = settings.CheckUpdatesOnStart;
             UpdateFeedUrlBox.Text = settings.UpdateFeedUrl ?? string.Empty;
             RequireCodeForCriticalOperationsCheckBox.IsChecked = settings.RequireCodeForCriticalOperations;
 
             SelectDensityMode(NormalizeDensityMode(settings.UiDensityMode));
             SelectAccessRole(NormalizeAccessRole(settings.AccessRole));
+            UpdateExternalEditorHints();
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -53,6 +57,7 @@ namespace ConstructionControl
                 DisableTree = DisableTreeCheckBox.IsChecked == true,
                 PinTreeByDefault = DisableTreeCheckBox.IsChecked == true ? false : PinTreeCheckBox.IsChecked == true,
                 ShowReminderPopup = ReminderPopupCheckBox.IsChecked != false,
+                ReminderPresentationMode = GetSelectedReminderPresentationMode(),
                 ReminderSnoozeMinutes = snoozeMinutes,
                 AutoSaveIntervalMinutes = autoSaveMinutes,
                 HideReminderDetails = HideReminderDetailsCheckBox.IsChecked == true,
@@ -62,6 +67,8 @@ namespace ConstructionControl
                 SummaryReminderOnDeficit = SummaryReminderDeficitCheckBox.IsChecked == true,
                 SummaryReminderOnlyMain = SummaryReminderMainOnlyCheckBox.IsChecked != false,
                 DataRootDirectory = ResolveDataRootPath(DataRootPathBox.Text),
+                PreferredSpreadsheetEditorPath = NormalizeOptionalExecutablePath(SpreadsheetEditorPathBox.Text),
+                PreferredPdfEditorPath = NormalizeOptionalExecutablePath(PdfEditorPathBox.Text),
                 CheckUpdatesOnStart = CheckUpdatesOnStartCheckBox.IsChecked == true,
                 UpdateFeedUrl = (UpdateFeedUrlBox.Text ?? string.Empty).Trim(),
                 UiDensityMode = GetSelectedDensityMode(),
@@ -109,6 +116,14 @@ namespace ConstructionControl
             return value;
         }
 
+        private static string NormalizeOptionalExecutablePath(string rawPath)
+        {
+            var normalized = ExternalToolPaths.NormalizeConfiguredExecutablePath(rawPath);
+            return string.IsNullOrWhiteSpace(normalized)
+                ? string.Empty
+                : normalized;
+        }
+
         private static string NormalizeDensityMode(string mode)
         {
             var normalized = (mode ?? string.Empty).Trim();
@@ -137,6 +152,39 @@ namespace ConstructionControl
             }
 
             return ProjectAccessRoles.Critical;
+        }
+
+        private static string NormalizeReminderPresentationMode(string mode)
+        {
+            var normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                ReminderPresentationModes.Tabs => ReminderPresentationModes.Tabs,
+                ReminderPresentationModes.Combined => ReminderPresentationModes.Combined,
+                _ => ReminderPresentationModes.Overlay
+            };
+        }
+
+        private void SelectReminderPresentationMode(string mode)
+        {
+            var normalized = NormalizeReminderPresentationMode(mode);
+            ReminderPresentationModeBox.SelectedIndex = normalized switch
+            {
+                ReminderPresentationModes.Tabs => 1,
+                ReminderPresentationModes.Combined => 2,
+                _ => 0
+            };
+        }
+
+        private string GetSelectedReminderPresentationMode()
+        {
+            if (ReminderPresentationModeBox.SelectedItem is ComboBoxItem item)
+            {
+                var tag = item.Tag?.ToString()?.Trim().ToLowerInvariant();
+                return NormalizeReminderPresentationMode(tag);
+            }
+
+            return ReminderPresentationModes.Overlay;
         }
 
         private void SelectDensityMode(string mode)
@@ -201,6 +249,89 @@ namespace ConstructionControl
 
             if (dialog.ShowDialog() == WinForms.DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
                 DataRootPathBox.Text = ResolveDataRootPath(dialog.SelectedPath);
+        }
+
+        private void BrowseSpreadsheetEditorButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedPath = BrowseExecutablePath(
+                "Выберите PlanMaker.exe",
+                NormalizeOptionalExecutablePath(SpreadsheetEditorPathBox.Text),
+                "PlanMaker|PlanMaker.exe|Исполняемые файлы|*.exe|Все файлы|*.*");
+
+            if (!string.IsNullOrWhiteSpace(selectedPath))
+                SpreadsheetEditorPathBox.Text = selectedPath;
+        }
+
+        private void BrowsePdfEditorButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedPath = BrowseExecutablePath(
+                "Выберите PDFXEdit.exe",
+                NormalizeOptionalExecutablePath(PdfEditorPathBox.Text),
+                "PDF-XChange|PDFXEdit*.exe|Исполняемые файлы|*.exe|Все файлы|*.*");
+
+            if (!string.IsNullOrWhiteSpace(selectedPath))
+                PdfEditorPathBox.Text = selectedPath;
+        }
+
+        private static string BrowseExecutablePath(string title, string initialPath, string filter)
+        {
+            using var dialog = new WinForms.OpenFileDialog
+            {
+                Title = title,
+                Filter = filter,
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (!string.IsNullOrWhiteSpace(initialPath))
+            {
+                try
+                {
+                    dialog.InitialDirectory = Path.GetDirectoryName(initialPath);
+                    dialog.FileName = Path.GetFileName(initialPath);
+                }
+                catch
+                {
+                    // Ignore invalid initial path.
+                }
+            }
+
+            return dialog.ShowDialog() == WinForms.DialogResult.OK
+                ? NormalizeOptionalExecutablePath(dialog.FileName)
+                : string.Empty;
+        }
+
+        private void ExternalEditorPathBox_TextChanged(object sender, TextChangedEventArgs e)
+            => UpdateExternalEditorHints();
+
+        private void UpdateExternalEditorHints()
+        {
+            SpreadsheetEditorHintText.Text = BuildExternalEditorHint(
+                SpreadsheetEditorPathBox.Text,
+                ExternalToolPaths.ResolveSpreadsheetEditorPath(SpreadsheetEditorPathBox.Text),
+                "PlanMaker");
+
+            PdfEditorHintText.Text = BuildExternalEditorHint(
+                PdfEditorPathBox.Text,
+                ExternalToolPaths.ResolvePdfEditorPath(PdfEditorPathBox.Text),
+                "PDF-XChange");
+        }
+
+        private static string BuildExternalEditorHint(string manualPath, string resolvedPath, string appName)
+        {
+            var normalizedManualPath = NormalizeOptionalExecutablePath(manualPath);
+            if (!string.IsNullOrWhiteSpace(normalizedManualPath))
+            {
+                if (File.Exists(normalizedManualPath))
+                    return $"Будет использоваться вручную заданный путь: {normalizedManualPath}";
+
+                return $"Файл не найден по указанному пути. Если оставить поле пустым, программа попробует найти {appName} автоматически.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedPath))
+                return $"Автоопределение: найдено {resolvedPath}";
+
+            return $"Автоопределение: {appName} пока не найден. При необходимости укажите путь вручную.";
         }
     }
 }

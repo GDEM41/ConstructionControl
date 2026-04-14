@@ -48,6 +48,13 @@
           Condition="Exists('$(UpdaterExe)')" />
   </Target>
 
+  <Target Name="GenerateAppIcon"
+          BeforeTargets="BeforeBuild"
+          Inputs="$(MSBuildProjectDirectory)\installer\assets\app_icon.png;$(MSBuildProjectDirectory)\scripts\New-MasterProIcon.ps1"
+          Outputs="$(MSBuildProjectDirectory)\installer\assets\MasterPRO.ico">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\New-MasterProIcon.ps1&quot;" />
+  </Target>
+
   <ItemGroup>
     <Compile Remove="build_obj\**\*.cs" />
     <Compile Remove="build_check\**\*.cs" />

@@ -2,6 +2,8 @@
 #define MyAppExeName "ConstructionControl.exe"
 #define MyAppVersion "1.0.0.0"
 #define MyPublisher "МастерPRO"
+#define SoftMakerPackageDir "SoftMaker.Office.Professional.v2024.1230.1206"
+#define PdfPackageDir "PDF-XChange.PRO.v10.8.4.409"
 
 [Setup]
 AppId={{2B6C2E46-0D7A-4B08-9B1E-12E0D6F74CF1}
@@ -20,8 +22,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 WizardImageFile=assets\wizard.bmp
 WizardSmallImageFile=assets\wizard_small.bmp
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=no
 SetupLogging=yes
 
@@ -30,11 +32,13 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; Flags: unchecked
-Name: "installpdfxchange"; Description: "Открыть страницу установки PDF‑XChange Editor"; Flags: unchecked
-Name: "installplanmaker"; Description: "Открыть страницу установки PlanMaker (FreeOffice)"; Flags: unchecked
+Name: "installsoftmaker"; Description: "Установить SoftMaker Office Professional (Portable)"; Flags: unchecked
+Name: "installpdfxchange"; Description: "Установить PDF-XChange PRO"; Flags: unchecked
 
 [Files]
-Source: "..\ConstructionControl\bin\Release\net10.0-windows\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\bin\Release\net10.0-windows\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "packages\{#SoftMakerPackageDir}\*"; DestDir: "{app}\Dependencies\{#SoftMakerPackageDir}"; Flags: recursesubdirs createallsubdirs ignoreversion; Tasks: installsoftmaker
+Source: "packages\{#PdfPackageDir}\*"; DestDir: "{tmp}\{#PdfPackageDir}"; Flags: recursesubdirs createallsubdirs deleteafterinstall ignoreversion; Tasks: installpdfxchange
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -42,10 +46,12 @@ Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить {#MyAppName}"; Flags: nowait postinstall skipifsilent
-Filename: "https://www.pdf-xchange.com/product/pdf-xchange-editor"; Description: "Открыть страницу PDF‑XChange Editor"; Flags: shellexec postinstall nowait; Tasks: installpdfxchange
-Filename: "https://www.softmaker.com/en/freeoffice"; Description: "Открыть страницу PlanMaker (FreeOffice)"; Flags: shellexec postinstall nowait; Tasks: installplanmaker
 
 [Code]
+var
+  DependencyInstallPage: TOutputProgressWizardPage;
+  DependencySummary: string;
+
 function IsInstalledInRoot(RootKey: Integer; const NamePart: string): Boolean;
 var
   UninstKey: string;
@@ -79,36 +85,188 @@ begin
     IsInstalledInRoot(HKCU, NamePart);
 end;
 
-function IsPdfXChangeInstalled: Boolean;
+function DetectSoftMakerExecutablePath(): string;
+var
+  Candidates: array[0..7] of string;
+  I: Integer;
 begin
-  Result := IsInstalledByDisplayName('PDF-XChange');
+  Candidates[0] := ExpandConstant('{app}\Dependencies\{#SoftMakerPackageDir}\PlanMaker.exe');
+  Candidates[1] := ExpandConstant('{app}\Dependencies\{#SoftMakerPackageDir}\program\PlanMaker.exe');
+  Candidates[2] := ExpandConstant('{pf}\SoftMaker Office Professional 2024\PlanMaker.exe');
+  Candidates[3] := ExpandConstant('{pf}\SoftMaker Office Professional 2024\program\PlanMaker.exe');
+  Candidates[4] := ExpandConstant('{pf32}\SoftMaker Office Professional 2024\PlanMaker.exe');
+  Candidates[5] := ExpandConstant('{pf32}\SoftMaker Office Professional 2024\program\PlanMaker.exe');
+  Candidates[6] := ExpandConstant('{pf}\SoftMaker FreeOffice 2024\PlanMaker.exe');
+  Candidates[7] := ExpandConstant('{pf32}\SoftMaker FreeOffice 2024\PlanMaker.exe');
+
+  Result := '';
+  for I := 0 to GetArrayLength(Candidates) - 1 do
+  begin
+    if FileExists(Candidates[I]) then
+    begin
+      Result := Candidates[I];
+      Exit;
+    end;
+  end;
 end;
 
-function IsPlanMakerInstalled: Boolean;
+function DetectPdfXChangeExecutablePath(): string;
+var
+  Candidates: array[0..5] of string;
+  I: Integer;
 begin
-  Result := IsInstalledByDisplayName('PlanMaker');
+  Candidates[0] := ExpandConstant('{pf}\Tracker Software\PDF Editor\PDFXEdit.exe');
+  Candidates[1] := ExpandConstant('{pf}\Tracker Software\PDF Editor\PDFXEdit64.exe');
+  Candidates[2] := ExpandConstant('{pf32}\Tracker Software\PDF Editor\PDFXEdit.exe');
+  Candidates[3] := ExpandConstant('{pf}\Tracker Software\PDF-XChange Editor\PDFXEdit.exe');
+  Candidates[4] := ExpandConstant('{pf}\Tracker Software\PDF-XChange Editor\PDFXEdit64.exe');
+  Candidates[5] := ExpandConstant('{pf32}\Tracker Software\PDF-XChange Editor\PDFXEdit.exe');
+
+  Result := '';
+  for I := 0 to GetArrayLength(Candidates) - 1 do
+  begin
+    if FileExists(Candidates[I]) then
+    begin
+      Result := Candidates[I];
+      Exit;
+    end;
+  end;
+end;
+
+function IsSoftMakerInstalled(): Boolean;
+begin
+  Result :=
+    IsInstalledByDisplayName('SoftMaker') or
+    IsInstalledByDisplayName('PlanMaker') or
+    (DetectSoftMakerExecutablePath() <> '');
+end;
+
+function IsPdfXChangeInstalled(): Boolean;
+begin
+  Result :=
+    IsInstalledByDisplayName('PDF-XChange') or
+    (DetectPdfXChangeExecutablePath() <> '');
+end;
+
+procedure AppendDependencySummary(const Line: string);
+begin
+  if DependencySummary <> '' then
+    DependencySummary := DependencySummary + #13#10;
+
+  DependencySummary := DependencySummary + Line;
+end;
+
+procedure MarkDependencyProgress(const Title, Status: string; Position, Total: Integer);
+begin
+  DependencyInstallPage.SetText(Title, Status);
+  DependencyInstallPage.SetProgress(Position, Total);
+end;
+
+function RunDependencyInstaller(const DisplayName, CommandPath, WorkingDir: string; StepIndex, TotalSteps: Integer): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+
+  if not FileExists(CommandPath) then
+  begin
+    AppendDependencySummary(DisplayName + ': файл установки не найден.');
+    Exit;
+  end;
+
+  MarkDependencyProgress(DisplayName, 'Выполняется тихая установка...', StepIndex - 1, TotalSteps);
+
+  if not Exec(ExpandConstant('{cmd}'), '/C ' + AddQuotes(CommandPath), WorkingDir, SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    AppendDependencySummary(DisplayName + ': не удалось запустить установку.');
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    AppendDependencySummary(DisplayName + ': установка завершилась с кодом ' + IntToStr(ResultCode) + '.');
+    Exit;
+  end;
+
+  MarkDependencyProgress(DisplayName, 'Установлено успешно.', StepIndex, TotalSteps);
+  AppendDependencySummary(DisplayName + ': установлено успешно.');
+  Result := True;
+end;
+
+procedure InstallSelectedDependencies();
+var
+  TotalSteps: Integer;
+  StepIndex: Integer;
+  SoftMakerDir: string;
+  PdfDir: string;
+begin
+  TotalSteps := 0;
+  if WizardIsTaskSelected('installsoftmaker') then
+    TotalSteps := TotalSteps + 1;
+  if WizardIsTaskSelected('installpdfxchange') then
+    TotalSteps := TotalSteps + 1;
+
+  if TotalSteps = 0 then
+    Exit;
+
+  StepIndex := 1;
+  DependencySummary := '';
+  DependencyInstallPage.Show;
+  try
+    if WizardIsTaskSelected('installsoftmaker') then
+    begin
+      SoftMakerDir := ExpandConstant('{app}\Dependencies\{#SoftMakerPackageDir}');
+      RunDependencyInstaller(
+        'SoftMaker Office Professional',
+        AddBackslash(SoftMakerDir) + 'PORTABLE.cmd',
+        SoftMakerDir,
+        StepIndex,
+        TotalSteps);
+      StepIndex := StepIndex + 1;
+    end;
+
+    if WizardIsTaskSelected('installpdfxchange') then
+    begin
+      PdfDir := ExpandConstant('{tmp}\{#PdfPackageDir}');
+      RunDependencyInstaller(
+        'PDF-XChange PRO',
+        AddBackslash(PdfDir) + 'INSTALL.cmd',
+        PdfDir,
+        StepIndex,
+        TotalSteps);
+      StepIndex := StepIndex + 1;
+    end;
+
+    MarkDependencyProgress('Дополнительные программы', 'Установка завершена.', TotalSteps, TotalSteps);
+  finally
+    DependencyInstallPage.Hide;
+  end;
+
+  if DependencySummary <> '' then
+    MsgBox(DependencySummary, mbInformation, MB_OK);
 end;
 
 procedure InitializeWizard();
 var
-  PdfTask: Integer;
-  PlanTask: Integer;
+  SoftMakerTaskIndex: Integer;
+  PdfTaskIndex: Integer;
 begin
-  PdfTask := WizardForm.TasksList.Items.IndexOf('Открыть страницу установки PDF‑XChange Editor');
-  PlanTask := WizardForm.TasksList.Items.IndexOf('Открыть страницу установки PlanMaker (FreeOffice)');
+  DependencyInstallPage := CreateOutputProgressPage(
+    'Установка дополнительных программ',
+    'Подождите, пока будут установлены выбранные компоненты.');
 
-  if PdfTask >= 0 then
-    WizardForm.TasksList.Checked[PdfTask] := not IsPdfXChangeInstalled;
+  SoftMakerTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить SoftMaker Office Professional (Portable)');
+  PdfTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить PDF-XChange PRO');
 
-  if PlanTask >= 0 then
-    WizardForm.TasksList.Checked[PlanTask] := not IsPlanMakerInstalled;
+  if SoftMakerTaskIndex >= 0 then
+    WizardForm.TasksList.Checked[SoftMakerTaskIndex] := not IsSoftMakerInstalled;
+
+  if PdfTaskIndex >= 0 then
+    WizardForm.TasksList.Checked[PdfTaskIndex] := not IsPdfXChangeInstalled;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-  begin
-    if (not IsPdfXChangeInstalled) or (not IsPlanMakerInstalled) then
-      MsgBox('Рекомендуется установить PDF‑XChange Editor и PlanMaker для полноценной работы МастерPRO.', mbInformation, MB_OK);
-  end;
+    InstallSelectedDependencies();
 end;

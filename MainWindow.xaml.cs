@@ -177,6 +177,7 @@ namespace ConstructionControl
         private readonly DispatcherTimer timesheetRebuildDebounceTimer;
         private readonly DispatcherTimer estimateLayoutGuardTimer;
         private readonly DispatcherTimer autoSaveTimer;
+        private readonly DispatcherTimer gridPreferenceSaveDebounceTimer;
         private DateTime? reminderSnoozedUntil;
         private bool timesheetNeedsRebuild;
         private bool reminderRefreshRequested;
@@ -236,6 +237,7 @@ namespace ConstructionControl
         private int summaryDataVersion = 1;
         private readonly Dictionary<string, SummaryMatrixCacheEntry> summaryMatrixCache = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TimeSpan> tabOpenDiagnostics = new(StringComparer.CurrentCultureIgnoreCase);
+        private readonly Dictionary<string, List<string>> tabReminderMessages = new(StringComparer.CurrentCultureIgnoreCase);
         private readonly DispatcherTimer arrivalFilterDebounceTimer;
         private readonly DispatcherTimer otSearchDebounceTimer;
         private readonly DispatcherTimer summaryRefreshDebounceTimer;
@@ -247,6 +249,7 @@ namespace ConstructionControl
         private readonly DispatcherTimer processingOverlayDelayTimer;
         private string processingOverlayPendingText = "Идет обработка...";
         private bool isApplyingColumnPreferences;
+        private bool pendingGridPreferenceSave;
         private bool isOpeningCommandDialog;
         private readonly ObservableCollection<string> arrivalFilterTemplateNames = new();
         private bool suppressArrivalTemplateSelectionChange;
@@ -1056,6 +1059,11 @@ namespace ConstructionControl
             };
             autoSaveTimer.Tick += AutoSaveTimer_Tick;
             autoSaveTimer.Start();
+            gridPreferenceSaveDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(900)
+            };
+            gridPreferenceSaveDebounceTimer.Tick += GridPreferenceSaveDebounceTimer_Tick;
             // ===== БЛОКИРОВКА ВКЛЮЧЕНА ПО УМОЛЧАНИЮ =====
             isLocked = true;
 
@@ -1092,6 +1100,7 @@ namespace ConstructionControl
             RefreshTreePreserveState();
             ApplyProjectUiSettings();
             EnsureSelectedTabInitialized();
+            AttachGridPreferenceTracking();
             lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
 
         }
@@ -1507,49 +1516,16 @@ namespace ConstructionControl
 
         private void InitializeSpreadsheetEditorPreference()
         {
-            preferredSpreadsheetEditorPath = ResolvePlanMakerExecutablePath();
-            // Для смет используем PlanMaker в отдельном окне с визуальным встраиванием в область предпросмотра.
-            useExternalSpreadsheetEditor = true;
+            preferredSpreadsheetEditorPath = ExternalToolPaths.ResolveSpreadsheetEditorPath(
+                currentObject?.UiSettings?.PreferredSpreadsheetEditorPath);
+            useExternalSpreadsheetEditor = !string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath);
         }
 
         private void InitializePdfEditorPreference()
         {
-            preferredPdfEditorPath = ResolvePdfXChangeExecutablePath();
+            preferredPdfEditorPath = ExternalToolPaths.ResolvePdfEditorPath(
+                currentObject?.UiSettings?.PreferredPdfEditorPath);
             useExternalPdfEditor = !string.IsNullOrWhiteSpace(preferredPdfEditorPath);
-        }
-
-        private static string ResolvePdfXChangeExecutablePath()
-        {
-            string[] candidates =
-            {
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF Editor\\PDFXEdit.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF Editor\\PDFXEdit64.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\\Tracker Software\\PDF Editor\\PDFXEdit.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit64.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\\Tracker Software\\PDF-XChange Editor\\PDFXEdit.exe")
-            };
-
-            foreach (var candidate in candidates)
-            {
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-
-            return string.Empty;
-        }
-
-        private static string ResolvePlanMakerExecutablePath()
-        {
-            var candidates = new[]
-            {
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\SoftMaker FreeOffice 2024\PlanMaker.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\SoftMaker FreeOffice 2024\PlanMaker.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\SoftMaker FreeOffice 2021\PlanMaker.exe"),
-                Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\SoftMaker FreeOffice 2021\PlanMaker.exe")
-            };
-
-            return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path)) ?? string.Empty;
         }
 
         private void StartPreviewWarmupAsync()
@@ -1667,7 +1643,7 @@ namespace ConstructionControl
         private void ShowEmbeddedEstimateInExternalEditor(string filePath)
         {
             if (string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath) || !File.Exists(preferredSpreadsheetEditorPath))
-                throw new InvalidOperationException("PlanMaker не найден. Перезапустите программу после установки редактора.");
+                throw new InvalidOperationException("PlanMaker не найден. Установите SoftMaker или укажите путь к PlanMaker.exe в настройках.");
 
             var normalizedPath = NormalizeDocumentPathKey(filePath);
             if (TryGetExternalSpreadsheetInstance(externalSpreadsheetInstances, normalizedPath, out var cached))
@@ -1757,7 +1733,7 @@ namespace ConstructionControl
         private void ShowEmbeddedEstimateInExternalEditorSecondary(string filePath)
         {
             if (string.IsNullOrWhiteSpace(preferredSpreadsheetEditorPath) || !File.Exists(preferredSpreadsheetEditorPath))
-                throw new InvalidOperationException("PlanMaker не найден. Перезапустите программу после установки редактора.");
+                throw new InvalidOperationException("PlanMaker не найден. Установите SoftMaker или укажите путь к PlanMaker.exe в настройках.");
 
             var normalizedPath = NormalizeDocumentPathKey(filePath);
             if (TryGetExternalSpreadsheetInstance(externalSpreadsheetInstancesSecondary, normalizedPath, out var cached))
@@ -2159,6 +2135,7 @@ namespace ConstructionControl
             summaryRefreshDebounceTimer?.Stop();
             processingOverlayDelayTimer?.Stop();
             autoSaveTimer?.Stop();
+            gridPreferenceSaveDebounceTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             StopEstimateEmbeddedSecondaryPreview();
@@ -2318,6 +2295,47 @@ namespace ConstructionControl
         private void AutoSaveTimer_Tick(object sender, EventArgs e)
         {
             TryAutoSaveState();
+        }
+
+        private void AttachGridPreferenceTracking()
+        {
+            AttachGridPreferenceTracking(ArrivalLegacyGrid);
+            AttachGridPreferenceTracking(OtJournalGrid);
+            AttachGridPreferenceTracking(TimesheetGrid);
+            AttachGridPreferenceTracking(ProductionJournalGrid);
+            AttachGridPreferenceTracking(InspectionJournalGrid);
+        }
+
+        private void AttachGridPreferenceTracking(DataGrid grid)
+        {
+            if (grid == null)
+                return;
+
+            grid.ColumnReordered -= TrackGridPreferenceChanged;
+            grid.ColumnReordered += TrackGridPreferenceChanged;
+            grid.ColumnDisplayIndexChanged -= TrackGridPreferenceChanged;
+            grid.ColumnDisplayIndexChanged += TrackGridPreferenceChanged;
+        }
+
+        private void TrackGridPreferenceChanged(object sender, DataGridColumnEventArgs e)
+        {
+            if (isApplyingColumnPreferences || sender is not DataGrid grid || currentObject == null)
+                return;
+
+            SaveGridColumnPreferences(grid);
+            pendingGridPreferenceSave = true;
+            gridPreferenceSaveDebounceTimer.Stop();
+            gridPreferenceSaveDebounceTimer.Start();
+        }
+
+        private void GridPreferenceSaveDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            gridPreferenceSaveDebounceTimer.Stop();
+            if (!pendingGridPreferenceSave || currentObject == null)
+                return;
+
+            pendingGridPreferenceSave = false;
+            SaveState(SaveTrigger.System);
         }
 
         private void ReminderRefreshDebounceTimer_Tick(object sender, EventArgs e)
@@ -3251,25 +3269,48 @@ namespace ConstructionControl
 
         private void UpdateTabButtons()
         {
-            SetTabButtonState(SummaryTabButton, ReferenceEquals(MainTabs?.SelectedItem, SummaryTab));
-            SetTabButtonState(JvkTabButton, ReferenceEquals(MainTabs?.SelectedItem, JvkTab));
-            SetTabButtonState(ArrivalTabButton, ReferenceEquals(MainTabs?.SelectedItem, ArrivalTab));
-            SetTabButtonState(OtTabButton, ReferenceEquals(MainTabs?.SelectedItem, OtTab));
-            SetTabButtonState(TimesheetTabButton, ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab));
-            SetTabButtonState(ProductionTabButton, ReferenceEquals(MainTabs?.SelectedItem, ProductionTab));
-            SetTabButtonState(InspectionTabButton, ReferenceEquals(MainTabs?.SelectedItem, InspectionTab));
-            SetTabButtonState(PdfPinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, PdfTab));
-            SetTabButtonState(EstimatePinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, EstimateTab));
+            SetTabButtonState(SummaryTabButton, ReferenceEquals(MainTabs?.SelectedItem, SummaryTab), "Сводка");
+            SetTabButtonState(JvkTabButton, ReferenceEquals(MainTabs?.SelectedItem, JvkTab), "ЖВК");
+            SetTabButtonState(ArrivalTabButton, ReferenceEquals(MainTabs?.SelectedItem, ArrivalTab), "Приход");
+            SetTabButtonState(OtTabButton, ReferenceEquals(MainTabs?.SelectedItem, OtTab), "ОТ");
+            SetTabButtonState(TimesheetTabButton, ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab), "Табель");
+            SetTabButtonState(ProductionTabButton, ReferenceEquals(MainTabs?.SelectedItem, ProductionTab), "ПР");
+            SetTabButtonState(InspectionTabButton, ReferenceEquals(MainTabs?.SelectedItem, InspectionTab), "Осмотры");
+            SetTabButtonState(PdfPinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, PdfTab), "ПДФ");
+            SetTabButtonState(EstimatePinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, EstimateTab), "Сметы");
         }
 
-        private static void SetTabButtonState(Button button, bool isActive)
+        private void SetTabButtonState(Button button, bool isActive, string tabHeader)
         {
             if (button == null)
                 return;
 
-            button.Background = (Brush)new BrushConverter().ConvertFromString(isActive ? "#DBEAFE" : "#F9FAFB");
-            button.BorderBrush = (Brush)new BrushConverter().ConvertFromString(isActive ? "#3B82F6" : "#E5E7EB");
-            button.Foreground = (Brush)new BrushConverter().ConvertFromString(isActive ? "#111827" : "#6B7280");
+            var hasReminder = tabReminderMessages.TryGetValue(tabHeader, out var reminderItems) && reminderItems?.Count > 0;
+            var reminderToolTip = hasReminder
+                ? $"Требуется действие:\n• {string.Join("\n• ", reminderItems.Take(4))}"
+                : null;
+            var highlightReminder = ShouldHighlightReminderTabs() && hasReminder;
+
+            if (isActive)
+            {
+                button.Background = (Brush)new BrushConverter().ConvertFromString(highlightReminder ? "#FDE68A" : "#DBEAFE");
+                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString(highlightReminder ? "#F59E0B" : "#3B82F6");
+                button.Foreground = (Brush)new BrushConverter().ConvertFromString("#111827");
+            }
+            else if (highlightReminder)
+            {
+                button.Background = (Brush)new BrushConverter().ConvertFromString("#FEF3C7");
+                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString("#F59E0B");
+                button.Foreground = (Brush)new BrushConverter().ConvertFromString("#92400E");
+            }
+            else
+            {
+                button.Background = (Brush)new BrushConverter().ConvertFromString("#F9FAFB");
+                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString("#E5E7EB");
+                button.Foreground = (Brush)new BrushConverter().ConvertFromString(isActive ? "#111827" : "#6B7280");
+            }
+
+            button.ToolTip = reminderToolTip;
         }
 
         private void SelectMainTab(TabItem tab)
@@ -6351,13 +6392,33 @@ namespace ConstructionControl
             }
         }
 
-        private static bool TryOpenDocumentInExternalApp(string filePath, out string errorMessage)
+        private bool TryOpenDocumentInExternalApp(string filePath, out string errorMessage)
         {
             errorMessage = string.Empty;
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             {
                 errorMessage = "Файл не найден.";
                 return false;
+            }
+
+            var extension = IOPath.GetExtension(filePath)?.Trim().ToLowerInvariant() ?? string.Empty;
+            var preferredExecutablePath = GetPreferredExecutablePathForDocument(extension);
+            if (!string.IsNullOrWhiteSpace(preferredExecutablePath))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = preferredExecutablePath,
+                        Arguments = $"\"{filePath}\"",
+                        UseShellExecute = false
+                    });
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = ex.Message;
+                }
             }
 
             try
@@ -6371,9 +6432,31 @@ namespace ConstructionControl
             }
             catch (Exception ex)
             {
-                errorMessage = ex.Message;
+                if (!string.IsNullOrWhiteSpace(errorMessage))
+                    errorMessage = errorMessage + Environment.NewLine + ex.Message;
+                else
+                    errorMessage = ex.Message;
                 return false;
             }
+        }
+
+        private string GetPreferredExecutablePathForDocument(string extension)
+        {
+            if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+                return preferredPdfEditorPath;
+
+            if (IsSpreadsheetDocumentExtension(extension))
+                return preferredSpreadsheetEditorPath;
+
+            return string.Empty;
+        }
+
+        private static bool IsSpreadsheetDocumentExtension(string extension)
+        {
+            if (string.IsNullOrWhiteSpace(extension))
+                return false;
+
+            return extension is ".xlsx" or ".xlsm" or ".xls" or ".csv" or ".tsv" or ".ods";
         }
 
         private void EstimatePreviewContainer_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -7296,11 +7379,85 @@ namespace ConstructionControl
             reminderOverlayWindow.Top = Math.Max(topLeft.Y + margin, bottomRight.Y - height - margin);
         }
 
+        private static string NormalizeReminderPresentationMode(string mode)
+        {
+            var normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                ReminderPresentationModes.Tabs => ReminderPresentationModes.Tabs,
+                ReminderPresentationModes.Combined => ReminderPresentationModes.Combined,
+                _ => ReminderPresentationModes.Overlay
+            };
+        }
+
+        private string GetReminderPresentationMode()
+        {
+            var mode = currentObject?.UiSettings?.ReminderPresentationMode;
+            return NormalizeReminderPresentationMode(mode);
+        }
+
+        private bool ShouldShowOverlayReminders()
+        {
+            var mode = GetReminderPresentationMode();
+            return mode == ReminderPresentationModes.Overlay || mode == ReminderPresentationModes.Combined;
+        }
+
+        private bool ShouldHighlightReminderTabs()
+        {
+            var mode = GetReminderPresentationMode();
+            return mode == ReminderPresentationModes.Tabs || mode == ReminderPresentationModes.Combined;
+        }
+
+        private static string ParseReminderSectionTabHeader(string header)
+        {
+            if (string.IsNullOrWhiteSpace(header))
+                return string.Empty;
+
+            const string prefix = "Вкладка ";
+            var text = header.Trim();
+            if (text.StartsWith(prefix, StringComparison.CurrentCultureIgnoreCase))
+                text = text.Substring(prefix.Length).Trim();
+
+            return text;
+        }
+
+        private void ClearTabReminderMessages()
+        {
+            tabReminderMessages.Clear();
+            UpdateTabButtons();
+        }
+
+        private void UpdateTabReminderMessagesFromSections(IEnumerable<ReminderSectionViewModel> sections)
+        {
+            tabReminderMessages.Clear();
+            foreach (var section in sections ?? Enumerable.Empty<ReminderSectionViewModel>())
+            {
+                var tabHeader = ParseReminderSectionTabHeader(section.Header);
+                if (string.IsNullOrWhiteSpace(tabHeader))
+                    continue;
+
+                var items = (section.Items ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .Take(5)
+                    .ToList();
+
+                if (items.Count == 0)
+                    continue;
+
+                tabReminderMessages[tabHeader] = items;
+            }
+
+            UpdateTabButtons();
+        }
+
         private void UpdateOtReminders()
         {
             if (currentObject == null)
             {
                 reminderSections.Clear();
+                ClearTabReminderMessages();
                 SetReminderPopupVisible(false);
                 return;
             }
@@ -7309,6 +7466,7 @@ namespace ConstructionControl
             if (currentObject.UiSettings?.ShowReminderPopup == false)
             {
                 reminderSections.Clear();
+                ClearTabReminderMessages();
                 SetReminderPopupVisible(false);
                 return;
             }
@@ -7401,6 +7559,7 @@ namespace ConstructionControl
             if (totalCount == 0)
             {
                 reminderSections.Clear();
+                ClearTabReminderMessages();
                 SetReminderPopupVisible(false);
                 return;
             }
@@ -7408,6 +7567,7 @@ namespace ConstructionControl
             reminderSections.Clear();
             foreach (var section in sections)
                 reminderSections.Add(section);
+            UpdateTabReminderMessagesFromSections(ShouldHighlightReminderTabs() ? sections : null);
 
             var overlay = EnsureReminderOverlayWindow();
             overlay.SnoozeButtonElement.Content = $"Отложить ({GetReminderSnoozeMinutes()} мин)";
@@ -7419,6 +7579,7 @@ namespace ConstructionControl
             if (isSnoozed)
             {
                 // По запросу: при отложении уведомления полностью скрываются до окончания срока.
+                ClearTabReminderMessages();
                 SetReminderPopupVisible(false);
                 return;
             }
@@ -7434,7 +7595,7 @@ namespace ConstructionControl
                 overlay.SectionsHostElement.Visibility = Visibility.Visible;
             }
 
-            SetReminderPopupVisible(true);
+            SetReminderPopupVisible(ShouldShowOverlayReminders());
         }
 
         private List<SummaryBalanceReminderItem> CollectSummaryBalanceReminderItems()
@@ -14952,6 +15113,8 @@ namespace ConstructionControl
                 if (!rootNode.ContainsKey(nameof(AppState.SavedAtUtc)))
                     rootNode[nameof(AppState.SavedAtUtc)] = DateTime.UtcNow;
 
+                NormalizeLegacyDateNodes(rootNode);
+
                 var currentObjectNode = rootNode[nameof(AppState.CurrentObject)] as JsonObject;
                 var catalogNode = currentObjectNode?["MaterialCatalog"] as JsonArray;
                 if (catalogNode != null)
@@ -14981,6 +15144,64 @@ namespace ConstructionControl
                 errorMessage = $"Не удалось применить миграции старого формата: {ex.Message}";
                 return false;
             }
+        }
+
+        private static readonly Regex LegacyMicrosoftJsonDateRegex = new(
+            @"^/Date\(([-+]?\d+)([+-]\d{4})?\)/$",
+            RegexOptions.Compiled);
+
+        private static void NormalizeLegacyDateNodes(JsonNode node, string propertyName = null)
+        {
+            switch (node)
+            {
+                case JsonObject obj:
+                    foreach (var pair in obj.ToList())
+                    {
+                        if (pair.Value == null)
+                            continue;
+
+                        if (pair.Value is JsonValue valueNode
+                            && valueNode.TryGetValue<string>(out var rawString)
+                            && TryNormalizeLegacyDateString(
+                                rawString,
+                                string.Equals(pair.Key, nameof(AppState.SavedAtUtc), StringComparison.Ordinal),
+                                out var normalizedDate))
+                        {
+                            obj[pair.Key] = normalizedDate;
+                            continue;
+                        }
+
+                        NormalizeLegacyDateNodes(pair.Value, pair.Key);
+                    }
+
+                    break;
+
+                case JsonArray array:
+                    for (var index = 0; index < array.Count; index++)
+                    {
+                        if (array[index] != null)
+                            NormalizeLegacyDateNodes(array[index], propertyName);
+                    }
+
+                    break;
+            }
+        }
+
+        private static bool TryNormalizeLegacyDateString(string rawValue, bool asUtc, out string normalizedDate)
+        {
+            normalizedDate = string.Empty;
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return false;
+
+            var match = LegacyMicrosoftJsonDateRegex.Match(rawValue.Trim());
+            if (!match.Success || !long.TryParse(match.Groups[1].Value, out var unixMilliseconds))
+                return false;
+
+            var dto = DateTimeOffset.FromUnixTimeMilliseconds(unixMilliseconds);
+            normalizedDate = asUtc
+                ? dto.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)
+                : dto.ToLocalTime().ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
+            return true;
         }
 
         private static void NormalizeCatalogStringField(JsonObject itemNode, string fieldName)
@@ -15700,6 +15921,12 @@ namespace ConstructionControl
                 return;
 
             CommitOpenEdits();
+            SaveGridColumnPreferencesForAll();
+            if (pendingGridPreferenceSave)
+            {
+                pendingGridPreferenceSave = false;
+                gridPreferenceSaveDebounceTimer?.Stop();
+            }
             if (!HasUnsavedChanges())
                 return;
 
@@ -18633,6 +18860,9 @@ namespace ConstructionControl
             if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.UiDensityMode))
                 currentObject.UiSettings.UiDensityMode = "Стандартный";
 
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.ReminderPresentationMode = NormalizeReminderPresentationMode(currentObject.UiSettings.ReminderPresentationMode);
+
             if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.AccessRole))
             {
                 currentObject.UiSettings.AccessRole = ProjectAccessRoles.Critical;
@@ -18663,6 +18893,8 @@ namespace ConstructionControl
         private void ApplyProjectUiSettings()
         {
             EnsureProjectUiSettings();
+            InitializeSpreadsheetEditorPreference();
+            InitializePdfEditorPreference();
             ApplyUiDensityMode();
             UpdateAutoSaveTimerInterval();
 
