@@ -105,7 +105,12 @@ namespace ConstructionControl
         private string selectedOtStatusFilter = "Все";
         private string selectedOtSpecialtyFilter = "Все";
         private string selectedOtBrigadeFilter = "Все";
+        private bool suppressOtFilterSelectionChange;
         private bool isTreePinned;
+        private bool isOtToolsPinned;
+        private bool isTimesheetToolsPinned;
+        private bool isProductionToolsPinned;
+        private bool isInspectionToolsPinned;
         private Point treeDragStart;
         private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
         private readonly ObservableCollection<string> timesheetBrigades = new();
@@ -413,12 +418,30 @@ namespace ConstructionControl
             public Action NavigateAction { get; set; }
         }
 
-        private sealed class CommandPaletteAction
+        private sealed class CommandPaletteAction : INotifyPropertyChanged
         {
+            private string shortcut = string.Empty;
+
+            public string Id { get; set; } = string.Empty;
+            public string DefaultShortcut { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
-            public string Shortcut { get; set; } = string.Empty;
+            public string Shortcut
+            {
+                get => shortcut;
+                set
+                {
+                    var normalized = NormalizeShortcutText(value);
+                    if (string.Equals(shortcut, normalized, StringComparison.CurrentCultureIgnoreCase))
+                        return;
+
+                    shortcut = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Shortcut)));
+                }
+            }
+
             public string Hint { get; set; } = string.Empty;
-            public Action ExecuteAction { get; set; }
+            public Action ExecuteAction { get; set; } = () => { };
+            public event PropertyChangedEventHandler PropertyChanged;
         }
 
         private enum SaveTrigger
@@ -2465,7 +2488,7 @@ namespace ConstructionControl
                 return;
 
             otSearchRefreshRequested = false;
-            CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+            TryRefreshOtJournalView(scheduleRetryIfBusy: true);
         }
 
         private void SummaryRefreshDebounceTimer_Tick(object sender, EventArgs e)
@@ -2516,7 +2539,8 @@ namespace ConstructionControl
         {
             if (otSearchDebounceTimer == null)
             {
-                CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+                if (!TryRefreshOtJournalView(scheduleRetryIfBusy: false))
+                    Dispatcher.BeginInvoke(new Action(() => RequestOtSearchRefresh()), DispatcherPriority.Background);
                 return;
             }
 
@@ -2524,13 +2548,35 @@ namespace ConstructionControl
             {
                 otSearchRefreshRequested = false;
                 otSearchDebounceTimer.Stop();
-                CollectionViewSource.GetDefaultView(OtJournalGrid.ItemsSource)?.Refresh();
+                TryRefreshOtJournalView(scheduleRetryIfBusy: true);
                 return;
             }
 
             otSearchRefreshRequested = true;
             otSearchDebounceTimer.Stop();
             otSearchDebounceTimer.Start();
+        }
+
+        private bool TryRefreshOtJournalView(bool scheduleRetryIfBusy)
+        {
+            var view = CollectionViewSource.GetDefaultView(OtJournalGrid?.ItemsSource);
+            if (view == null)
+                return true;
+
+            if (view is IEditableCollectionView editableView && (editableView.IsAddingNew || editableView.IsEditingItem))
+            {
+                if (scheduleRetryIfBusy && otSearchDebounceTimer != null)
+                {
+                    otSearchRefreshRequested = true;
+                    otSearchDebounceTimer.Stop();
+                    otSearchDebounceTimer.Start();
+                }
+
+                return false;
+            }
+
+            view.Refresh();
+            return true;
         }
 
         private void RequestSummaryRefresh(bool immediate = false)
@@ -6609,6 +6655,7 @@ namespace ConstructionControl
             UpdateTreePanelState(forceVisible: isTreePinned);
             UpdatePdfTreePanelState(forceVisible: isPdfTreePinned);
             UpdateEstimateTreePanelState(forceVisible: isEstimateTreePinned);
+            UpdateAllJournalToolsPanelStates();
 
             if (!ReferenceEquals(item, EstimateTab))
             {
@@ -6891,57 +6938,68 @@ namespace ConstructionControl
 
         private void RefreshOtFilterOptions()
         {
-            otStatusFilters.Clear();
-            foreach (var status in new[] { "Все", "Требуется первичный", "Требуется повторный", "Первичный пройден", "Запланирован", "Повторный пройден", "Снят с объекта", "Без статуса" })
-                otStatusFilters.Add(status);
-
-            otSpecialtyFilters.Clear();
-            otSpecialtyFilters.Add("Все");
-            if (currentObject?.OtJournal != null)
+            suppressOtFilterSelectionChange = true;
+            try
             {
-                foreach (var specialty in currentObject.OtJournal
-                             .Select(x => string.IsNullOrWhiteSpace(x.Specialty) ? "Без специальности" : x.Specialty.Trim())
-                             .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                             .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                otStatusFilters.Clear();
+                foreach (var status in new[] { "Все", "Требуется первичный", "Требуется повторный", "Первичный пройден", "Запланирован", "Повторный пройден", "Снят с объекта", "Без статуса" })
+                    otStatusFilters.Add(status);
+
+                otSpecialtyFilters.Clear();
+                otSpecialtyFilters.Add("Все");
+                if (currentObject?.OtJournal != null)
                 {
-                    otSpecialtyFilters.Add(specialty);
+                    foreach (var specialty in currentObject.OtJournal
+                                 .Select(x => string.IsNullOrWhiteSpace(x.Specialty) ? "Без специальности" : x.Specialty.Trim())
+                                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        otSpecialtyFilters.Add(specialty);
+                    }
+                }
+
+                otBrigadeFilters.Clear();
+                otBrigadeFilters.Add("Все");
+                if (currentObject?.OtJournal != null)
+                {
+                    foreach (var brigade in currentObject.OtJournal
+                                 .Select(GetOtBrigadeFilterLabel)
+                                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        otBrigadeFilters.Add(brigade);
+                    }
+                }
+
+                if (OtStatusFilterBox != null)
+                {
+                    OtStatusFilterBox.ItemsSource = otStatusFilters;
+                    OtStatusFilterBox.SelectedItem = otStatusFilters.Contains(selectedOtStatusFilter) ? selectedOtStatusFilter : "Все";
+                }
+
+                if (OtSpecialtyFilterBox != null)
+                {
+                    OtSpecialtyFilterBox.ItemsSource = otSpecialtyFilters;
+                    OtSpecialtyFilterBox.SelectedItem = otSpecialtyFilters.Contains(selectedOtSpecialtyFilter) ? selectedOtSpecialtyFilter : "Все";
+                }
+
+                if (OtBrigadeFilterBox != null)
+                {
+                    OtBrigadeFilterBox.ItemsSource = otBrigadeFilters;
+                    OtBrigadeFilterBox.SelectedItem = otBrigadeFilters.Contains(selectedOtBrigadeFilter) ? selectedOtBrigadeFilter : "Все";
                 }
             }
-
-            otBrigadeFilters.Clear();
-            otBrigadeFilters.Add("Все");
-            if (currentObject?.OtJournal != null)
+            finally
             {
-                foreach (var brigade in currentObject.OtJournal
-                             .Select(GetOtBrigadeFilterLabel)
-                             .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                             .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
-                {
-                    otBrigadeFilters.Add(brigade);
-                }
-            }
-
-            if (OtStatusFilterBox != null)
-            {
-                OtStatusFilterBox.ItemsSource = otStatusFilters;
-                OtStatusFilterBox.SelectedItem = otStatusFilters.Contains(selectedOtStatusFilter) ? selectedOtStatusFilter : "Все";
-            }
-
-            if (OtSpecialtyFilterBox != null)
-            {
-                OtSpecialtyFilterBox.ItemsSource = otSpecialtyFilters;
-                OtSpecialtyFilterBox.SelectedItem = otSpecialtyFilters.Contains(selectedOtSpecialtyFilter) ? selectedOtSpecialtyFilter : "Все";
-            }
-
-            if (OtBrigadeFilterBox != null)
-            {
-                OtBrigadeFilterBox.ItemsSource = otBrigadeFilters;
-                OtBrigadeFilterBox.SelectedItem = otBrigadeFilters.Contains(selectedOtBrigadeFilter) ? selectedOtBrigadeFilter : "Все";
+                suppressOtFilterSelectionChange = false;
             }
         }
 
         private void OtFilters_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (suppressOtFilterSelectionChange)
+                return;
+
             selectedOtStatusFilter = OtStatusFilterBox?.SelectedItem?.ToString() ?? "Все";
             selectedOtSpecialtyFilter = OtSpecialtyFilterBox?.SelectedItem?.ToString() ?? "Все";
             selectedOtBrigadeFilter = OtBrigadeFilterBox?.SelectedItem?.ToString() ?? "Все";
@@ -7885,6 +7943,7 @@ namespace ConstructionControl
             if (OtJournalGrid.SelectedItem is not OtJournalEntry row || currentObject?.OtJournal == null)
                 return;
 
+            PushUndo();
             currentObject.OtJournal.Remove(row);
             SortOtJournal();
             RefreshBrigadierNames();
@@ -7950,17 +8009,9 @@ namespace ConstructionControl
 
         private void OtJournalGrid_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Delete && OtJournalGrid.SelectedItem is OtJournalEntry row)
+            if (ShouldHandleGridRowDeleteShortcut(e) && OtJournalGrid.SelectedItem is OtJournalEntry)
             {
-                currentObject?.OtJournal?.Remove(row);
-                RefreshBrigadierNames();
-                RefreshSpecialties();
-                RefreshProfessions();
-                RefreshOtFilterOptions();
-                RequestReminderRefresh();
-                MarkTimesheetOtSyncDirty();
-                RequestTimesheetRebuild();
-                SaveState();
+                DeleteSelectedOtRow_Click(this, new RoutedEventArgs());
                 e.Handled = true;
                 return;
             }
@@ -8806,7 +8857,7 @@ namespace ConstructionControl
 
         private void TimesheetGrid_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.Control)
+            if (ShouldHandleGridRowDeleteShortcut(e) && selectedTimesheetRow != null)
             {
                 DeleteSelectedTimesheetPerson();
                 e.Handled = true;
@@ -8848,6 +8899,7 @@ namespace ConstructionControl
                 }
             }
 
+            PushUndo();
             currentObject.TimesheetPeople.Remove(row.Source);
             SaveState();
             RebuildTimesheetView();
@@ -10210,11 +10262,24 @@ namespace ConstructionControl
                 return;
             }
 
+            PushUndo();
             currentObject.InspectionJournal.Remove(row);
             selectedInspectionRow = null;
             inspectionLookupsDirty = true;
             RefreshInspectionJournalState();
             SaveState();
+        }
+
+        private void InspectionJournalGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!ShouldHandleGridRowDeleteShortcut(e))
+                return;
+
+            if (selectedInspectionRow == null && InspectionJournalGrid?.SelectedItem is not InspectionJournalEntry)
+                return;
+
+            DeleteInspectionRow_Click(this, new RoutedEventArgs());
+            e.Handled = true;
         }
 
         private void ClearInspectionForm_Click(object sender, RoutedEventArgs e)
@@ -10614,12 +10679,25 @@ namespace ConstructionControl
                 return;
             }
 
+            PushUndo();
             currentObject.ProductionJournal.Remove(row);
             selectedProductionRow = null;
             productionLookupsDirty = true;
             RefreshProductionJournalState();
             SaveState();
             RefreshSummaryTable();
+        }
+
+        private void ProductionJournalGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!ShouldHandleGridRowDeleteShortcut(e))
+                return;
+
+            if (selectedProductionRow == null && ProductionJournalGrid?.SelectedItem is not ProductionJournalEntry)
+                return;
+
+            DeleteProductionRow_Click(this, new RoutedEventArgs());
+            e.Handled = true;
         }
 
         private void ClearProductionForm_Click(object sender, RoutedEventArgs e)
@@ -18720,6 +18798,147 @@ namespace ConstructionControl
             TreeColumn.Width = show ? new GridLength(260) : new GridLength(0);
         }
 
+        private static string NormalizeJournalToolsPanelKey(object tag)
+            => (tag as string ?? string.Empty).Trim();
+
+        private bool GetJournalToolsPanelPinned(string key) => key switch
+        {
+            "Ot" => isOtToolsPinned,
+            "Timesheet" => isTimesheetToolsPinned,
+            "Production" => isProductionToolsPinned,
+            "Inspection" => isInspectionToolsPinned,
+            _ => false
+        };
+
+        private void SetJournalToolsPanelPinned(string key, bool value)
+        {
+            switch (key)
+            {
+                case "Ot":
+                    isOtToolsPinned = value;
+                    break;
+                case "Timesheet":
+                    isTimesheetToolsPinned = value;
+                    break;
+                case "Production":
+                    isProductionToolsPinned = value;
+                    break;
+                case "Inspection":
+                    isInspectionToolsPinned = value;
+                    break;
+            }
+        }
+
+        private bool TryGetJournalToolsPanelElements(
+            string key,
+            out Border hoverStrip,
+            out Border panelBorder,
+            out ToggleButton pinToggle)
+        {
+            switch (key)
+            {
+                case "Ot":
+                    hoverStrip = OtToolsHoverStrip;
+                    panelBorder = OtToolsPanelBorder;
+                    pinToggle = OtToolsPinToggle;
+                    return true;
+                case "Timesheet":
+                    hoverStrip = TimesheetToolsHoverStrip;
+                    panelBorder = TimesheetToolsPanelBorder;
+                    pinToggle = TimesheetToolsPinToggle;
+                    return true;
+                case "Production":
+                    hoverStrip = ProductionToolsHoverStrip;
+                    panelBorder = ProductionToolsPanelBorder;
+                    pinToggle = ProductionToolsPinToggle;
+                    return true;
+                case "Inspection":
+                    hoverStrip = InspectionToolsHoverStrip;
+                    panelBorder = InspectionToolsPanelBorder;
+                    pinToggle = InspectionToolsPinToggle;
+                    return true;
+                default:
+                    hoverStrip = null;
+                    panelBorder = null;
+                    pinToggle = null;
+                    return false;
+            }
+        }
+
+        private void UpdateJournalToolsPanelState(string key, bool forceVisible)
+        {
+            if (!TryGetJournalToolsPanelElements(key, out var hoverStrip, out var panelBorder, out var pinToggle))
+                return;
+
+            var isPinned = GetJournalToolsPanelPinned(key);
+            var show = isPinned || forceVisible;
+
+            if (pinToggle != null && pinToggle.IsChecked != isPinned)
+                pinToggle.IsChecked = isPinned;
+
+            if (hoverStrip != null)
+                hoverStrip.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+
+            if (panelBorder != null)
+                panelBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void UpdateAllJournalToolsPanelStates()
+        {
+            UpdateJournalToolsPanelState("Ot", forceVisible: false);
+            UpdateJournalToolsPanelState("Timesheet", forceVisible: false);
+            UpdateJournalToolsPanelState("Production", forceVisible: false);
+            UpdateJournalToolsPanelState("Inspection", forceVisible: false);
+        }
+
+        private void JournalToolsPinToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            var key = NormalizeJournalToolsPanelKey((sender as FrameworkElement)?.Tag);
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            SetJournalToolsPanelPinned(key, value: true);
+            UpdateJournalToolsPanelState(key, forceVisible: true);
+        }
+
+        private void JournalToolsPinToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            var key = NormalizeJournalToolsPanelKey((sender as FrameworkElement)?.Tag);
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            SetJournalToolsPanelPinned(key, value: false);
+            UpdateJournalToolsPanelState(key, forceVisible: false);
+        }
+
+        private void JournalToolsHoverStrip_MouseEnter(object sender, MouseEventArgs e)
+        {
+            var key = NormalizeJournalToolsPanelKey((sender as FrameworkElement)?.Tag);
+            if (string.IsNullOrWhiteSpace(key) || GetJournalToolsPanelPinned(key))
+                return;
+
+            UpdateJournalToolsPanelState(key, forceVisible: true);
+        }
+
+        private void JournalToolsPanel_MouseEnter(object sender, MouseEventArgs e)
+        {
+            var key = NormalizeJournalToolsPanelKey((sender as FrameworkElement)?.Tag);
+            if (string.IsNullOrWhiteSpace(key) || GetJournalToolsPanelPinned(key))
+                return;
+
+            UpdateJournalToolsPanelState(key, forceVisible: true);
+        }
+
+        private void JournalToolsPanel_MouseLeave(object sender, MouseEventArgs e)
+        {
+            var key = NormalizeJournalToolsPanelKey((sender as FrameworkElement)?.Tag);
+            if (string.IsNullOrWhiteSpace(key) || GetJournalToolsPanelPinned(key))
+                return;
+
+            if (TryGetJournalToolsPanelElements(key, out _, out var panelBorder, out _) && !panelBorder.IsMouseOver)
+                UpdateJournalToolsPanelState(key, forceVisible: false);
+        }
+
         private void PdfTreePinToggle_Checked(object sender, RoutedEventArgs e)
         {
             isPdfTreePinned = true;
@@ -18842,6 +19061,7 @@ namespace ConstructionControl
             {
                 currentObject.UiSettings ??= new ProjectUiSettings();
                 currentObject.ChangeLog ??= new List<ProjectChangeLogEntry>();
+                currentObject.UiSettings.CommandPaletteShortcuts ??= new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
                 currentObject.UiSettings.TabDisplayModes ??= new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
                 currentObject.UiSettings.GridColumnPreferences ??= new Dictionary<string, List<GridColumnPreference>>(StringComparer.CurrentCultureIgnoreCase);
                 currentObject.UiSettings.GridColumnPresets ??= new Dictionary<string, Dictionary<string, List<GridColumnPreference>>>(StringComparer.CurrentCultureIgnoreCase);
@@ -18900,6 +19120,11 @@ namespace ConstructionControl
 
             if (currentObject?.UiSettings == null)
             {
+                isOtToolsPinned = false;
+                isTimesheetToolsPinned = false;
+                isProductionToolsPinned = false;
+                isInspectionToolsPinned = false;
+                UpdateAllJournalToolsPanelStates();
                 UpdateTreePanelState(forceVisible: false);
                 return;
             }
@@ -18908,7 +19133,14 @@ namespace ConstructionControl
             if (TreePinToggle != null)
                 TreePinToggle.IsChecked = isTreePinned;
 
+            var pinJournalPanels = currentObject.UiSettings.PinJournalPanelsByDefault;
+            isOtToolsPinned = pinJournalPanels;
+            isTimesheetToolsPinned = pinJournalPanels;
+            isProductionToolsPinned = pinJournalPanels;
+            isInspectionToolsPinned = pinJournalPanels;
+
             UpdateTreePanelState(forceVisible: isTreePinned);
+            UpdateAllJournalToolsPanelStates();
             ApplySavedTabDisplayModes();
             ApplyGridColumnPreferencesForAll();
             RequestReminderRefresh(immediate: true);
@@ -19784,44 +20016,8 @@ namespace ConstructionControl
             }
 
             var key = e.Key == Key.System ? e.SystemKey : e.Key;
-            var ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-            var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-
-            if (ctrl && shift && key == Key.M)
+            if (TryHandleCommandPaletteShortcut(key, Keyboard.Modifiers, IsTextEditingElement(Keyboard.FocusedElement)))
             {
-                OpenColumnManager_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            }
-
-            if (ctrl && key == Key.K)
-            {
-                OpenCommandPalette_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            }
-
-            if (ctrl && key == Key.F)
-            {
-                OpenGlobalSearch_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            }
-
-            if (ctrl && key == Key.S)
-            {
-                if (shift)
-                    SaveAs_Click(this, new RoutedEventArgs());
-                else
-                    SaveButton_Click(this, new RoutedEventArgs());
-
-                e.Handled = true;
-                return;
-            }
-
-            if (key == Key.F5)
-            {
-                RefreshButton_Click(this, new RoutedEventArgs());
                 e.Handled = true;
             }
         }
@@ -20338,6 +20534,7 @@ namespace ConstructionControl
 
             var root = new Grid { Margin = new Thickness(14) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -20348,6 +20545,25 @@ namespace ConstructionControl
             };
             Grid.SetRow(filterBox, 0);
             root.Children.Add(filterBox);
+
+            var shortcutHintBorder = new Border
+            {
+                Margin = new Thickness(0, 10, 0, 0),
+                Padding = new Thickness(12, 10, 12, 10),
+                BorderBrush = TryFindResource("StrokeBrush") as Brush ?? Brushes.Gainsboro,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Background = TryFindResource("SurfaceAltBrush") as Brush ?? Brushes.WhiteSmoke
+            };
+            Grid.SetRow(shortcutHintBorder, 1);
+            root.Children.Add(shortcutHintBorder);
+
+            var shortcutHintText = new TextBlock
+            {
+                Text = "Выберите команду и нажмите «Назначить клавиши». Потом нажмите нужную комбинацию. Esc отменяет ввод, Delete очищает комбинацию.",
+                TextWrapping = TextWrapping.Wrap
+            };
+            shortcutHintBorder.Child = shortcutHintText;
 
             var list = new DataGrid
             {
@@ -20361,9 +20577,9 @@ namespace ConstructionControl
                 ItemsSource = visibleActions
             };
             list.Columns.Add(new DataGridTextColumn { Header = "Команда", Binding = new Binding(nameof(CommandPaletteAction.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-            list.Columns.Add(new DataGridTextColumn { Header = "Клавиши", Binding = new Binding(nameof(CommandPaletteAction.Shortcut)), Width = 130 });
+            list.Columns.Add(new DataGridTextColumn { Header = "Клавиши", Binding = new Binding(nameof(CommandPaletteAction.Shortcut)) { TargetNullValue = string.Empty }, Width = 140 });
             list.Columns.Add(new DataGridTextColumn { Header = "Описание", Binding = new Binding(nameof(CommandPaletteAction.Hint)), Width = new DataGridLength(1.2, DataGridLengthUnitType.Star) });
-            Grid.SetRow(list, 1);
+            Grid.SetRow(list, 2);
             root.Children.Add(list);
 
             var footer = new StackPanel
@@ -20372,7 +20588,7 @@ namespace ConstructionControl
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0)
             };
-            Grid.SetRow(footer, 2);
+            Grid.SetRow(footer, 3);
             root.Children.Add(footer);
 
             var closeButton = new Button
@@ -20383,6 +20599,19 @@ namespace ConstructionControl
                 Style = FindResource("SecondaryButton") as Style,
                 Margin = new Thickness(0, 0, 8, 0)
             };
+            var clearShortcutButton = new Button
+            {
+                Content = "Очистить клавиши",
+                MinWidth = 150,
+                Style = FindResource("SecondaryButton") as Style,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var assignShortcutButton = new Button
+            {
+                Content = "Назначить клавиши",
+                MinWidth = 160,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
             var runButton = new Button
             {
                 Content = "Выполнить",
@@ -20390,7 +20619,23 @@ namespace ConstructionControl
                 IsDefault = true
             };
             footer.Children.Add(closeButton);
+            footer.Children.Add(clearShortcutButton);
+            footer.Children.Add(assignShortcutButton);
             footer.Children.Add(runButton);
+
+            var isCapturingShortcut = false;
+
+            void SetCaptureState(bool isCapturing, string message = null)
+            {
+                isCapturingShortcut = isCapturing;
+                shortcutHintText.Text = isCapturing
+                    ? (message ?? "Нажмите новую комбинацию. Esc отменяет ввод, Delete очищает назначение.")
+                    : "Выберите команду и нажмите «Назначить клавиши». Потом нажмите нужную комбинацию. Esc отменяет ввод, Delete очищает комбинацию.";
+                assignShortcutButton.Content = isCapturing ? "Ожидание..." : "Назначить клавиши";
+                assignShortcutButton.IsEnabled = !isCapturing;
+                runButton.IsEnabled = !isCapturing;
+                filterBox.IsReadOnly = isCapturing;
+            }
 
             void ApplyFilter()
             {
@@ -20415,6 +20660,9 @@ namespace ConstructionControl
 
             void ExecuteSelectedAction()
             {
+                if (isCapturingShortcut)
+                    return;
+
                 if (list.SelectedItem is not CommandPaletteAction selected || selected.ExecuteAction == null)
                     return;
 
@@ -20423,9 +20671,80 @@ namespace ConstructionControl
                 selected.ExecuteAction();
             }
 
+            void PersistShortcut(CommandPaletteAction action, string shortcut)
+            {
+                EnsureProjectUiSettings();
+                if (currentObject?.UiSettings == null)
+                {
+                    MessageBox.Show("Сначала создайте или откройте объект, чтобы сохранить комбинацию.");
+                    return;
+                }
+
+                var normalizedShortcut = NormalizeShortcutText(shortcut);
+                var normalizedDefault = NormalizeShortcutText(action.DefaultShortcut);
+                currentObject.UiSettings.CommandPaletteShortcuts ??= new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+
+                if (string.Equals(normalizedShortcut, normalizedDefault, StringComparison.CurrentCultureIgnoreCase))
+                    currentObject.UiSettings.CommandPaletteShortcuts.Remove(action.Id);
+                else
+                    currentObject.UiSettings.CommandPaletteShortcuts[action.Id] = normalizedShortcut;
+
+                action.Shortcut = normalizedShortcut;
+                SaveState(SaveTrigger.System);
+            }
+
+            void ClearShortcut(CommandPaletteAction action)
+            {
+                if (action == null)
+                    return;
+
+                PersistShortcut(action, string.Empty);
+                SetCaptureState(false);
+            }
+
+            void AssignShortcut(CommandPaletteAction action, string shortcut)
+            {
+                if (action == null)
+                    return;
+
+                var normalizedShortcut = NormalizeShortcutText(shortcut);
+                if (string.IsNullOrWhiteSpace(normalizedShortcut))
+                    return;
+
+                var conflict = actions.FirstOrDefault(x =>
+                    !ReferenceEquals(x, action)
+                    && string.Equals(NormalizeShortcutText(x.Shortcut), normalizedShortcut, StringComparison.CurrentCultureIgnoreCase));
+
+                if (conflict != null)
+                {
+                    var replaceResult = MessageBox.Show(
+                        $"Комбинация {normalizedShortcut} уже назначена команде \"{conflict.Name}\". Переназначить?",
+                        "Командная палитра",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+
+                    if (replaceResult != MessageBoxResult.Yes)
+                    {
+                        SetCaptureState(false);
+                        return;
+                    }
+
+                    PersistShortcut(conflict, string.Empty);
+                }
+
+                PersistShortcut(action, normalizedShortcut);
+                SetCaptureState(false);
+            }
+
             filterBox.TextChanged += (_, _) => ApplyFilter();
             filterBox.KeyDown += (_, args) =>
             {
+                if (isCapturingShortcut)
+                {
+                    args.Handled = true;
+                    return;
+                }
+
                 if (args.Key == Key.Enter)
                 {
                     ExecuteSelectedAction();
@@ -20458,16 +20777,88 @@ namespace ConstructionControl
             list.MouseDoubleClick += (_, _) => ExecuteSelectedAction();
             list.KeyDown += (_, args) =>
             {
+                if (isCapturingShortcut)
+                {
+                    args.Handled = true;
+                    return;
+                }
+
                 if (args.Key == Key.Enter)
                 {
                     ExecuteSelectedAction();
                     args.Handled = true;
                 }
             };
+            clearShortcutButton.Click += (_, _) =>
+            {
+                if (list.SelectedItem is not CommandPaletteAction selected)
+                {
+                    MessageBox.Show("Выберите команду.");
+                    return;
+                }
+
+                ClearShortcut(selected);
+            };
+            assignShortcutButton.Click += (_, _) =>
+            {
+                if (list.SelectedItem is not CommandPaletteAction selected)
+                {
+                    MessageBox.Show("Выберите команду.");
+                    return;
+                }
+
+                SetCaptureState(true, $"Новая комбинация для команды \"{selected.Name}\". Нажмите клавиши, Esc отменяет ввод, Delete очищает назначение.");
+            };
             runButton.Click += (_, _) => ExecuteSelectedAction();
+            dialog.PreviewKeyDown += (_, args) =>
+            {
+                if (!isCapturingShortcut)
+                    return;
+
+                var shortcutKey = args.Key == Key.System ? args.SystemKey : args.Key;
+                if (IsModifierKey(shortcutKey))
+                {
+                    args.Handled = true;
+                    return;
+                }
+
+                if (shortcutKey == Key.Escape)
+                {
+                    SetCaptureState(false);
+                    args.Handled = true;
+                    return;
+                }
+
+                if (shortcutKey == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
+                {
+                    if (list.SelectedItem is CommandPaletteAction selectedAction)
+                        ClearShortcut(selectedAction);
+
+                    args.Handled = true;
+                    return;
+                }
+
+                if (list.SelectedItem is not CommandPaletteAction selectedActionToAssign)
+                {
+                    SetCaptureState(false);
+                    args.Handled = true;
+                    return;
+                }
+
+                if (Keyboard.Modifiers == ModifierKeys.None && (shortcutKey < Key.F1 || shortcutKey > Key.F24))
+                {
+                    SetCaptureState(true, "Используйте сочетание с Ctrl, Shift, Alt или функциональную клавишу.");
+                    args.Handled = true;
+                    return;
+                }
+
+                AssignShortcut(selectedActionToAssign, BuildShortcutText(shortcutKey, Keyboard.Modifiers));
+                args.Handled = true;
+            };
 
             dialog.Content = root;
             ApplyFilter();
+            SetCaptureState(false);
             dialog.ShowDialog();
         }
 
@@ -20477,123 +20868,380 @@ namespace ConstructionControl
             {
                 new()
                 {
+                    Id = "command_palette",
+                    DefaultShortcut = "Ctrl+K",
+                    Shortcut = ResolveCommandPaletteShortcut("command_palette", "Ctrl+K"),
+                    Name = "Командная палитра",
+                    Hint = "Открыть список быстрых действий и назначить клавиши",
+                    ExecuteAction = () => OpenCommandPalette_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Id = "save",
+                    DefaultShortcut = "Ctrl+S",
+                    Shortcut = ResolveCommandPaletteShortcut("save", "Ctrl+S"),
                     Name = "Сохранить",
-                    Shortcut = "Ctrl+S",
                     Hint = "Сохранить текущий объект",
                     ExecuteAction = () => SaveButton_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "save_as",
+                    DefaultShortcut = "Ctrl+Shift+S",
+                    Shortcut = ResolveCommandPaletteShortcut("save_as", "Ctrl+Shift+S"),
                     Name = "Сохранить как",
-                    Shortcut = "Ctrl+Shift+S",
                     Hint = "Сохранить объект в новый файл",
                     ExecuteAction = () => SaveAs_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "undo",
+                    DefaultShortcut = "Ctrl+Z",
+                    Shortcut = ResolveCommandPaletteShortcut("undo", "Ctrl+Z"),
+                    Name = "Отменить действие",
+                    Hint = "Вернуться на один шаг назад",
+                    ExecuteAction = () => Undo_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Id = "redo",
+                    DefaultShortcut = "Ctrl+Y",
+                    Shortcut = ResolveCommandPaletteShortcut("redo", "Ctrl+Y"),
+                    Name = "Повторить действие",
+                    Hint = "Вернуть последний отмененный шаг",
+                    ExecuteAction = () => Redo_Click(this, new RoutedEventArgs())
+                },
+                new()
+                {
+                    Id = "refresh",
+                    DefaultShortcut = "F5",
+                    Shortcut = ResolveCommandPaletteShortcut("refresh", "F5"),
                     Name = "Обновить",
-                    Shortcut = "F5",
                     Hint = "Пересчитать и обновить текущие данные",
                     ExecuteAction = () => RefreshButton_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "global_search",
+                    DefaultShortcut = "Ctrl+F",
+                    Shortcut = ResolveCommandPaletteShortcut("global_search", "Ctrl+F"),
                     Name = "Глобальный поиск",
-                    Shortcut = "Ctrl+F",
                     Hint = "Поиск по материалам, ФИО, ТТН, датам",
                     ExecuteAction = () => OpenGlobalSearch_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "column_manager",
+                    DefaultShortcut = "Ctrl+Shift+M",
+                    Shortcut = ResolveCommandPaletteShortcut("column_manager", "Ctrl+Shift+M"),
                     Name = "Менеджер колонок",
-                    Shortcut = "Ctrl+Shift+M",
                     Hint = "Показать/скрыть колонки, изменить порядок и ширину",
                     ExecuteAction = () => OpenColumnManager_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "ui_settings",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("ui_settings", string.Empty),
                     Name = "Настройки интерфейса",
-                    Shortcut = string.Empty,
                     Hint = "Открыть параметры интерфейса",
                     ExecuteAction = () => AppSettings_Click(this, new RoutedEventArgs())
                 },
                 new()
                 {
+                    Id = "density_standard",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("density_standard", string.Empty),
                     Name = "Плотность: Стандартный",
-                    Shortcut = string.Empty,
                     Hint = "Обычные отступы и высота строк",
                     ExecuteAction = () => SetUiDensityMode("Стандартный")
                 },
                 new()
                 {
+                    Id = "density_compact",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("density_compact", string.Empty),
                     Name = "Плотность: Компактный",
-                    Shortcut = string.Empty,
                     Hint = "Уплотненный режим для больших таблиц",
                     ExecuteAction = () => SetUiDensityMode("Компактный")
                 },
                 new()
                 {
+                    Id = "tab_summary",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_summary", string.Empty),
                     Name = "Открыть вкладку Сводка",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку Сводка",
                     ExecuteAction = () => SelectMainTab(SummaryTab)
                 },
                 new()
                 {
+                    Id = "tab_jvk",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_jvk", string.Empty),
                     Name = "Открыть вкладку ЖВК",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку ЖВК",
                     ExecuteAction = () => SelectMainTab(JvkTab)
                 },
                 new()
                 {
+                    Id = "tab_arrival",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_arrival", string.Empty),
                     Name = "Открыть вкладку Приход",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку Приход",
                     ExecuteAction = () => SelectMainTab(ArrivalTab)
                 },
                 new()
                 {
+                    Id = "tab_ot",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_ot", string.Empty),
                     Name = "Открыть вкладку ОТ",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку ОТ",
                     ExecuteAction = () => SelectMainTab(OtTab)
                 },
                 new()
                 {
+                    Id = "tab_timesheet",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_timesheet", string.Empty),
                     Name = "Открыть вкладку Табель",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку Табель",
                     ExecuteAction = () => SelectMainTab(TimesheetTab)
                 },
                 new()
                 {
+                    Id = "tab_production",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_production", string.Empty),
                     Name = "Открыть вкладку ПР",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку ПР",
                     ExecuteAction = () => SelectMainTab(ProductionTab)
                 },
                 new()
                 {
+                    Id = "tab_inspection",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_inspection", string.Empty),
                     Name = "Открыть вкладку Осмотры",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку Осмотры",
                     ExecuteAction = () => SelectMainTab(InspectionTab)
                 },
                 new()
                 {
+                    Id = "tab_pdf",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_pdf", string.Empty),
                     Name = "Открыть вкладку ПДФ",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку ПДФ-документы",
                     ExecuteAction = () => SelectMainTab(PdfTab)
                 },
                 new()
                 {
+                    Id = "tab_estimate",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_estimate", string.Empty),
                     Name = "Открыть вкладку Сметы",
-                    Shortcut = string.Empty,
                     Hint = "Перейти на вкладку Сметы",
                     ExecuteAction = () => SelectMainTab(EstimateTab)
                 }
+            };
+        }
+
+        private string ResolveCommandPaletteShortcut(string actionId, string defaultShortcut)
+        {
+            EnsureProjectUiSettings();
+            if (currentObject?.UiSettings?.CommandPaletteShortcuts != null
+                && !string.IsNullOrWhiteSpace(actionId)
+                && currentObject.UiSettings.CommandPaletteShortcuts.TryGetValue(actionId, out var savedShortcut))
+            {
+                return NormalizeShortcutText(savedShortcut);
+            }
+
+            return NormalizeShortcutText(defaultShortcut);
+        }
+
+        private bool TryHandleCommandPaletteShortcut(Key key, ModifierKeys modifiers, bool textEditingActive)
+        {
+            var shortcut = BuildShortcutText(key, modifiers);
+            if (string.IsNullOrWhiteSpace(shortcut))
+                return false;
+
+            var action = BuildCommandPaletteActions().FirstOrDefault(x =>
+                string.Equals(NormalizeShortcutText(x.Shortcut), shortcut, StringComparison.CurrentCultureIgnoreCase));
+            if (action == null)
+                return false;
+
+            if (textEditingActive && ShouldSkipShortcutWhileEditingText(action.Id))
+                return false;
+
+            action.ExecuteAction?.Invoke();
+            return true;
+        }
+
+        private static bool ShouldSkipShortcutWhileEditingText(string actionId)
+        {
+            return string.Equals(actionId, "undo", StringComparison.CurrentCultureIgnoreCase)
+                || string.Equals(actionId, "redo", StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private static bool ShouldHandleGridRowDeleteShortcut(KeyEventArgs e)
+        {
+            if (e == null)
+                return false;
+
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key != Key.Delete || Keyboard.Modifiers != ModifierKeys.None)
+                return false;
+
+            return !IsTextEditingElement(e.OriginalSource);
+        }
+
+        private static bool IsTextEditingElement(object source)
+        {
+            var current = source as DependencyObject;
+            while (current != null)
+            {
+                if (current is TextBoxBase || current is PasswordBox || current is RichTextBox || current is ComboBox || current is DatePicker)
+                    return true;
+
+                current = GetVisualOrLogicalParent(current);
+            }
+
+            return false;
+        }
+
+        private static DependencyObject GetVisualOrLogicalParent(DependencyObject current)
+        {
+            if (current == null)
+                return null;
+
+            if (current is Visual)
+                return VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+
+            return LogicalTreeHelper.GetParent(current);
+        }
+
+        private static bool IsModifierKey(Key key)
+        {
+            return key == Key.LeftCtrl
+                || key == Key.RightCtrl
+                || key == Key.LeftAlt
+                || key == Key.RightAlt
+                || key == Key.LeftShift
+                || key == Key.RightShift
+                || key == Key.LWin
+                || key == Key.RWin;
+        }
+
+        private static string BuildShortcutText(Key key, ModifierKeys modifiers)
+        {
+            if (key == Key.None || IsModifierKey(key))
+                return string.Empty;
+
+            var parts = new List<string>();
+            if (modifiers.HasFlag(ModifierKeys.Control))
+                parts.Add("Ctrl");
+            if (modifiers.HasFlag(ModifierKeys.Shift))
+                parts.Add("Shift");
+            if (modifiers.HasFlag(ModifierKeys.Alt))
+                parts.Add("Alt");
+            if (modifiers.HasFlag(ModifierKeys.Windows))
+                parts.Add("Win");
+
+            var keyText = GetShortcutKeyText(key);
+            if (string.IsNullOrWhiteSpace(keyText))
+                return string.Empty;
+
+            parts.Add(keyText);
+            return string.Join("+", parts);
+        }
+
+        private static string NormalizeShortcutText(string shortcut)
+        {
+            if (string.IsNullOrWhiteSpace(shortcut))
+                return string.Empty;
+
+            var parts = shortcut
+                .Split(new[] { '+' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            if (parts.Count == 0)
+                return string.Empty;
+
+            var hasCtrl = false;
+            var hasShift = false;
+            var hasAlt = false;
+            var hasWin = false;
+            var keyPart = string.Empty;
+            foreach (var part in parts)
+            {
+                if (part.Equals("ctrl", StringComparison.CurrentCultureIgnoreCase)
+                    || part.Equals("control", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    hasCtrl = true;
+                    continue;
+                }
+
+                if (part.Equals("shift", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    hasShift = true;
+                    continue;
+                }
+
+                if (part.Equals("alt", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    hasAlt = true;
+                    continue;
+                }
+
+                if (part.Equals("win", StringComparison.CurrentCultureIgnoreCase)
+                    || part.Equals("windows", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    hasWin = true;
+                    continue;
+                }
+
+                keyPart = part;
+            }
+
+            var normalized = new List<string>();
+            if (hasCtrl)
+                normalized.Add("Ctrl");
+            if (hasShift)
+                normalized.Add("Shift");
+            if (hasAlt)
+                normalized.Add("Alt");
+            if (hasWin)
+                normalized.Add("Win");
+
+            if (string.IsNullOrWhiteSpace(keyPart))
+                return string.Join("+", normalized);
+
+            normalized.Add(keyPart);
+            return string.Join("+", normalized);
+        }
+
+        private static string GetShortcutKeyText(Key key)
+        {
+            if (key >= Key.D0 && key <= Key.D9)
+                return ((int)(key - Key.D0)).ToString(CultureInfo.InvariantCulture);
+
+            if (key >= Key.NumPad0 && key <= Key.NumPad9)
+                return $"Num{(int)(key - Key.NumPad0)}";
+
+            return key switch
+            {
+                Key.Return => "Enter",
+                Key.Escape => "Esc",
+                Key.Prior => "PageUp",
+                Key.Next => "PageDown",
+                Key.Back => "Backspace",
+                Key.Space => "Space",
+                _ => new KeyConverter().ConvertToString(key) ?? string.Empty
             };
         }
 

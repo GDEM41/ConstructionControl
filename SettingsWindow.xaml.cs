@@ -21,6 +21,7 @@ namespace ConstructionControl
             var settings = source ?? new ProjectUiSettings();
             DisableTreeCheckBox.IsChecked = settings.DisableTree;
             PinTreeCheckBox.IsChecked = settings.PinTreeByDefault;
+            PinJournalPanelsCheckBox.IsChecked = settings.PinJournalPanelsByDefault;
             ReminderPopupCheckBox.IsChecked = settings.ShowReminderPopup;
             SelectReminderPresentationMode(settings.ReminderPresentationMode);
             ReminderSnoozeMinutesBox.Text = settings.ReminderSnoozeMinutes > 0
@@ -56,6 +57,7 @@ namespace ConstructionControl
             {
                 DisableTree = DisableTreeCheckBox.IsChecked == true,
                 PinTreeByDefault = DisableTreeCheckBox.IsChecked == true ? false : PinTreeCheckBox.IsChecked == true,
+                PinJournalPanelsByDefault = PinJournalPanelsCheckBox.IsChecked == true,
                 ShowReminderPopup = ReminderPopupCheckBox.IsChecked != false,
                 ReminderPresentationMode = GetSelectedReminderPresentationMode(),
                 ReminderSnoozeMinutes = snoozeMinutes,

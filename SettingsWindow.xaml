@@ -58,6 +58,14 @@
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"/>
 
+                    <CheckBox x:Name="PinJournalPanelsCheckBox" FontWeight="SemiBold">
+                        <TextBlock Text="Закреплять панели журналов по умолчанию" TextWrapping="Wrap"/>
+                    </CheckBox>
+                    <TextBlock Text="Панели ОТ, табеля, ПР и осмотров будут открыты сразу и не будут скрываться при уходе мыши."
+                               Margin="28,4,0,12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+
                     <CheckBox x:Name="ReminderPopupCheckBox" FontWeight="SemiBold">
                         <TextBlock Text="Показывать уведомления" TextWrapping="Wrap"/>
                     </CheckBox>

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -57,17 +58,20 @@ namespace ConstructionControl
             };
 
             base.OnStartup(e);
+            TouchpadScrollSupport.Initialize();
 
             try
             {
                 // Пока показывается splash, не позволяем приложению завершиться
                 // из-за временного отсутствия главного окна.
+                var splashDuration = TimeSpan.FromSeconds(3);
+                var splashTimer = Stopwatch.StartNew();
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
                 var splash = new SplashWindow();
                 splash.Show();
 
-                await Task.Delay(TimeSpan.FromSeconds(3));
+                await Task.Yield();
 
                 var mainWindow = new MainWindow
                 {
@@ -75,6 +79,10 @@ namespace ConstructionControl
                     ShowInTaskbar = true,
                     WindowState = WindowState.Normal
                 };
+
+                var remainingSplashTime = splashDuration - splashTimer.Elapsed;
+                if (remainingSplashTime > TimeSpan.Zero)
+                    await Task.Delay(remainingSplashTime);
 
                 MainWindow = mainWindow;
                 mainWindow.Show();

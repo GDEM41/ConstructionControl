@@ -135,6 +135,7 @@ namespace ConstructionControl
     {
         public bool DisableTree { get; set; }
         public bool PinTreeByDefault { get; set; }
+        public bool PinJournalPanelsByDefault { get; set; }
         public bool ShowReminderPopup { get; set; } = true;
         public string ReminderPresentationMode { get; set; } = ReminderPresentationModes.Overlay;
         public int ReminderSnoozeMinutes { get; set; } = 15;
@@ -156,6 +157,7 @@ namespace ConstructionControl
         public string OtStatusFilter { get; set; } = "Все";
         public string OtSpecialtyFilter { get; set; } = "Все";
         public string OtBrigadeFilter { get; set; } = "Все";
+        public Dictionary<string, string> CommandPaletteShortcuts { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
         public Dictionary<string, string> TabDisplayModes { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
         public Dictionary<string, List<GridColumnPreference>> GridColumnPreferences { get; set; } = new(StringComparer.CurrentCultureIgnoreCase);
         public Dictionary<string, Dictionary<string, List<GridColumnPreference>>> GridColumnPresets { get; set; }

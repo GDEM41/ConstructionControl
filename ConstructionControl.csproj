@@ -30,6 +30,9 @@
     <None Update="data.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="templates\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
@@ -53,6 +56,13 @@
           Inputs="$(MSBuildProjectDirectory)\installer\assets\app_icon.png;$(MSBuildProjectDirectory)\scripts\New-MasterProIcon.ps1"
           Outputs="$(MSBuildProjectDirectory)\installer\assets\MasterPRO.ico">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\New-MasterProIcon.ps1&quot;" />
+  </Target>
+
+  <Target Name="GenerateHiddenWorksActTemplate"
+          BeforeTargets="BeforeBuild"
+          Inputs="$(MSBuildProjectDirectory)\scripts\New-HiddenWorksActTemplate.ps1"
+          Outputs="$(MSBuildProjectDirectory)\templates\HiddenWorksActTemplate.docx">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\New-HiddenWorksActTemplate.ps1&quot;" />
   </Target>
 
   <ItemGroup>
