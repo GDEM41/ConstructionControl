@@ -36,10 +36,6 @@ namespace ConstructionControl
             InitializeComponent();
             LoadTemplatesList();
 
-            MainRadio.Checked += ImportTypeChanged;
-            ExtraRadio.Checked += ImportTypeChanged;
-
-
             _filePath = filePath;
             _currentObject = currentObject;
             FilePathText.Text = filePath;
@@ -47,11 +43,16 @@ namespace ConstructionControl
             PopulateBlocks();
         }
 
-        private void ImportTypeChanged(object sender, RoutedEventArgs e)
+        private string SelectedCategory
         {
-            ExtraTypeBox.Visibility = ExtraRadio.IsChecked == true
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            get
+            {
+                if (MainRadio?.IsChecked == true)
+                    return "Основные";
+                if (LowCostRadio?.IsChecked == true)
+                    return "Малоценка";
+                return "Внутренние";
+            }
         }
 
 
@@ -245,12 +246,10 @@ namespace ConstructionControl
                     ImportedRecords.Add(new JournalRecord
                     {
                         Date = date,
-                        Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
-                        SubCategory = ExtraRadio.IsChecked == true
-                             ? ExtraTypeBox.SelectedItem?.ToString()
-                             : null,
+                        Category = SelectedCategory,
+                        SubCategory = string.Empty,
 
-                        MaterialGroup = MainRadio.IsChecked == true ? sheetName : null,
+                        MaterialGroup = sheetName,
                         MaterialName = material,
 
                         Quantity = qty,

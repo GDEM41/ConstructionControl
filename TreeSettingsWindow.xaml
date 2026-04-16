@@ -6,7 +6,7 @@
         Width="980"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        Background="{StaticResource AppBgBrush}">
+        Background="{DynamicResource AppBgBrush}">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -15,30 +15,30 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="14" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1">
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="12" Padding="14" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1">
             <StackPanel>
                 <TextBlock Text="База материалов"
                            FontWeight="SemiBold"
                            FontSize="18"
-                           Foreground="{StaticResource TextBrush}"/>
+                           Foreground="{DynamicResource TextBrush}"/>
                 <TextBlock Text="Добавляйте категории, типы, подтипы и материалы. Здесь хранится единая база для дерева и выпадающих списков в приходе."
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Margin="0,6,0,0"
                            TextWrapping="Wrap"/>
                 <TextBlock Text="Для авторазбиения отметьте материал в колонке &quot;Авто&quot;. Например: ПК56.15-12 станет ПК / 56 / 15 / 12."
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Margin="0,6,0,0"
                            TextWrapping="Wrap"/>
                 <TextBlock Text="Массовое редактирование: выделите диапазон строк (Shift + клик) и измените значение в любой колонке. Значение применится ко всем выделенным строкам."
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Margin="0,6,0,0"
                            TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
         <Border Grid.Row="1"
-               Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource StrokeBrush}"
+               Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource StrokeBrush}"
                 BorderThickness="1"
                 CornerRadius="12"
                 Padding="10"
@@ -48,9 +48,9 @@
                         Click="AddEntry_Click"
                         Margin="0,0,8,0"
                         Padding="12,6"
-                        Background="{StaticResource PrimaryBrush}"
-                        Foreground="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource PrimaryBrushPressed}"/>
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource PrimaryBrushPressed}"/>
                 <Button Content="− Удалить запись"
                         Click="RemoveEntry_Click"
                         Margin="0,0,14,0"
@@ -74,7 +74,7 @@
                 
                 <TextBlock Text="Уровни разбиения:"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Margin="0,0,8,0"/>
                 <Button Content="+ Уровень"
                         Click="AddLevelColumn_Click"
@@ -96,9 +96,9 @@
                   HeadersVisibility="Column"
                   IsReadOnly="False"
                   GridLinesVisibility="Horizontal"
-                  AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
-                  RowBackground="{StaticResource SurfaceBrush}"
-                  BorderBrush="{StaticResource StrokeBrush}"
+                  AlternatingRowBackground="{DynamicResource SurfaceAltBrush}"
+                  RowBackground="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource StrokeBrush}"
                   BorderThickness="1"
                    FrozenColumnCount="7"
                   CellEditEnding="RulesGrid_CellEditEnding">
@@ -106,7 +106,7 @@
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource SelectedBrush}" Padding="6" Margin="0,4,0,0" CornerRadius="4">
+                            <Border Background="{DynamicResource SelectedBrush}" Padding="6" Margin="0,4,0,0" CornerRadius="4">
                                 <TextBlock Text="{Binding Name, StringFormat=Категория: {0}}" FontWeight="SemiBold"/>
                             </Border>
                         </DataTemplate>
@@ -115,7 +115,7 @@
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource RowHoverBrush}" Padding="6" Margin="12,2,0,0" CornerRadius="4">
+                            <Border Background="{DynamicResource RowHoverBrush}" Padding="6" Margin="12,2,0,0" CornerRadius="4">
                                 <TextBlock Text="{Binding Name, StringFormat=Тип: {0}}" FontWeight="SemiBold"/>
                             </Border>
                         </DataTemplate>
@@ -124,7 +124,7 @@
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource SurfaceAltBrush}" Padding="6" Margin="24,2,0,0" CornerRadius="4">
+                            <Border Background="{DynamicResource SurfaceAltBrush}" Padding="6" Margin="24,2,0,0" CornerRadius="4">
                                 <TextBlock Text="{Binding Name, StringFormat=Подтип: {0}}" FontWeight="SemiBold"/>
                             </Border>
                         </DataTemplate>
@@ -155,7 +155,7 @@
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button Content="Отмена" Width="120" Margin="0,0,8,0" IsCancel="True"/>
-            <Button Content="Сохранить" Width="120" IsDefault="True" Click="Save_Click" Background="{StaticResource PrimaryBrush}" Foreground="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource PrimaryBrushPressed}"/>
+            <Button Content="Сохранить" Width="120" IsDefault="True" Click="Save_Click" Background="{DynamicResource PrimaryBrush}" Foreground="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource PrimaryBrushPressed}"/>
         </StackPanel>
     </Grid>
 </Window>

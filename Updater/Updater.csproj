@@ -5,4 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="build_*\**\*.cs" />
+    <EmbeddedResource Remove="build_*\**\*" />
+    <None Remove="build_*\**\*" />
+    <Content Remove="build_*\**\*" />
+  </ItemGroup>
 </Project>

@@ -9,7 +9,7 @@
         Width="1300"
         MinWidth="1360"
         MinHeight="820"
-        Background="{StaticResource AppBgBrush}"
+        Background="{DynamicResource AppBgBrush}"
           Loaded="MainWindow_Loaded"
         Closing="MainWindow_Closing"
         Closed="MainWindow_Closed"
@@ -31,9 +31,9 @@
             <Setter Property="Margin" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
@@ -54,10 +54,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.55"/>
@@ -72,9 +72,9 @@
             <Setter Property="Margin" Value="4,4,4,4"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="HorizontalAlignment" Value="Left"/>
             <Setter Property="Cursor" Value="Hand"/>
 
@@ -92,9 +92,9 @@
 
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="root" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                <Setter TargetName="root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+                                <Setter TargetName="root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -103,8 +103,8 @@
         </Style>
         <Style x:Key="SummaryFilterToggle" TargetType="ToggleButton">
             <Setter Property="Padding" Value="12,10"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -127,24 +127,24 @@
                                         Width="28"
                                         Height="28"
                                         CornerRadius="6"
-                                        Background="{StaticResource SurfaceAltBrush}"
+                                        Background="{DynamicResource SurfaceAltBrush}"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center">
                                     <TextBlock Text="▾"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-                                <Setter TargetName="ArrowBg" Property="Background" Value="{StaticResource StrokeBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                                <Setter TargetName="ArrowBg" Property="Background" Value="{DynamicResource StrokeBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -161,8 +161,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="Bd"
-                                Background="{StaticResource SurfaceAltBrush}"
-                                BorderBrush="{StaticResource StrokeBrush}"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                BorderBrush="{DynamicResource StrokeBrush}"
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Padding="10,6">
@@ -170,12 +170,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
-                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource StrokeBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource StrokeBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -186,8 +186,8 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrushHover}"/>
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrushHover}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -201,10 +201,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrushHover}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrushHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.6"/>
@@ -217,8 +217,8 @@
 
         <Style x:Key="ModernSummaryModeToggle" TargetType="CheckBox">
             <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -230,9 +230,58 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
-                                <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernSwitchCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#1F2937"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="SwitchTrack"
+                                    Width="46"
+                                    Height="26"
+                                    Background="#CBD5E1"
+                                    CornerRadius="13"
+                                    BorderBrush="#94A3B8"
+                                    BorderThickness="1">
+                                <Ellipse x:Name="SwitchThumb"
+                                         Width="20"
+                                         Height="20"
+                                         Fill="White"
+                                         Stroke="#CBD5E1"
+                                         StrokeThickness="1"
+                                         HorizontalAlignment="Left"
+                                         Margin="3,0,0,0"
+                                         VerticalAlignment="Center"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1"
+                                              Margin="10,0,0,0"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="SwitchThumb" Property="Margin" Value="0,0,3,0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -255,9 +304,9 @@
             <Setter Property="Height" Value="38"/>
             <Setter Property="MinWidth" Value="38"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
         </Style>
@@ -265,9 +314,9 @@
         <Style x:Key="IconToggle" TargetType="ToggleButton">
             <Setter Property="Width" Value="38"/>
             <Setter Property="Height" Value="38"/>
-            <Setter Property="Foreground" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="16"/>
             <Setter Property="Template">
@@ -282,16 +331,16 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushHover}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrushHover}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PrimaryBrushHover}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrushHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource PrimaryBrushPressed}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PrimaryBrushPressed}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="False">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource SelectedBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.55"/>
@@ -303,17 +352,18 @@
         </Style>
 
         <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
-            <Setter Property="RowHeight" Value="32"/>
+            <Setter Property="RowHeight" Value="40"/>
+            <Setter Property="MinRowHeight" Value="36"/>
             <Setter Property="ColumnHeaderHeight" Value="34"/>
             <Setter Property="GridLinesVisibility" Value="All"/>
-            <Setter Property="VerticalGridLinesBrush" Value="{StaticResource DividerBrush}"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource DividerBrush}"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource DividerBrush}"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="AlternatingRowBackground" Value="{StaticResource SurfaceAltBrush}"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="EnableRowVirtualization" Value="True"/>
             <Setter Property="EnableColumnVirtualization" Value="True"/>
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
@@ -323,19 +373,19 @@
         <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
         </Style>
         <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="TextBlock.TextWrapping" Value="NoWrap"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
-                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -347,8 +397,8 @@
                     <Setter Property="Background" Value="{StaticResource HoverBrush}"/>
                 </Trigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
-                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -356,36 +406,36 @@
         <Style x:Key="OtDueRowStyle" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsDismissed}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsPendingRepeat}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource WarningSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsRepeatCompleted}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SuccessSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SuccessSoftBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsScheduledRepeat}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="InspectionRowStyle" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsUpcoming}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsCompletionHistory}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SuccessSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SuccessSoftBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsDue}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource WarningSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="ArrivalAnomalyRowStyle" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsAnomaly}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource DangerSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource DangerSoftBrush}"/>
                     <Setter Property="ToolTip" Value="{Binding AnomalyText}"/>
                 </DataTrigger>
             </Style.Triggers>
@@ -393,24 +443,24 @@
         <Style x:Key="ProductionRowStyle" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsAutoCorrectedQuantity}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource WarningSoftBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsGeneratedCompanion}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
+                    <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="MainTabItemStyle" TargetType="TabItem">
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="16,0"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="MinWidth" Value="86"/>
             <Setter Property="MinHeight" Value="34"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -431,13 +481,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -474,9 +524,9 @@
             <Setter Property="Margin" Value="0,0,6,0"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -491,11 +541,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -520,8 +570,8 @@
         </Style>
 
         <Style x:Key="AutoHidePanelHoverStripStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SelectedBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="Padding" Value="12,6"/>
@@ -545,7 +595,7 @@
 
             <!-- ================= МЕНЮ ================= -->
         <Menu DockPanel.Dock="Top"
-              Background="{StaticResource SurfaceBrush}"
+              Background="{DynamicResource SurfaceBrush}"
               BorderThickness="0">
             <MenuItem Header="Мастер объекта" Click="ObjectWizard_Click"/>
             <MenuItem Header="Очистить объект" Click="ClearObject_Click" />
@@ -595,8 +645,8 @@
 
         <!-- ================= TOOLBAR ================= -->
         <Border DockPanel.Dock="Top"
-                Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource StrokeBrush}"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource StrokeBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="6">
 
@@ -685,8 +735,8 @@
         </Border>
 
         <Border DockPanel.Dock="Bottom"
-                Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource StrokeBrush}"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource StrokeBrush}"
                 BorderThickness="1,1,0,0"
                 Padding="10,6">
             <ScrollViewer HorizontalScrollBarVisibility="Auto"
@@ -694,21 +744,21 @@
                           CanContentScroll="False">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Объект:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarObjectText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Не создан"/>
+                    <TextBlock x:Name="StatusBarObjectText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Не создан"/>
                     <TextBlock Text="Файл:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarFileText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="—"/>
+                    <TextBlock x:Name="StatusBarFileText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="—"/>
                     <TextBlock Text="Автосохранение:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarAutoSaveText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="5 мин"/>
+                    <TextBlock x:Name="StatusBarAutoSaveText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="5 мин"/>
                     <TextBlock Text="Доступ:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarRoleText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Полный"/>
+                    <TextBlock x:Name="StatusBarRoleText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Полный"/>
                     <TextBlock Text="Блокировка:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarLockText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Вкл"/>
+                    <TextBlock x:Name="StatusBarLockText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Вкл"/>
                     <TextBlock Text="Сохранение:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarLastSaveText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Нет данных"/>
+                    <TextBlock x:Name="StatusBarLastSaveText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Нет данных"/>
                     <TextBlock Text="Операция:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarOperationText" Margin="6,0,16,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Готово"/>
+                    <TextBlock x:Name="StatusBarOperationText" Margin="6,0,16,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Готово"/>
                     <TextBlock Text="Фон:" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusBarProcessingText" Margin="6,0,0,0" Foreground="{StaticResource TextSecondaryBrush}" Text="Ожидание"/>
+                    <TextBlock x:Name="StatusBarProcessingText" Margin="6,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" Text="Ожидание"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>
@@ -723,8 +773,8 @@
             </Grid.ColumnDefinitions>
                 <Border x:Name="TreeHoverStrip"
                     Grid.Column="0"
-                    Background="{StaticResource SelectedBrush}"
-                    BorderBrush="{StaticResource StrokeBrush}"
+                    Background="{DynamicResource SelectedBrush}"
+                    BorderBrush="{DynamicResource StrokeBrush}"
                     BorderThickness="1"
                     CornerRadius="8"
                     Margin="0,0,4,0"
@@ -733,7 +783,7 @@
                         <TextBlock Text="Дерево материалов"
                                    FontSize="11"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center">
                             <TextBlock.LayoutTransform>
@@ -746,10 +796,10 @@
                 <!-- ===== ДЕРЕВО ===== -->
                 <Border x:Name="TreePanelBorder"
                     Grid.Column="1"
-                    Background="{StaticResource SurfaceBrush}"
+                    Background="{DynamicResource SurfaceBrush}"
                     CornerRadius="8"
                     Padding="6"
-                    BorderBrush="{StaticResource StrokeBrush}"
+                    BorderBrush="{DynamicResource StrokeBrush}"
                     BorderThickness="1"
                     MouseEnter="TreePanel_MouseEnter"
                     MouseLeave="TreePanel_MouseLeave">
@@ -793,11 +843,11 @@
 
             <!-- ===== КОНТЕНТ ===== -->
                 <Border Grid.Column="2"
-                    Background="{StaticResource SurfaceBrush}"
+                    Background="{DynamicResource SurfaceBrush}"
                     CornerRadius="8"
                     Padding="8"
                     Margin="10,0,0,0"
-                    BorderBrush="{StaticResource StrokeBrush}"
+                    BorderBrush="{DynamicResource StrokeBrush}"
                     BorderThickness="1"
                     MouseEnter="ContentPanel_MouseEnter">
                 <Grid>
@@ -807,8 +857,8 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
-                            Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="{StaticResource DividerBrush}"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
                             BorderThickness="1"
                             CornerRadius="18"
                             Padding="4"
@@ -845,24 +895,32 @@
                                         Content="ПР"
                                         Style="{StaticResource PinnedRightTabButtonStyle}"
                                         Click="ProductionTabButton_Click"/>
+                                <Button x:Name="HiddenWorkActsTabButton"
+                                        Content="Акты"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="HiddenWorkActsTabButton_Click"/>
                                 <Button x:Name="InspectionTabButton"
                                         Content="Осмотры"
                                         Style="{StaticResource PinnedRightTabButtonStyle}"
                                         Click="InspectionTabButton_Click"/>
+                                <Button x:Name="NotesTabButton"
+                                        Content="Заметки"
+                                        Style="{StaticResource PinnedRightTabButtonStyle}"
+                                        Click="NotesTabButton_Click"/>
                             </StackPanel>
 
                             <Border Grid.Column="1"
                                     VerticalAlignment="Center"
                                     Margin="0"
-                                    Background="{StaticResource SurfaceAltBrush}"
-                                    BorderBrush="{StaticResource StrokeBrush}"
+                                    Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource StrokeBrush}"
                                     BorderThickness="1"
                                     CornerRadius="10"
                                     Padding="10,4"
                                     Visibility="Collapsed">
                                 <TextBlock x:Name="TabOpenDiagnosticsText"
                                            FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Text="Открытие вкладок: нет данных"/>
                             </Border>
 
@@ -904,29 +962,29 @@
                                                       Style="{StaticResource SummaryFilterToggle}"
                                                       HorizontalContentAlignment="Left">
                                                 <StackPanel>
-                                                    <TextBlock Text="Фильтр типов" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                                    <TextBlock x:Name="SummaryFilterSubtitle" Text="Нет доступных типов" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                                                    <TextBlock Text="Фильтр типов" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
+                                                    <TextBlock x:Name="SummaryFilterSubtitle" Text="Нет доступных типов" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
 
                                                 </StackPanel>
                                             </ToggleButton>
                                             <Popup PlacementTarget="{Binding ElementName=SummaryFilterButton}" IsOpen="{Binding IsChecked, ElementName=SummaryFilterButton}" PopupAnimation="Fade" AllowsTransparency="True" StaysOpen="False">
-                                                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="12" MinWidth="260">
+                                                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="12" MinWidth="260">
                                                     <Border.Effect>
                                                         <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18"/>
                                                     </Border.Effect>
                                                     <StackPanel>
-                                                        <TextBlock Text="Показывать в сводке" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"/>
+                                                        <TextBlock Text="Показывать в сводке" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
                                                         <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                                                             <StackPanel x:Name="SummaryTypeFilterPanel"/>
                                                         </ScrollViewer>
                                                         <Separator Margin="0,8,0,8"/>
-                                                        <TextBlock Text="Подтип" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"/>
+                                                        <TextBlock Text="Подтип" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
                                                         <StackPanel x:Name="SummarySubTypeFilterPanel"/>
                                                     </StackPanel>
                                                 </Border>
                                             </Popup>
                                         </Grid>
-                                        <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
+                                        <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
                                             <StackPanel Orientation="Horizontal">
                                                 <Button Content="Потребность по отметкам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
                                                 <Button Content="Дозаказать" Style="{StaticResource ModernSummaryActionButton}" Margin="8,0,0,0" Click="OpenReorderWindow_Click"/>
@@ -1009,8 +1067,8 @@
 
                                 <Border x:Name="JvkHeaderBorder"
                                         Grid.Row="0"
-                                        Background="{StaticResource SurfaceAltBrush}"
-                                        BorderBrush="{StaticResource StrokeBrush}"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource StrokeBrush}"
                                         BorderThickness="0,0,0,1"
                                         Padding="0"
                                         SizeChanged="JvkLayout_SizeChanged">
@@ -1026,7 +1084,7 @@
                                         </Grid.ColumnDefinitions>
 
                                         <Border Grid.Column="0"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="ттн"
@@ -1034,7 +1092,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="1"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="название"
@@ -1042,7 +1100,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="2"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="стб"
@@ -1050,7 +1108,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="3"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="ед.изм"
@@ -1058,7 +1116,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="4"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="кол-во"
@@ -1066,7 +1124,7 @@
                                                        TextAlignment="Center"/>
                                         </Border>
                                         <Border Grid.Column="5"
-                                                BorderBrush="{StaticResource StrokeBrush}"
+                                                BorderBrush="{DynamicResource StrokeBrush}"
                                                 BorderThickness="0,0,1,0"
                                                 Padding="6,4">
                                             <TextBlock Text="поставщик"
@@ -1197,8 +1255,8 @@
 
                             <Border Grid.Row="1"
                                     Margin="0"
-                                    Background="{StaticResource SurfaceBrush}"
-                                    BorderBrush="{StaticResource StrokeBrush}"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource StrokeBrush}"
                                     BorderThickness="1"
                                     CornerRadius="12"
                                     Padding="10">
@@ -1220,10 +1278,10 @@
                                               HeadersVisibility="Column"
                                               RowHeaderWidth="0"
                                               BorderThickness="0"
-                                              RowBackground="{StaticResource SurfaceBrush}"
-                                              AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
-                                              VerticalGridLinesBrush="{StaticResource DividerBrush}"
-                                              HorizontalGridLinesBrush="{StaticResource DividerBrush}"
+                                              RowBackground="{DynamicResource SurfaceBrush}"
+                                              AlternatingRowBackground="{DynamicResource SurfaceAltBrush}"
+                                              VerticalGridLinesBrush="{DynamicResource DividerBrush}"
+                                              HorizontalGridLinesBrush="{DynamicResource DividerBrush}"
                                               RowStyle="{StaticResource ArrivalAnomalyRowStyle}"
                                               CellEditEnding="ArrivalLegacyGrid_CellEditEnding"
                                               RowEditEnding="ArrivalLegacyGrid_RowEditEnding">
@@ -1267,11 +1325,11 @@
                             <!-- ====== ОВЕРЛЕЙ ФИЛЬТРОВ ПРИХОДА ====== -->
                             <Grid x:Name="ArrivalFiltersOverlay"
                                   Visibility="Collapsed"
-                                  Background="{StaticResource OverlayBrush}"
+                                  Background="{DynamicResource OverlayBrush}"
                                   Panel.ZIndex="50"
                                   Grid.RowSpan="2">
 
-                                <Border Background="{StaticResource SurfaceBrush}"
+                                <Border Background="{DynamicResource SurfaceBrush}"
             Padding="20"
             CornerRadius="10"
             Width="450"
@@ -1320,24 +1378,16 @@
                           Unchecked="ArrivalFilters_Changed"/>
 
                                             <CheckBox x:Name="ArrivalExtraCheck"
-                          Content="Дополнительные"
+                          Content="Малоценка"
                           IsChecked="True"
                           Checked="ArrivalFilters_Changed"
                           Unchecked="ArrivalFilters_Changed"/>
 
-                                            <StackPanel x:Name="ArrivalExtraSubtypeFiltersPanel" Margin="20,6,0,0">
-                                                <CheckBox x:Name="ArrivalLowCostCheck"
-                              Content="Малоценка"
-                              IsChecked="True"
-                              Checked="ArrivalFilters_Changed"
-                              Unchecked="ArrivalFilters_Changed"/>
-
-                                                <CheckBox x:Name="ArrivalInternalCheck"
+                                            <CheckBox x:Name="ArrivalLowCostCheck"
                               Content="Внутренние"
                               IsChecked="True"
                               Checked="ArrivalFilters_Changed"
                               Unchecked="ArrivalFilters_Changed"/>
-                                            </StackPanel>
                                         </StackPanel>
 
                                         <!-- ====== НАИМЕНОВАНИЕ ====== -->
@@ -1384,9 +1434,9 @@
             Width="160"
             Height="34"
             Padding="10,0"
-            Background="{StaticResource SecondaryBrush}"
-            BorderBrush="{StaticResource StrokeBrush}"
-            Foreground="{StaticResource TextSecondaryBrush}"
+            Background="{DynamicResource SecondaryBrush}"
+            BorderBrush="{DynamicResource StrokeBrush}"
+            Foreground="{DynamicResource TextSecondaryBrush}"
             FontSize="13"
             FontWeight="SemiBold"
             Click="ArrivalClearFilters_Click"/>
@@ -1403,16 +1453,15 @@
 
                             <!-- ====== ПАНЕЛЬ ДОБАВЛЕНИЯ (ОКНО СВЕРХУ) ====== -->
                             <Border x:Name="ArrivalPopup"
-                                    Background="{StaticResource OverlayStrongBrush}"
+                                    Background="{DynamicResource OverlayStrongBrush}"
                                     Visibility="Collapsed"
                                     Panel.ZIndex="10"
                                     Grid.RowSpan="2">
                                 <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                    <Border Background="{StaticResource SurfaceBrush}"
+                                    <Border Background="{DynamicResource SurfaceBrush}"
                         CornerRadius="6"
                         Padding="10"
-                        Width="800"
-                        MinHeight="300">
+                        Width="1320" MinHeight="520">
 
                                         <StackPanel>
                                             <local:ArrivalControl x:Name="ArrivalPanel"/>
@@ -1448,7 +1497,7 @@
                                 <TextBlock Text="Панель ОТ (наведите курсор, чтобы развернуть)"
                                            FontSize="12"
                                            FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
                             </Border>
 
                             <Border x:Name="OtToolsPanelBorder"
@@ -1523,16 +1572,16 @@
 
                             <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10">
                                 <WrapPanel>
-                                    <Border Background="{StaticResource WarningSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                    <Border Background="{DynamicResource WarningSoftBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                         <TextBlock Text="Желтый: требуется инструктаж"/>
                                     </Border>
-                                    <Border Background="{StaticResource SuccessSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                    <Border Background="{DynamicResource SuccessSoftBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                         <TextBlock Text="Зеленый: инструктаж пройден"/>
                                     </Border>
-                                    <Border Background="{StaticResource SelectedBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                    <Border Background="{DynamicResource SelectedBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                         <TextBlock Text="Синий: запланирован следующий повторный"/>
                                     </Border>
-                                    <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                    <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
                                         <TextBlock Text="Серый: снят с объекта"/>
                                     </Border>
                                 </WrapPanel>
@@ -1606,7 +1655,7 @@
                                                 </Style>
                                             </DataGridTextColumn.ElementStyle>
                                             <DataGridTextColumn.EditingElementStyle>
-                                                <Style TargetType="TextBox">
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                                     <Setter Property="TextWrapping" Value="Wrap"/>
                                                     <Setter Property="AcceptsReturn" Value="True"/>
                                                 </Style>
@@ -1659,7 +1708,7 @@
                                     <TextBlock Text="Панель табеля (наведите курсор, чтобы развернуть)"
                                                FontSize="12"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
 
                                 <Border x:Name="TimesheetToolsPanelBorder"
@@ -1786,8 +1835,8 @@
                                       CanUserAddRows="False"
                                       CanUserDeleteRows="False"
                                       GridLinesVisibility="All"
-                                      VerticalGridLinesBrush="{StaticResource DividerBrush}"
-                                      HorizontalGridLinesBrush="{StaticResource DividerBrush}"
+                                      VerticalGridLinesBrush="{DynamicResource DividerBrush}"
+                                      HorizontalGridLinesBrush="{DynamicResource DividerBrush}"
                                       ColumnWidth="Auto"
                                       HeadersVisibility="Column"
                                       EnableRowVirtualization="True"
@@ -1828,7 +1877,7 @@
                                     <TextBlock Text="Панель ПР (наведите курсор, чтобы развернуть)"
                                                FontSize="12"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
 
                                 <Border x:Name="ProductionToolsPanelBorder"
@@ -1879,6 +1928,8 @@
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"
                                                           StaysOpenOnEdit="True"
+                                                          SelectionChanged="ProductionActionBox_SelectionChanged"
+                                                          LostFocus="ProductionActionBox_LostFocus"
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=ProductionActions}"/>
                                             </StackPanel>
 
@@ -1903,27 +1954,23 @@
                                                 <ColumnDefinition Width="1.2*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Элементы и количество" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="ProductionElementsBox"
-                                                         IsReadOnly="True"
-                                                         Tag="Выберите элементы и количество через отдельное окно"
-                                                         VerticalContentAlignment="Center"
-                                                         Visibility="Collapsed"
-                                                         Width="0"
-                                                         Height="0"
-                                                         Margin="0"/>
-                                                <WrapPanel>
-                                                    <Button Content="Элементы..."
-                                                            Margin="0"
-                                                            MinWidth="118"
-                                                            Click="EditProductionItems_Click"/>
-                                                    <Button x:Name="ProductionAutoMasterButton"
-                                                            Content="Автомастер ▼"
-                                                            Margin="10,0,0,0"
-                                                            MinWidth="150"
-                                                            Style="{StaticResource SecondaryButton}"
-                                                            Click="ProductionAutoMasterButton_Click">
+                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                 <TextBox x:Name="ProductionElementsBox"
+                                                          Visibility="Collapsed"
+                                                          Width="0"
+                                                          Height="0"
+                                                          IsReadOnly="True"/>
+                                                 <WrapPanel>
+                                                     <Button Content="Элементы..."
+                                                             Margin="0"
+                                                             MinWidth="118"
+                                                             Click="EditProductionItems_Click"/>
+                                                     <Button x:Name="ProductionAutoMasterButton"
+                                                             Content="Автомастер ▼"
+                                                             Margin="10,0,0,0"
+                                                             MinWidth="150"
+                                                             Style="{StaticResource SecondaryButton}"
+                                                             Click="ProductionAutoMasterButton_Click">
                                                         <Button.ContextMenu>
                                                             <ContextMenu x:Name="ProductionAutoMasterMenu"
                                                                          Opened="ProductionAutoMasterMenu_Opened">
@@ -2007,18 +2054,24 @@
                                                           ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"/>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
-                                                <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                                              VerticalScrollBarVisibility="Disabled"
-                                                              CanContentScroll="False">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <CheckBox x:Name="ProductionHiddenWorksCheckBox" Content="Нужен акт скрытых работ" Margin="0,0,12,8"/>
-                                                        <Button Content="Акт"
-                                                                IsEnabled="False"
+                                             <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                                                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                               VerticalScrollBarVisibility="Disabled"
+                                                               CanContentScroll="False">
+                                                     <StackPanel Orientation="Horizontal">
+                                                         <CheckBox x:Name="ProductionAllowCustomElementsCheckBox"
+                                                                   Content="Свои элементы без проверки прихода"
+                                                                   Style="{StaticResource ModernSwitchCheckBox}"
+                                                                   Margin="0,0,12,8"/>
+                                                         <CheckBox x:Name="ProductionHiddenWorksCheckBox" Content="Нужен акт скрытых работ" Margin="0,0,12,8"/>
+                                                         <Button x:Name="OpenProductionHiddenWorkActButton"
+                                                                 Content="Акт"
+                                                                IsEnabled="{Binding ElementName=ProductionHiddenWorksCheckBox, Path=IsChecked}"
                                                                 Style="{StaticResource SecondaryButton}"
                                                                 Height="32"
                                                                 MinWidth="72"
-                                                                Margin="0,0,8,0"/>
+                                                                Margin="0,0,8,0"
+                                                                Click="OpenProductionHiddenWorkActButton_Click"/>
                                                         <Button x:Name="ProductionSaveButton"
                                                                 Content="➕ Добавить"
                                                                 Click="SaveProductionForm_Click"
@@ -2038,30 +2091,6 @@
                                                                 Click="DeleteProductionRow_Click"/>
                                                     </StackPanel>
                                                 </ScrollViewer>
-                                                <ScrollViewer Margin="0,8,0,0"
-                                                              HorizontalScrollBarVisibility="Auto"
-                                                              VerticalScrollBarVisibility="Disabled"
-                                                              CanContentScroll="False">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Button Content="Шаблон ↓"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Height="32"
-                                                                MinWidth="98"
-                                                                Margin="0,0,8,0"
-                                                                Click="ApplyProductionTemplate_Click"/>
-                                                        <Button Content="Добавить по шаблону"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Height="32"
-                                                                MinWidth="136"
-                                                                Margin="0,0,8,0"
-                                                                Click="CreateProductionFromTemplate_Click"/>
-                                                        <Button Content="Сохранить шаблон"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Height="32"
-                                                                MinWidth="124"
-                                                                Click="SaveProductionTemplate_Click"/>
-                                                    </StackPanel>
-                                                </ScrollViewer>
                                             </StackPanel>
                                         </Grid>
                                         </Grid>
@@ -2070,13 +2099,13 @@
 
                                 <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
                                     <WrapPanel>
-                                        <Border Background="{StaticResource WarningSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <Border Background="{DynamicResource WarningSoftBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                             <TextBlock Text="Желтый: количество скорректировано по остатку"/>
                                         </Border>
-                                        <Border Background="{StaticResource SelectedBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <Border Background="{DynamicResource SelectedBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                             <TextBlock Text="Синий: автосоздана строка (армирование)"/>
                                         </Border>
-                                        <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                        <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
                                             <TextBlock Text="Обычный фон: без корректировок"/>
                                         </Border>
                                     </WrapPanel>
@@ -2255,19 +2284,391 @@
                                         </DataGridTemplateColumn>
 
                                         <DataGridCheckBoxColumn Header="Скрытые работы" Binding="{Binding RequiresHiddenWorkAct, UpdateSourceTrigger=PropertyChanged}" Width="56"/>
-                                        <DataGridTextColumn Header="Статус" Binding="{Binding StatusDisplay}" Width="190"/>
                                         <DataGridTextColumn Header="Остаток по блоку/отметке" Binding="{Binding RemainingInfo}" Width="280" IsReadOnly="True"/>
 
                                         <DataGridTemplateColumn Header="Акт" Width="350">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Content="Акт" IsEnabled="False" ToolTip="Подготовим на следующем шаге"/>
+                                                    <Button Content="Акт"
+                                                            Tag="{Binding}"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Click="ProductionOpenHiddenWorkAct_Click"
+                                                            IsEnabled="{Binding RequiresHiddenWorkAct}"
+                                                            ToolTip="Открыть соответствующий акт скрытых работ"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                     </DataGrid>
                                 </Border>
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem x:Name="HiddenWorkActsTab" Header="Акты">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0"
+                                        Style="{StaticResource CardBorderStyle}"
+                                        Margin="0,0,0,12">
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                  VerticalScrollBarVisibility="Disabled"
+                                                  CanContentScroll="False">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Обновить"
+                                                    Height="32"
+                                                    MinWidth="98"
+                                                    Click="RefreshHiddenWorkActs_Click"/>
+                                            <Button x:Name="FixHiddenWorkActButton"
+                                                    Content="Зафиксировать"
+                                                    Height="32"
+                                                    MinWidth="126"
+                                                    Margin="8,0,0,0"
+                                                    Click="FixSelectedHiddenWorkAct_Click"/>
+                                            <Button x:Name="UnfixHiddenWorkActButton"
+                                                    Content="Снять фиксацию"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    Height="32"
+                                                    MinWidth="146"
+                                                    Margin="8,0,0,0"
+                                                    Click="UnfixSelectedHiddenWorkAct_Click"/>
+                                            <Button x:Name="PrintSelectedHiddenWorkActButton"
+                                                    Content="Печать"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    Height="32"
+                                                    MinWidth="98"
+                                                    Margin="8,0,0,0"
+                                                    Click="PrintSelectedHiddenWorkAct_Click"/>
+                                            <Button x:Name="PrintPendingHiddenWorkActsButton"
+                                                    Content="Печать нераспечатанных"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    Height="32"
+                                                    MinWidth="196"
+                                                    Margin="8,0,0,0"
+                                                    Click="PrintPendingHiddenWorkActs_Click"/>
+                                            <Button x:Name="DeleteHiddenWorkActButton"
+                                                    Content="Удалить акт"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    Height="32"
+                                                    MinWidth="116"
+                                                    Margin="8,0,0,0"
+                                                    Click="DeleteSelectedHiddenWorkAct_Click"/>
+                                            <TextBlock x:Name="HiddenWorkActsSummaryText"
+                                                       Margin="16,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <Grid Grid.Row="1" x:Name="HiddenWorkActsContentGrid">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0.95*"/>
+                                        <ColumnDefinition Width="1.05*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Grid.Column="0" Margin="0,0,12,0" x:Name="HiddenWorkActsLeftGrid">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="0.56*"/>
+                                            <RowDefinition Height="0.44*"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Border Grid.Row="0"
+                                                Style="{StaticResource CardBorderStyle}"
+                                                Margin="0,0,0,12">
+                                            <DataGrid x:Name="HiddenWorkActsGrid"
+                                                      AutoGenerateColumns="False"
+                                                      CanUserAddRows="False"
+                                                      CanUserDeleteRows="False"
+                                                      SelectionMode="Single"
+                                                      EnableRowVirtualization="True"
+                                                      EnableColumnVirtualization="True"
+                                                      VirtualizingPanel.IsVirtualizing="True"
+                                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                                      SelectionChanged="HiddenWorkActsGrid_SelectionChanged">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Дата акта"
+                                                                        Binding="{Binding EndDateText}"
+                                                                        Width="92"
+                                                                        IsReadOnly="True"/>
+                                                    <DataGridTextColumn Header="Работы"
+                                                                        Binding="{Binding TitleDisplay}"
+                                                                        Width="*"
+                                                                        IsReadOnly="True"/>
+                                                    <DataGridTextColumn Header="Период"
+                                                                        Binding="{Binding PeriodDisplay}"
+                                                                        Width="154"
+                                                                        IsReadOnly="True"/>
+                                                    <DataGridTextColumn Header="Материалы"
+                                                                        Binding="{Binding MaterialsSummary}"
+                                                                        Width="180"
+                                                                        IsReadOnly="True"/>
+                                                    <DataGridTemplateColumn Header="Фикс." Width="62">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <CheckBox IsChecked="{Binding IsFixed, UpdateSourceTrigger=PropertyChanged}"
+                                                                          HorizontalAlignment="Center"
+                                                                          Click="HiddenWorkActFixedCheckBox_Click"/>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                    <DataGridTemplateColumn Header="Печ." Width="62">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <CheckBox IsChecked="{Binding IsPrinted, UpdateSourceTrigger=PropertyChanged}"
+                                                                          HorizontalAlignment="Center"
+                                                                          Click="HiddenWorkActPrintedCheckBox_Click"/>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Border>
+
+                                        <Border Grid.Row="1"
+                                                Style="{StaticResource CardBorderStyle}"
+                                                x:Name="HiddenWorkActEditorBorder">
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <StackPanel x:Name="HiddenWorkActEditorPanel">
+                                                    <TextBlock Text="Редактирование акта"
+                                                               FontWeight="SemiBold"
+                                                               Margin="0,0,0,10"/>
+
+                                                    <Grid Margin="0,0,0,10" x:Name="HiddenWorkActHeaderEditorGrid">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                                            <TextBlock Text="Название работ" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBox x:Name="HiddenWorkActTitleBox"
+                                                                     Text="{Binding WorkTitle, UpdateSourceTrigger=LostFocus}"
+                                                                     LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                                     AcceptsReturn="True"
+                                                                     TextWrapping="Wrap"
+                                                                     MinHeight="64"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="Название объекта" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBox x:Name="HiddenWorkActObjectNameBox"
+                                                                     Text="{Binding FullObjectName, UpdateSourceTrigger=LostFocus}"
+                                                                     LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                                     AcceptsReturn="True"
+                                                                     TextWrapping="Wrap"
+                                                                     MinHeight="64"/>
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <Grid Margin="0,0,0,10" x:Name="HiddenWorkActDatesEditorGrid">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                                            <TextBlock Text="Начало работ" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <DatePicker x:Name="HiddenWorkActStartDatePicker"
+                                                                        SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}"
+                                                                        SelectedDateChanged="HiddenWorkActDate_SelectedDateChanged"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                                            <TextBlock Text="Окончание работ" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <DatePicker x:Name="HiddenWorkActEndDatePicker"
+                                                                        SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}"
+                                                                        SelectedDateChanged="HiddenWorkActDate_SelectedDateChanged"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2">
+                                                            <TextBlock Text="Статус" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBlock x:Name="HiddenWorkActStatusText"
+                                                                       FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <TextBlock Text="Генподрядчик" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActGeneralContractorBox"
+                                                             Text="{Binding GeneralContractorInfo, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Субподрядчик (представитель)" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActSubcontractorBox"
+                                                             Text="{Binding SubcontractorInfo, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Технический надзор" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActTechnicalSupervisorBox"
+                                                             Text="{Binding TechnicalSupervisorInfo, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Проектная организация" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActProjectOrganizationBox"
+                                                             Text="{Binding ProjectOrganizationInfo, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Выполненные работы" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActWorkExecutorBox"
+                                                             Text="{Binding WorkExecutorInfo, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Проектная документация" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActProjectDocumentationBox"
+                                                             Text="{Binding ProjectDocumentation, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <TextBlock Text="Отклонения / согласования" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                    <TextBox x:Name="HiddenWorkActDeviationsBox"
+                                                             Text="{Binding Deviations, UpdateSourceTrigger=LostFocus}"
+                                                             LostFocus="HiddenWorkActEditorField_LostFocus"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             MinHeight="52"
+                                                             Margin="0,0,0,8"/>
+
+                                                    <Grid Margin="0,0,0,10" x:Name="HiddenWorkActSignersEditorGrid">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                                            <TextBlock Text="Подписант подрядчика" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBox x:Name="HiddenWorkActContractorSignerBox"
+                                                                     Text="{Binding ContractorSignerName, UpdateSourceTrigger=LostFocus}"
+                                                                     LostFocus="HiddenWorkActEditorField_LostFocus"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                                            <TextBlock Text="Подписант технадзора" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBox x:Name="HiddenWorkActTechnicalSignerBox"
+                                                                     Text="{Binding TechnicalSupervisorSignerName, UpdateSourceTrigger=LostFocus}"
+                                                                     LostFocus="HiddenWorkActEditorField_LostFocus"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2">
+                                                            <TextBlock Text="Подписант авторского надзора" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                            <TextBox x:Name="HiddenWorkActAuthorSignerBox"
+                                                                     Text="{Binding ProjectOrganizationSignerName, UpdateSourceTrigger=LostFocus}"
+                                                                     LostFocus="HiddenWorkActEditorField_LostFocus"/>
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <Grid Margin="0,0,0,8" x:Name="HiddenWorkActMaterialsToolbarGrid">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Материалы"
+                                                                   FontWeight="SemiBold"
+                                                                   VerticalAlignment="Center"/>
+                                                        <WrapPanel Grid.Column="1">
+                                                            <Button Content="Подобрать заново"
+                                                                    Style="{StaticResource SecondaryButton}"
+                                                                    Height="28"
+                                                                    MinWidth="124"
+                                                                    Margin="0,0,8,0"
+                                                                    Click="ResetHiddenWorkActMaterials_Click"/>
+                                                            <Button Content="+ Материал"
+                                                                    Style="{StaticResource SecondaryButton}"
+                                                                    Height="28"
+                                                                    MinWidth="98"
+                                                                    Margin="0,0,8,0"
+                                                                    Click="AddHiddenWorkActMaterial_Click"/>
+                                                            <Button Content="Удалить"
+                                                                    Style="{StaticResource SecondaryButton}"
+                                                                    Height="28"
+                                                                    MinWidth="86"
+                                                                    Click="RemoveHiddenWorkActMaterial_Click"/>
+                                                        </WrapPanel>
+                                                    </Grid>
+
+                                                    <DataGrid x:Name="HiddenWorkActMaterialsGrid"
+                                                              AutoGenerateColumns="False"
+                                                              CanUserAddRows="False"
+                                                              CanUserDeleteRows="False"
+                                                              ItemsSource="{Binding Materials}"
+                                                              MinHeight="180"
+                                                              CellEditEnding="HiddenWorkActMaterialsGrid_CellEditEnding">
+                                                        <DataGrid.Columns>
+                                                            <DataGridCheckBoxColumn Header="Исп."
+                                                                                    Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                                                    Width="56"/>
+                                                            <DataGridTextColumn Header="Материал"
+                                                                                Binding="{Binding MaterialName, UpdateSourceTrigger=LostFocus}"
+                                                                                Width="*"/>
+                                                            <DataGridTextColumn Header="Паспорт"
+                                                                                Binding="{Binding Passport, UpdateSourceTrigger=LostFocus}"
+                                                                                Width="150"/>
+                                                            <DataGridTemplateColumn Header="Дата прихода" Width="124">
+                                                                <DataGridTemplateColumn.CellTemplate>
+                                                                    <DataTemplate>
+                                                                        <Button Content="{Binding ArrivalDateText}"
+                                                                                ToolTip="Открыть журнал прихода и выбрать дату"
+                                                                                Click="OpenHiddenWorkActMaterialArrivalPicker_Click"/>
+                                                                    </DataTemplate>
+                                                                </DataGridTemplateColumn.CellTemplate>
+                                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                                    <DataTemplate>
+                                                                        <DatePicker SelectedDate="{Binding ArrivalDate, UpdateSourceTrigger=PropertyChanged}"
+                                                                                    SelectedDateChanged="HiddenWorkActMaterialDate_SelectedDateChanged"/>
+                                                                    </DataTemplate>
+                                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                                            </DataGridTemplateColumn>
+                                                        </DataGrid.Columns>
+                                                    </DataGrid>
+
+                                                    <TextBlock Text="Материалы можно отключать чекбоксом или редактировать вручную."
+                                                               Margin="0,8,0,0"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                        </Border>
+                                    </Grid>
+
+                                    <Border Grid.Column="1"
+                                            Style="{StaticResource CardBorderStyle}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Предпросмотр"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,0,0,10"/>
+                                            <FlowDocumentScrollViewer x:Name="HiddenWorkActPreviewViewer"
+                                                                      Grid.Row="1"
+                                                                      VerticalScrollBarVisibility="Auto"
+                                                                      IsToolBarVisible="False"
+                                                                      Zoom="100"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                             </Grid>
                         </TabItem>
 
@@ -2288,7 +2689,7 @@
                                     <TextBlock Text="Панель осмотров (наведите курсор, чтобы развернуть)"
                                                FontSize="12"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
 
                                 <Border x:Name="InspectionToolsPanelBorder"
@@ -2408,13 +2809,13 @@
                                         </Grid.RowDefinitions>
 
                                         <WrapPanel Grid.Row="0" Margin="0,0,0,8">
-                                            <Border Background="{StaticResource SelectedBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                            <Border Background="{DynamicResource SelectedBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                                 <TextBlock Text="Синий: запланирован следующий осмотр"/>
                                             </Border>
-                                            <Border Background="{StaticResource WarningSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                            <Border Background="{DynamicResource WarningSoftBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
                                                 <TextBlock Text="Желтый: осмотр просрочен"/>
                                             </Border>
-                                            <Border Background="{StaticResource SuccessSoftBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                            <Border Background="{DynamicResource SuccessSoftBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4">
                                                 <TextBlock Text="Зеленый: осмотр проведен, создана следующая запись"/>
                                             </Border>
                                         </WrapPanel>
@@ -2425,6 +2826,7 @@
                                                   CanUserAddRows="False"
                                                   CanUserDeleteRows="False"
                                                   IsReadOnly="True"
+                                                  MinRowHeight="40"
                                                   ColumnWidth="Auto"
                                                   RowHeaderWidth="0"
                                                   RowStyle="{StaticResource InspectionRowStyle}"
@@ -2485,6 +2887,174 @@
                             </Grid>
                         </TabItem>
 
+                        <TabItem x:Name="NotesTab" Header="Заметки">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0"
+                                        Style="{StaticResource CardBorderStyle}"
+                                        Margin="0,0,0,12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="120"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Заголовок" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBox x:Name="NoteTitleBox" Tag="Например: Согласовать бетон на секцию А"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                <TextBlock Text="Режим напоминания" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="NoteReminderModeBox"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Статус задачи" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <CheckBox x:Name="NoteDoneCheckBox" Content="Завершено"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="168"/>
+                                                <ColumnDefinition Width="88"/>
+                                                <ColumnDefinition Width="88"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Дата старта" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <DatePicker x:Name="NoteReminderStartDatePicker"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                <TextBlock Text="Время" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBox x:Name="NoteReminderTimeBox" Tag="09:00"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                                <TextBlock Text="Интервал" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBox x:Name="NoteReminderIntervalValueBox"
+                                                         Text="1"
+                                                         MaxLength="4"
+                                                         PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="3" Margin="0,0,12,0">
+                                                <TextBlock Text="Ед. интервала" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <ComboBox x:Name="NoteReminderIntervalUnitBox"/>
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Column="4"
+                                                       VerticalAlignment="Bottom"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Text="Разово: одно напоминание. Периодически: после кнопки &quot;Отметить напоминание&quot; сдвигается на интервал. Постоянно: всегда активно с даты старта."/>
+                                        </Grid>
+
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                <TextBlock Text="Текст заметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                <TextBox x:Name="NoteBodyBox"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"
+                                                         MinHeight="86"
+                                                         MaxHeight="150"
+                                                         Tag="Подробности, ссылки, TODO, комментарии..."/>
+                                            </StackPanel>
+
+                                            <ScrollViewer Grid.Column="1"
+                                                          HorizontalScrollBarVisibility="Auto"
+                                                          VerticalScrollBarVisibility="Disabled"
+                                                          CanContentScroll="False"
+                                                          VerticalAlignment="Bottom">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button x:Name="SaveNoteButton" MinWidth="130" Click="SaveNote_Click">💾 Сохранить</Button>
+                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="110" Margin="10,0,0,0" Click="ClearNoteForm_Click">Очистить</Button>
+                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="188" Margin="10,0,0,0" Click="AcknowledgeNoteReminder_Click">🔔 Отметить напоминание</Button>
+                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="110" Margin="10,0,0,0" Click="DeleteNote_Click">🗑 Удалить</Button>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+                                    <DataGrid x:Name="NotesGrid"
+                                              AutoGenerateColumns="False"
+                                              CanUserAddRows="False"
+                                              CanUserDeleteRows="False"
+                                              IsReadOnly="True"
+                                              SelectionMode="Single"
+                                              RowHeaderWidth="0"
+                                              SelectionChanged="NotesGrid_SelectionChanged">
+                                        <DataGrid.RowStyle>
+                                            <Style TargetType="DataGridRow">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsReminderDue}" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGrid.RowStyle>
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Обновлено"
+                                                                Binding="{Binding UpdatedAtLocal, StringFormat=dd.MM.yyyy HH:mm}"
+                                                                Width="132"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Заголовок"
+                                                                Binding="{Binding TitleDisplay}"
+                                                                Width="220"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Заметка"
+                                                                Binding="{Binding BodyDisplay}"
+                                                                Width="*"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Режим"
+                                                                Binding="{Binding ReminderModeDisplay}"
+                                                                Width="126"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Интервал"
+                                                                Binding="{Binding ReminderIntervalDisplay}"
+                                                                Width="110"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Следующее"
+                                                                Binding="{Binding NextReminderText}"
+                                                                Width="132"
+                                                                IsReadOnly="True"/>
+                                            <DataGridTextColumn Header="Статус"
+                                                                Binding="{Binding ReminderStatusDisplay}"
+                                                                Width="128"
+                                                                IsReadOnly="True"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Border>
+                            </Grid>
+                        </TabItem>
+
                         <TabItem x:Name="PdfTab" Header="ПДФ" Style="{StaticResource HiddenPinnedTabItemStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -2500,8 +3070,8 @@
 
                                     <Border x:Name="PdfTreeHoverStrip"
                                             Grid.Column="0"
-                                            Background="{StaticResource SelectedBrush}"
-                                            BorderBrush="{StaticResource StrokeBrush}"
+                                            Background="{DynamicResource SelectedBrush}"
+                                            BorderBrush="{DynamicResource StrokeBrush}"
                                             BorderThickness="1"
                                             CornerRadius="8"
                                             Margin="0,0,4,0"
@@ -2510,7 +3080,7 @@
                                             <TextBlock Text="Дерево PDF"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.LayoutTransform>
@@ -2674,8 +3244,8 @@
                                                             <Border Margin="0,0,6,0"
                                                                     Padding="8,4"
                                                                     CornerRadius="10"
-                                                                    Background="{StaticResource SurfaceAltBrush}"
-                                                                    BorderBrush="{StaticResource StrokeBrush}"
+                                                                    Background="{DynamicResource SurfaceAltBrush}"
+                                                                    BorderBrush="{DynamicResource StrokeBrush}"
                                                                     BorderThickness="1">
                                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                     <TextBlock Text="{Binding Name}"
@@ -2725,7 +3295,7 @@
                                                             <TextBlock Text="ПДФ-документы" FontSize="20" FontWeight="SemiBold"/>
                                                             <TextBlock Text="Выберите один или несколько PDF-файлов, затем разложите их по своему дереву. Папки, названия и расположение узлов можно менять в любой момент."
                                                                        Margin="0,8,0,16"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"/>
                                                             <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="PdfSelectedNameText"
@@ -2735,19 +3305,19 @@
                                                             <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="PdfSelectedPathText"
                                                                        Margin="0,6,0,10"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"
                                                                        Text="—"/>
                                                             <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="PdfSelectedTypeText"
                                                                        Margin="0,6,0,0"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        Text="—"/>
                                                         </StackPanel>
 
                                                 <Border x:Name="PdfPreviewContainer"
-                                                        Background="{StaticResource SurfaceAltBrush}"
-                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        Background="{DynamicResource SurfaceAltBrush}"
+                                                        BorderBrush="{DynamicResource StrokeBrush}"
                                                         BorderThickness="1"
                                                         CornerRadius="0"
                                                         Padding="0"
@@ -2770,7 +3340,7 @@
                                                                                    HorizontalAlignment="Center"/>
                                                                         <TextBlock x:Name="PdfPreviewStatusText"
                                                                                    Margin="0,10,0,0"
-                                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                                                    TextAlignment="Center"
                                                                                    TextWrapping="Wrap"
                                                                                    Text="Выберите PDF-файл в дереве слева, и он откроется здесь."/>
@@ -2784,16 +3354,16 @@
                                                 <GridSplitter x:Name="PdfSplitBar"
                                                               Grid.Column="1"
                                                               Width="6"
-                                                              Background="{StaticResource StrokeBrush}"
+                                                              Background="{DynamicResource StrokeBrush}"
                                                               HorizontalAlignment="Stretch"
                                                               VerticalAlignment="Stretch"
                                                               Visibility="Collapsed"/>
 
                                                 <Border x:Name="PdfPreviewContainerSecondary"
                                                         Grid.Column="2"
-                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        BorderBrush="{DynamicResource StrokeBrush}"
                                                         BorderThickness="1"
-                                                        Background="{StaticResource SurfaceAltBrush}"
+                                                        Background="{DynamicResource SurfaceAltBrush}"
                                                         Visibility="Collapsed"
                                                         AllowDrop="True"
                                                         Drop="PdfSecondaryPane_Drop">
@@ -2811,7 +3381,7 @@
                                                                            HorizontalAlignment="Center"/>
                                                                 <TextBlock x:Name="PdfPreviewStatusTextSecondary"
                                                                            Margin="0,10,0,0"
-                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                                                            TextAlignment="Center"
                                                                            TextWrapping="Wrap"
                                                                            Text="Перетащите вкладку сюда для открытия рядом."/>
@@ -2835,16 +3405,16 @@
                                                             CornerRadius="10"
                                                             BorderThickness="2"
                                                             Opacity="0.35"
-                                                            BorderBrush="{StaticResource StrokeBrush}"
-                                                            Background="{StaticResource SelectedBrush}"/>
+                                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                                            Background="{DynamicResource SelectedBrush}"/>
                                                     <Border x:Name="PdfSplitDropRight"
                                                             Grid.Column="1"
                                                             Margin="6"
                                                             CornerRadius="10"
                                                             BorderThickness="2"
                                                             Opacity="0.35"
-                                                            BorderBrush="{StaticResource StrokeBrush}"
-                                                            Background="{StaticResource SelectedBrush}"/>
+                                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                                            Background="{DynamicResource SelectedBrush}"/>
                                                 </Grid>
                                             </Grid>
                                         </Grid>
@@ -2868,8 +3438,8 @@
 
                                     <Border x:Name="EstimateTreeHoverStrip"
                                             Grid.Column="0"
-                                            Background="{StaticResource SelectedBrush}"
-                                            BorderBrush="{StaticResource StrokeBrush}"
+                                            Background="{DynamicResource SelectedBrush}"
+                                            BorderBrush="{DynamicResource StrokeBrush}"
                                             BorderThickness="1"
                                             CornerRadius="8"
                                             Margin="0,0,4,0"
@@ -2878,7 +3448,7 @@
                                             <TextBlock Text="Дерево смет"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.LayoutTransform>
@@ -3043,8 +3613,8 @@
                                                             <Border Margin="0,0,6,0"
                                                                     Padding="8,4"
                                                                     CornerRadius="10"
-                                                                    Background="{StaticResource SurfaceAltBrush}"
-                                                                    BorderBrush="{StaticResource StrokeBrush}"
+                                                                    Background="{DynamicResource SurfaceAltBrush}"
+                                                                    BorderBrush="{DynamicResource StrokeBrush}"
                                                                     BorderThickness="1">
                                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                     <TextBlock Text="{Binding Name}"
@@ -3094,7 +3664,7 @@
                                                             <TextBlock Text="Сметы" FontSize="20" FontWeight="SemiBold"/>
                                                             <TextBlock Text="Выберите файлы смет и соберите для них свою структуру дерева. Можно создавать папки, переименовывать узлы и перемещать их мышкой."
                                                                        Margin="0,8,0,16"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"/>
                                                             <TextBlock Text="Выбранный узел" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="EstimateSelectedNameText"
@@ -3104,18 +3674,18 @@
                                                             <TextBlock Text="Путь к файлу" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="EstimateSelectedPathText"
                                                                        Margin="0,6,0,10"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        TextWrapping="Wrap"
                                                                        Text="—"/>
                                                             <TextBlock Text="Тип узла" FontWeight="SemiBold"/>
                                                             <TextBlock x:Name="EstimateSelectedTypeText"
                                                                        Margin="0,6,0,0"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        Text="—"/>
                                                         </StackPanel>
 
                                                         <Border x:Name="EstimatePreviewContainer"
-                                                                Background="{StaticResource SurfaceBrush}"
+                                                                Background="{DynamicResource SurfaceBrush}"
                                                                 BorderThickness="0"
                                                                 CornerRadius="0"
                                                                 Padding="0"
@@ -3138,7 +3708,7 @@
                                                                                    HorizontalAlignment="Center"/>
                                                                         <TextBlock x:Name="EstimatePreviewStatusText"
                                                                                    Margin="0,10,0,0"
-                                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                                                    TextAlignment="Center"
                                                                                    TextWrapping="Wrap"
                                                                                    Text="Выберите файл сметы в дереве слева, и он откроется здесь."/>
@@ -3152,16 +3722,16 @@
                                                 <GridSplitter x:Name="EstimateSplitBar"
                                                               Grid.Column="1"
                                                               Width="6"
-                                                              Background="{StaticResource StrokeBrush}"
+                                                              Background="{DynamicResource StrokeBrush}"
                                                               HorizontalAlignment="Stretch"
                                                               VerticalAlignment="Stretch"
                                                               Visibility="Collapsed"/>
 
                                                 <Border x:Name="EstimatePreviewContainerSecondary"
                                                         Grid.Column="2"
-                                                        BorderBrush="{StaticResource StrokeBrush}"
+                                                        BorderBrush="{DynamicResource StrokeBrush}"
                                                         BorderThickness="1"
-                                                        Background="{StaticResource SurfaceAltBrush}"
+                                                        Background="{DynamicResource SurfaceAltBrush}"
                                                         Visibility="Collapsed"
                                                         SizeChanged="EstimatePreviewContainerSecondary_SizeChanged"
                                                         AllowDrop="True"
@@ -3178,7 +3748,7 @@
                                                                            HorizontalAlignment="Center"/>
                                                                 <TextBlock x:Name="EstimatePreviewStatusTextSecondary"
                                                                            Margin="0,10,0,0"
-                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                                                            TextAlignment="Center"
                                                                            TextWrapping="Wrap"
                                                                            Text="Перетащите вкладку сюда для открытия рядом."/>
@@ -3202,16 +3772,16 @@
                                                             CornerRadius="10"
                                                             BorderThickness="2"
                                                             Opacity="0.35"
-                                                            BorderBrush="{StaticResource StrokeBrush}"
-                                                            Background="{StaticResource SelectedBrush}"/>
+                                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                                            Background="{DynamicResource SelectedBrush}"/>
                                                     <Border x:Name="EstimateSplitDropRight"
                                                             Grid.Column="1"
                                                             Margin="6"
                                                             CornerRadius="10"
                                                             BorderThickness="2"
                                                             Opacity="0.35"
-                                                            BorderBrush="{StaticResource StrokeBrush}"
-                                                            Background="{StaticResource SelectedBrush}"/>
+                                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                                            Background="{DynamicResource SelectedBrush}"/>
                                                 </Grid>
                                             </Grid>
                                         </Grid>
@@ -3231,12 +3801,12 @@
         <Grid x:Name="ProcessingOverlay"
               Visibility="Collapsed"
               Panel.ZIndex="999"
-              Background="{StaticResource OverlayBrush}">
+              Background="{DynamicResource OverlayBrush}">
             <Border Width="300"
                     Padding="16"
                     CornerRadius="12"
-                    Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource StrokeBrush}"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource StrokeBrush}"
                     BorderThickness="1"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">

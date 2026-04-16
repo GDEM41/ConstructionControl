@@ -62,6 +62,9 @@ namespace ConstructionControl
         public Dictionary<string, List<string>> SummaryMarksByGroup { get; set; } = new();
         public Dictionary<string, string> OtInstructionNumbersByProfession { get; set; } = new();
         public Dictionary<string, List<string>> ProductionDeviationsByType { get; set; } = new();
+        public Dictionary<string, List<string>> ProductionWorksByAction { get; set; } = new();
+        public Dictionary<string, List<string>> ProductionMaterialsByType { get; set; } = new();
+        public Dictionary<string, string> HiddenWorkTitlePrefixReplacements { get; set; } = new();
         public List<OtJournalEntry> OtJournal { get; set; } = new();
         public List<TimesheetPersonEntry> TimesheetPeople { get; set; } = new();
         public List<ProductionJournalEntry> ProductionJournal { get; set; } = new();
@@ -69,14 +72,19 @@ namespace ConstructionControl
         public List<ProductionAutoFillProfile> ProductionAutoFillProfiles { get; set; } = new();
         public string SelectedProductionAutoFillProfileName { get; set; } = string.Empty;
         public List<ProductionJournalTemplate> ProductionTemplates { get; set; } = new();
+        public List<ProductionWorkRule> ProductionWorkRules { get; set; } = new();
         public List<InspectionJournalEntry> InspectionJournal { get; set; } = new();
         public List<InspectionJournalTemplate> InspectionTemplates { get; set; } = new();
+        public List<ProjectNoteEntry> Notes { get; set; } = new();
         public List<DocumentTreeNode> PdfDocuments { get; set; } = new();
         public List<DocumentTreeNode> EstimateDocuments { get; set; } = new();
         public List<ArrivalFilterTemplate> ArrivalFilterTemplates { get; set; } = new();
         public List<SummaryBalanceHistoryEntry> SummaryBalanceHistory { get; set; } = new();
         public ProjectUiSettings UiSettings { get; set; } = new();
         public List<ProjectChangeLogEntry> ChangeLog { get; set; } = new();
+        public HiddenWorkActDefaults HiddenWorkDefaults { get; set; } = new();
+        public List<HiddenWorkActRecord> HiddenWorkActs { get; set; } = new();
+        public List<HiddenWorkMaterialPreset> HiddenWorkMaterialPresets { get; set; } = new();
     }
 
     public class ProjectChangeLogEntry
@@ -120,6 +128,15 @@ namespace ConstructionControl
         public string Weather { get; set; } = string.Empty;
         public string Deviations { get; set; } = string.Empty;
         public bool RequiresHiddenWorkAct { get; set; }
+        public bool AllowCustomElements { get; set; }
+        public bool IgnorePhotoRule { get; set; }
+    }
+
+    public class ProductionWorkRule
+    {
+        public string WorkName { get; set; } = string.Empty;
+        public bool AllowCustomElements { get; set; }
+        public bool IgnorePhotoRule { get; set; }
     }
 
     public class InspectionJournalTemplate
@@ -129,6 +146,331 @@ namespace ConstructionControl
         public string InspectionName { get; set; } = string.Empty;
         public int ReminderPeriodDays { get; set; } = 7;
         public string Notes { get; set; } = string.Empty;
+    }
+
+    public class HiddenWorkMaterialPreset
+    {
+        public string WorkTemplateKey { get; set; } = string.Empty;
+        public List<string> MaterialNames { get; set; } = new();
+        public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class HiddenWorkActDefaults
+    {
+        public string FullObjectName { get; set; } = string.Empty;
+        public string GeneralContractorInfo { get; set; } = string.Empty;
+        public string SubcontractorInfo { get; set; } = string.Empty;
+        public string TechnicalSupervisorInfo { get; set; } = string.Empty;
+        public string ProjectOrganizationInfo { get; set; } = string.Empty;
+        public string WorkExecutorInfo { get; set; } = string.Empty;
+        public string ProjectDocumentation { get; set; } = string.Empty;
+        public string Deviations { get; set; } = string.Empty;
+        public string ContractorSignerName { get; set; } = string.Empty;
+        public string TechnicalSupervisorSignerName { get; set; } = string.Empty;
+        public string ProjectOrganizationSignerName { get; set; } = string.Empty;
+    }
+
+    public class HiddenWorkActMaterialEntry : INotifyPropertyChanged
+    {
+        private bool isSelected = true;
+        private string materialName = string.Empty;
+        private string passport = string.Empty;
+        private DateTime? arrivalDate;
+
+        public bool IsSelected
+        {
+            get => isSelected;
+            set => SetField(ref isSelected, value);
+        }
+
+        public string MaterialName
+        {
+            get => materialName;
+            set => SetField(ref materialName, value ?? string.Empty);
+        }
+
+        public string Passport
+        {
+            get => passport;
+            set => SetField(ref passport, value ?? string.Empty);
+        }
+
+        public DateTime? ArrivalDate
+        {
+            get => arrivalDate;
+            set
+            {
+                if (SetField(ref arrivalDate, value))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ArrivalDateText)));
+            }
+        }
+
+        [JsonIgnore]
+        public string ArrivalDateText => ArrivalDate?.ToString("dd.MM.yyyy") ?? string.Empty;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            return true;
+        }
+    }
+
+    public class HiddenWorkActRecord : INotifyPropertyChanged
+    {
+        private Guid id = Guid.NewGuid();
+        private string groupKey = string.Empty;
+        private string workTemplateKey = string.Empty;
+        private string actionName = string.Empty;
+        private string workName = string.Empty;
+        private string blocksText = string.Empty;
+        private string marksText = string.Empty;
+        private string workTitle = string.Empty;
+        private string fullObjectName = string.Empty;
+        private string generalContractorInfo = string.Empty;
+        private string subcontractorInfo = string.Empty;
+        private string technicalSupervisorInfo = string.Empty;
+        private string projectOrganizationInfo = string.Empty;
+        private string workExecutorInfo = string.Empty;
+        private string projectDocumentation = string.Empty;
+        private string deviations = string.Empty;
+        private string contractorSignerName = string.Empty;
+        private string technicalSupervisorSignerName = string.Empty;
+        private string projectOrganizationSignerName = string.Empty;
+        private DateTime startDate = DateTime.Today;
+        private DateTime endDate = DateTime.Today;
+        private bool isFixed;
+        private bool isPrinted;
+        private ObservableCollection<HiddenWorkActMaterialEntry> materials = new();
+
+        public Guid Id
+        {
+            get => id;
+            set => SetField(ref id, value == Guid.Empty ? Guid.NewGuid() : value);
+        }
+
+        public string GroupKey
+        {
+            get => groupKey;
+            set => SetField(ref groupKey, value ?? string.Empty);
+        }
+
+        public string WorkTemplateKey
+        {
+            get => workTemplateKey;
+            set => SetField(ref workTemplateKey, value ?? string.Empty);
+        }
+
+        public string ActionName
+        {
+            get => actionName;
+            set => SetField(ref actionName, value ?? string.Empty);
+        }
+
+        public string WorkName
+        {
+            get => workName;
+            set => SetField(ref workName, value ?? string.Empty);
+        }
+
+        public string BlocksText
+        {
+            get => blocksText;
+            set => SetField(ref blocksText, value ?? string.Empty);
+        }
+
+        public string MarksText
+        {
+            get => marksText;
+            set => SetField(ref marksText, value ?? string.Empty);
+        }
+
+        public string WorkTitle
+        {
+            get => workTitle;
+            set
+            {
+                if (SetField(ref workTitle, value ?? string.Empty))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TitleDisplay)));
+            }
+        }
+
+        public string FullObjectName
+        {
+            get => fullObjectName;
+            set => SetField(ref fullObjectName, value ?? string.Empty);
+        }
+
+        public string GeneralContractorInfo
+        {
+            get => generalContractorInfo;
+            set => SetField(ref generalContractorInfo, value ?? string.Empty);
+        }
+
+        public string SubcontractorInfo
+        {
+            get => subcontractorInfo;
+            set => SetField(ref subcontractorInfo, value ?? string.Empty);
+        }
+
+        public string TechnicalSupervisorInfo
+        {
+            get => technicalSupervisorInfo;
+            set => SetField(ref technicalSupervisorInfo, value ?? string.Empty);
+        }
+
+        public string ProjectOrganizationInfo
+        {
+            get => projectOrganizationInfo;
+            set => SetField(ref projectOrganizationInfo, value ?? string.Empty);
+        }
+
+        public string WorkExecutorInfo
+        {
+            get => workExecutorInfo;
+            set => SetField(ref workExecutorInfo, value ?? string.Empty);
+        }
+
+        public string ProjectDocumentation
+        {
+            get => projectDocumentation;
+            set => SetField(ref projectDocumentation, value ?? string.Empty);
+        }
+
+        public string Deviations
+        {
+            get => deviations;
+            set => SetField(ref deviations, value ?? string.Empty);
+        }
+
+        public string ContractorSignerName
+        {
+            get => contractorSignerName;
+            set => SetField(ref contractorSignerName, value ?? string.Empty);
+        }
+
+        public string TechnicalSupervisorSignerName
+        {
+            get => technicalSupervisorSignerName;
+            set => SetField(ref technicalSupervisorSignerName, value ?? string.Empty);
+        }
+
+        public string ProjectOrganizationSignerName
+        {
+            get => projectOrganizationSignerName;
+            set => SetField(ref projectOrganizationSignerName, value ?? string.Empty);
+        }
+
+        public DateTime StartDate
+        {
+            get => startDate;
+            set
+            {
+                if (SetField(ref startDate, value.Date))
+                {
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StartDateText)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PeriodDisplay)));
+                }
+            }
+        }
+
+        public DateTime EndDate
+        {
+            get => endDate;
+            set
+            {
+                if (SetField(ref endDate, value.Date))
+                {
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EndDateText)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PeriodDisplay)));
+                }
+            }
+        }
+
+        public bool IsFixed
+        {
+            get => isFixed;
+            set
+            {
+                if (SetField(ref isFixed, value))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StateDisplay)));
+            }
+        }
+
+        public bool IsPrinted
+        {
+            get => isPrinted;
+            set
+            {
+                if (SetField(ref isPrinted, value))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StateDisplay)));
+            }
+        }
+
+        public ObservableCollection<HiddenWorkActMaterialEntry> Materials
+        {
+            get => materials;
+            set
+            {
+                if (value == null)
+                    value = new ObservableCollection<HiddenWorkActMaterialEntry>();
+
+                if (ReferenceEquals(materials, value))
+                    return;
+
+                materials = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Materials)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialsSummary)));
+            }
+        }
+
+        [JsonIgnore]
+        public string StartDateText => StartDate.ToString("dd.MM.yyyy");
+
+        [JsonIgnore]
+        public string EndDateText => EndDate.ToString("dd.MM.yyyy");
+
+        [JsonIgnore]
+        public string PeriodDisplay => $"{StartDate:dd.MM.yyyy} - {EndDate:dd.MM.yyyy}";
+
+        [JsonIgnore]
+        public string TitleDisplay => LevelMarkHelper.PreventSingleLetterWrap(WorkTitle ?? string.Empty);
+
+        [JsonIgnore]
+        public string StateDisplay
+            => IsPrinted
+                ? "Распечатан"
+                : IsFixed
+                    ? "Зафиксирован"
+                    : "Черновик";
+
+        [JsonIgnore]
+        public string MaterialsSummary => string.Join(", ",
+            (Materials ?? new ObservableCollection<HiddenWorkActMaterialEntry>())
+                .Where(x => x != null && x.IsSelected && !string.IsNullOrWhiteSpace(x.MaterialName))
+                .Select(x => x.MaterialName.Trim()));
+
+        public void NotifyMaterialsChanged()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialsSummary)));
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            return true;
+        }
     }
 
     public class ProjectUiSettings
@@ -143,6 +485,7 @@ namespace ConstructionControl
         public bool HideReminderDetails { get; set; }
         public bool SafeStartupMode { get; set; }
         public string UiDensityMode { get; set; } = "Стандартный";
+        public string UiThemeMode { get; set; } = UiThemeModes.Light;
         public string AccessRole { get; set; } = ProjectAccessRoles.Critical;
         public bool RequireCodeForCriticalOperations { get; set; } = true;
         public bool SummaryReminderOnOverage { get; set; } = true;
@@ -186,6 +529,13 @@ namespace ConstructionControl
                 _ => "Критические операции"
             };
         }
+    }
+
+    public static class UiThemeModes
+    {
+        public const string Light = "light";
+        public const string Dark = "dark";
+        public const string System = "system";
     }
 
     public static class ReminderPresentationModes
@@ -903,6 +1253,10 @@ namespace ConstructionControl
         private bool suppressWeatherDisplay;
         private bool isAutoCorrectedQuantity;
         private bool isGeneratedCompanion;
+        private bool armoringCompanionRequested;
+        private bool armoringPromptHandled;
+        private bool allowCustomElements;
+        private bool ignorePhotoRule;
 
         public DateTime Date
         {
@@ -1001,6 +1355,38 @@ namespace ConstructionControl
             set => SetField(ref isGeneratedCompanion, value);
         }
 
+        public bool ArmoringCompanionRequested
+        {
+            get => armoringCompanionRequested;
+            set => SetField(ref armoringCompanionRequested, value);
+        }
+
+        public bool ArmoringPromptHandled
+        {
+            get => armoringPromptHandled;
+            set => SetField(ref armoringPromptHandled, value);
+        }
+
+        public bool AllowCustomElements
+        {
+            get => allowCustomElements;
+            set
+            {
+                if (SetField(ref allowCustomElements, value))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusDisplay)));
+            }
+        }
+
+        public bool IgnorePhotoRule
+        {
+            get => ignorePhotoRule;
+            set
+            {
+                if (SetField(ref ignorePhotoRule, value))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusDisplay)));
+            }
+        }
+
         public string DateDisplay => SuppressDateDisplay ? string.Empty : Date.ToString("dd.MM.yyyy");
 
         public string WeatherDisplay => SuppressWeatherDisplay ? string.Empty : LevelMarkHelper.PreventSingleLetterWrap(Weather ?? string.Empty);
@@ -1010,9 +1396,22 @@ namespace ConstructionControl
         public string DeviationsDisplay => string.Join(Environment.NewLine, LevelMarkHelper.SplitText(Deviations));
 
         public string StatusDisplay
-            => IsGeneratedCompanion
-                ? "Автосоздано (компаньон)"
-                : (IsAutoCorrectedQuantity ? "Скорректировано по остатку" : "Норма");
+        {
+            get
+            {
+                var parts = new List<string>
+                {
+                    IsGeneratedCompanion
+                        ? "Автосоздано (компаньон)"
+                        : (IsAutoCorrectedQuantity ? "Скорректировано по остатку" : "Норма")
+                };
+
+                if (AllowCustomElements)
+                    parts.Add("свои элементы");
+
+                return string.Join(" | ", parts);
+            }
+        }
 
         public string WorkKey => $"{ActionName?.Trim()}::{WorkName?.Trim()}";
 
@@ -1038,8 +1437,12 @@ namespace ConstructionControl
             if (propertyName == nameof(Deviations))
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DeviationsDisplay)));
 
-            if (propertyName == nameof(IsAutoCorrectedQuantity) || propertyName == nameof(IsGeneratedCompanion))
+            if (propertyName == nameof(IsAutoCorrectedQuantity)
+                || propertyName == nameof(IsGeneratedCompanion)
+                || propertyName == nameof(AllowCustomElements))
+            {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusDisplay)));
+            }
 
             return true;
         }
@@ -1164,6 +1567,307 @@ namespace ConstructionControl
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatusDisplay)));
             }
             return true;
+        }
+    }
+
+    public static class NoteReminderModes
+    {
+        public const string None = "none";
+        public const string Once = "once";
+        public const string Periodic = "periodic";
+        public const string Persistent = "persistent";
+
+        public static readonly string[] All =
+        {
+            None,
+            Once,
+            Periodic,
+            Persistent
+        };
+
+        public static string Normalize(string mode)
+        {
+            return (mode ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                Once => Once,
+                Periodic => Periodic,
+                Persistent => Persistent,
+                _ => None
+            };
+        }
+
+        public static string ToDisplay(string mode)
+        {
+            return Normalize(mode) switch
+            {
+                Once => "Разово",
+                Periodic => "Периодически",
+                Persistent => "Постоянно",
+                _ => "Без напоминания"
+            };
+        }
+    }
+
+    public static class NoteReminderIntervalUnits
+    {
+        public const string Minutes = "minutes";
+        public const string Hours = "hours";
+        public const string Days = "days";
+
+        public static readonly string[] All =
+        {
+            Minutes,
+            Hours,
+            Days
+        };
+
+        public static string Normalize(string unit)
+        {
+            return (unit ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                Minutes => Minutes,
+                Hours => Hours,
+                _ => Days
+            };
+        }
+
+        public static string ToDisplay(string unit)
+        {
+            return Normalize(unit) switch
+            {
+                Minutes => "Минуты",
+                Hours => "Часы",
+                _ => "Дни"
+            };
+        }
+
+        public static TimeSpan ToTimeSpan(string unit, int value)
+        {
+            var normalizedValue = Math.Max(1, value);
+            return Normalize(unit) switch
+            {
+                Minutes => TimeSpan.FromMinutes(normalizedValue),
+                Hours => TimeSpan.FromHours(normalizedValue),
+                _ => TimeSpan.FromDays(normalizedValue)
+            };
+        }
+    }
+
+    public class ProjectNoteEntry : INotifyPropertyChanged
+    {
+        private Guid id = Guid.NewGuid();
+        private string title = string.Empty;
+        private string body = string.Empty;
+        private DateTime createdAtUtc = DateTime.UtcNow;
+        private DateTime updatedAtUtc = DateTime.UtcNow;
+        private bool isDone;
+        private string reminderMode = NoteReminderModes.None;
+        private DateTime? reminderStart;
+        private int reminderIntervalValue = 1;
+        private string reminderIntervalUnit = NoteReminderIntervalUnits.Days;
+        private DateTime? reminderLastAcknowledgedAt;
+
+        public Guid Id
+        {
+            get => id;
+            set => SetField(ref id, value == Guid.Empty ? Guid.NewGuid() : value);
+        }
+
+        public string Title
+        {
+            get => title;
+            set => SetField(ref title, value ?? string.Empty);
+        }
+
+        public string Body
+        {
+            get => body;
+            set => SetField(ref body, value ?? string.Empty);
+        }
+
+        public DateTime CreatedAtUtc
+        {
+            get => createdAtUtc;
+            set => SetField(ref createdAtUtc, value == default ? DateTime.UtcNow : DateTime.SpecifyKind(value, DateTimeKind.Utc));
+        }
+
+        public DateTime UpdatedAtUtc
+        {
+            get => updatedAtUtc;
+            set => SetField(ref updatedAtUtc, value == default ? DateTime.UtcNow : DateTime.SpecifyKind(value, DateTimeKind.Utc));
+        }
+
+        public bool IsDone
+        {
+            get => isDone;
+            set => SetField(ref isDone, value);
+        }
+
+        public string ReminderMode
+        {
+            get => reminderMode;
+            set => SetField(ref reminderMode, NoteReminderModes.Normalize(value));
+        }
+
+        public DateTime? ReminderStart
+        {
+            get => reminderStart;
+            set => SetField(ref reminderStart, value?.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(value.Value, DateTimeKind.Local) : value);
+        }
+
+        public int ReminderIntervalValue
+        {
+            get => reminderIntervalValue;
+            set => SetField(ref reminderIntervalValue, Math.Max(1, value));
+        }
+
+        public string ReminderIntervalUnit
+        {
+            get => reminderIntervalUnit;
+            set => SetField(ref reminderIntervalUnit, NoteReminderIntervalUnits.Normalize(value));
+        }
+
+        public DateTime? ReminderLastAcknowledgedAt
+        {
+            get => reminderLastAcknowledgedAt;
+            set => SetField(ref reminderLastAcknowledgedAt, value);
+        }
+
+        [JsonIgnore]
+        public string TitleDisplay => LevelMarkHelper.PreventSingleLetterWrap(Title ?? string.Empty);
+
+        [JsonIgnore]
+        public string BodyDisplay => LevelMarkHelper.PreventSingleLetterWrap(Body ?? string.Empty);
+
+        [JsonIgnore]
+        public DateTime CreatedAtLocal => DateTime.SpecifyKind(CreatedAtUtc, DateTimeKind.Utc).ToLocalTime();
+
+        [JsonIgnore]
+        public DateTime UpdatedAtLocal => DateTime.SpecifyKind(UpdatedAtUtc, DateTimeKind.Utc).ToLocalTime();
+
+        [JsonIgnore]
+        public string ReminderModeDisplay => NoteReminderModes.ToDisplay(ReminderMode);
+
+        [JsonIgnore]
+        public string ReminderIntervalDisplay
+        {
+            get
+            {
+                var mode = NoteReminderModes.Normalize(ReminderMode);
+                if (mode != NoteReminderModes.Periodic && mode != NoteReminderModes.Persistent)
+                    return string.Empty;
+
+                var value = Math.Max(1, ReminderIntervalValue);
+                return $"{value} {NoteReminderIntervalUnits.ToDisplay(ReminderIntervalUnit).ToLowerInvariant()}";
+            }
+        }
+
+        [JsonIgnore]
+        public DateTime? NextReminderAt => ComputeNextReminderAt(DateTime.Now);
+
+        [JsonIgnore]
+        public string NextReminderText => NextReminderAt.HasValue ? NextReminderAt.Value.ToString("dd.MM.yyyy HH:mm") : "—";
+
+        [JsonIgnore]
+        public bool IsReminderDue => IsReminderDueAt(DateTime.Now);
+
+        [JsonIgnore]
+        public string ReminderStatus
+        {
+            get
+            {
+                if (IsDone)
+                    return "Завершено";
+
+                var mode = NoteReminderModes.Normalize(ReminderMode);
+                if (mode == NoteReminderModes.None)
+                    return "Без напоминания";
+
+                if (IsReminderDue)
+                    return "Требуется";
+
+                return "Запланировано";
+            }
+        }
+
+        [JsonIgnore]
+        public string ReminderStatusDisplay => LevelMarkHelper.PreventSingleLetterWrap(ReminderStatus);
+
+        public DateTime? ComputeNextReminderAt(DateTime now)
+        {
+            if (IsDone)
+                return null;
+
+            var mode = NoteReminderModes.Normalize(ReminderMode);
+            if (mode == NoteReminderModes.None)
+                return null;
+
+            var start = ReminderStart ?? CreatedAtLocal;
+            if (mode == NoteReminderModes.Once)
+                return ReminderLastAcknowledgedAt.HasValue ? null : start;
+
+            if (mode == NoteReminderModes.Periodic)
+            {
+                if (!ReminderLastAcknowledgedAt.HasValue)
+                    return start;
+
+                var interval = NoteReminderIntervalUnits.ToTimeSpan(ReminderIntervalUnit, ReminderIntervalValue);
+                return ReminderLastAcknowledgedAt.Value + interval;
+            }
+
+            // Постоянное напоминание не "гасится", оно активно с даты старта.
+            return start;
+        }
+
+        public bool IsReminderDueAt(DateTime now)
+        {
+            if (IsDone)
+                return false;
+
+            var next = ComputeNextReminderAt(now);
+            if (!next.HasValue)
+                return false;
+
+            return now >= next.Value;
+        }
+
+        public void AcknowledgeReminder(DateTime? timestamp = null)
+        {
+            var now = timestamp ?? DateTime.Now;
+            if (NoteReminderModes.Normalize(ReminderMode) == NoteReminderModes.None)
+                return;
+
+            ReminderLastAcknowledgedAt = now;
+            UpdatedAtUtc = DateTime.UtcNow;
+            NotifyComputedProperties();
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            NotifyComputedProperties();
+            return true;
+        }
+
+        private void NotifyComputedProperties()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TitleDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BodyDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CreatedAtLocal)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UpdatedAtLocal)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderModeDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderIntervalDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextReminderAt)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextReminderText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsReminderDue)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatus)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReminderStatusDisplay)));
         }
     }
 

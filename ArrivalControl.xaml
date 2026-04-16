@@ -2,6 +2,73 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <UserControl.Resources>
+        <Style x:Key="ArrivalGridDisplayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+
+        <Style x:Key="ArrivalGridEditingTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ArrivalGridEditingComboStyle" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="CategorySegmentRadioStyle" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="First">
+                                <Setter TargetName="Root" Property="CornerRadius" Value="9,0,0,9"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Last">
+                                <Setter TargetName="Root" Property="CornerRadius" Value="0,9,9,0"/>
+                                <Setter TargetName="Root" Property="BorderThickness" Value="0"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid Margin="10">
 
         <Grid.RowDefinitions>
@@ -10,93 +77,106 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        
-
-
-
         <!-- ВЕРХ -->
 
         <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
         <Grid Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="180"/>
+                <ColumnDefinition Width="360"/>
                 <ColumnDefinition Width="24"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="160"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-
 
             <!-- ТТН -->
             <TextBlock Grid.Column="0"
-               Text="ТТН:"
-               VerticalAlignment="Center"
-               Margin="0,0,6,0"/>
+                       Text="ТТН:"
+                       VerticalAlignment="Center"
+                       Margin="0,0,6,0"/>
 
             <TextBox Grid.Column="1"
-             x:Name="TtnBox"
-             Height="26"/>
+                     x:Name="TtnBox"
+                     Height="44"
+                     Padding="12,2"
+                     FontSize="15"
+                     VerticalContentAlignment="Center"/>
 
-            <!-- ОСНОВНЫЕ / ДОПЫ -->
-            <StackPanel Grid.Column="3"
-                Orientation="Horizontal"
-                VerticalAlignment="Center">
-
-                <RadioButton x:Name="MainRadio"
-                     Content="Основные"
-                     IsChecked="True"
-                     Checked="ArrivalTypeChanged"
-                     Margin="0,0,10,0"/>
-
-                <RadioButton x:Name="ExtraRadio"
-                     Content="Допы"
-                     Checked="ArrivalTypeChanged"/>
-            </StackPanel>
-
-            <!-- ПОДТИП ДОПОВ -->
-            <ComboBox Grid.Column="6"
-          x:Name="ExtraTypeBox"
-          Visibility="Collapsed"
-          Height="26"
-          Margin="12,0,0,0"/>
+            <!-- КАТЕГОРИИ -->
+            <Border Grid.Column="3"
+                    VerticalAlignment="Center"
+                    Height="40"
+                    MinWidth="420"
+                    Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource StrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10">
+                <UniformGrid Columns="3">
+                    <RadioButton x:Name="MainRadio"
+                                 GroupName="ArrivalCategorySwitch"
+                                 Tag="First"
+                                 Style="{StaticResource CategorySegmentRadioStyle}"
+                                 Content="Основные"
+                                 IsChecked="True"
+                                 Checked="ArrivalTypeChanged"/>
+                    <RadioButton x:Name="LowCostRadio"
+                                 GroupName="ArrivalCategorySwitch"
+                                 Style="{StaticResource CategorySegmentRadioStyle}"
+                                 Content="Малоценка"
+                                 Checked="ArrivalTypeChanged"/>
+                    <RadioButton x:Name="InternalRadio"
+                                 GroupName="ArrivalCategorySwitch"
+                                 Tag="Last"
+                                 Style="{StaticResource CategorySegmentRadioStyle}"
+                                 Content="Внутренние"
+                                 Checked="ArrivalTypeChanged"/>
+                </UniformGrid>
+            </Border>
 
         </Grid>
-
 
         <!-- ТАБЛИЦА -->
         <DataGrid x:Name="ItemsGrid"
                   Grid.Row="1"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
+                  RowHeight="56"
+                  MinRowHeight="52"
+                  ColumnHeaderHeight="38"
                   GridLinesVisibility="All"
-                  RowBackground="{StaticResource SurfaceBrush}"
-                  AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
-                  BorderBrush="{StaticResource StrokeBrush}"
+                  RowBackground="{DynamicResource SurfaceBrush}"
+                  AlternatingRowBackground="{DynamicResource SurfaceAltBrush}"
+                  BorderBrush="{DynamicResource StrokeBrush}"
                   BorderThickness="1"
                   RowHeaderWidth="0"
                   HeadersVisibility="Column"
-                  VerticalGridLinesBrush="{StaticResource DividerBrush}"
-                  HorizontalGridLinesBrush="{StaticResource DividerBrush}"
+                  VerticalGridLinesBrush="{DynamicResource DividerBrush}"
+                  HorizontalGridLinesBrush="{DynamicResource DividerBrush}"
                   FontSize="13">
 
             <DataGrid.Columns>
 
                 <DataGridTextColumn Header="Дата"
                                     Binding="{Binding Date, StringFormat=dd.MM.yyyy}"
-                                    Width="90"/>
+                                    Width="104">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource ArrivalGridDisplayTextStyle}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
 
-                <DataGridTemplateColumn Header="Тип" Width="150">
+                <DataGridTemplateColumn Header="Тип" Width="160">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding MaterialGroup}"/>
+                            <TextBlock Text="{Binding MaterialGroup}" Style="{StaticResource ArrivalGridDisplayTextStyle}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
                             <ComboBox IsEditable="True"
                                       IsTextSearchEnabled="False"
+                                      Style="{StaticResource ArrivalGridEditingComboStyle}"
                                       Text="{Binding MaterialGroup, UpdateSourceTrigger=PropertyChanged}"
                                       ItemsSource="{Binding AvailableGroups}"
                                       LostFocus="MaterialGroup_LostFocus"/>
@@ -104,19 +184,20 @@
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Наименование" Width="220">
+                <DataGridTemplateColumn Header="Наименование" Width="240">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding MaterialName}"/>
+                            <TextBlock Text="{Binding MaterialName}" Style="{StaticResource ArrivalGridDisplayTextStyle}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
                             <ComboBox IsEditable="True"
-          IsTextSearchEnabled="False"
-          Text="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
-          ItemsSource="{Binding AvailableNames}"
-          LostFocus="Material_LostFocus"/>
+                                      IsTextSearchEnabled="False"
+                                      Style="{StaticResource ArrivalGridEditingComboStyle}"
+                                      Text="{Binding MaterialName, UpdateSourceTrigger=PropertyChanged}"
+                                      ItemsSource="{Binding AvailableNames}"
+                                      LostFocus="Material_LostFocus"/>
 
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
@@ -124,36 +205,62 @@
 
                 <DataGridTextColumn Header="Количество"
                                     Binding="{Binding Quantity}"
-                                    Width="90"/>
+                                    Width="108">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource ArrivalGridDisplayTextStyle}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
 
-                <DataGridTemplateColumn Header="Ед." Width="80">
+                <DataGridTemplateColumn Header="Ед." Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Unit}"/>
+                            <TextBlock Text="{Binding Unit}" Style="{StaticResource ArrivalGridDisplayTextStyle}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
 
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
-                            <TextBox Text="{Binding Unit, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBox Text="{Binding Unit, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
 
-
-
-
                 <DataGridTextColumn Header="Паспорт"
                                     Binding="{Binding Passport}"
-                                    Width="120"/>
+                                    Width="150">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource ArrivalGridDisplayTextStyle}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
 
                 <DataGridTextColumn Header="СТБ"
                                     Binding="{Binding Stb}"
-                                    Width="80"/>
+                                    Width="104">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource ArrivalGridDisplayTextStyle}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
 
                 <DataGridTextColumn Header="Поставщик"
                                     Binding="{Binding Supplier}"
-                                    Width="150"/>
+                                    Width="180">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource ArrivalGridDisplayTextStyle}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ArrivalGridEditingTextBoxStyle}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
             </DataGrid.Columns>
         </DataGrid>
 
@@ -176,9 +283,9 @@
                     MinWidth="180"
                     Padding="14,0"
                     FontSize="14"
-                    Background="{StaticResource PrimaryBrush}"
-                    Foreground="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource PrimaryBrush}"
+                    Background="{DynamicResource PrimaryBrush}"
+                    Foreground="White"
+                    BorderBrush="{DynamicResource PrimaryBrush}"
                     Click="AddArrival_Click"/>
         </StackPanel>
 

@@ -44,6 +44,7 @@ namespace ConstructionControl
             RequireCodeForCriticalOperationsCheckBox.IsChecked = settings.RequireCodeForCriticalOperations;
 
             SelectDensityMode(NormalizeDensityMode(settings.UiDensityMode));
+            SelectThemeMode(settings.UiThemeMode);
             SelectAccessRole(NormalizeAccessRole(settings.AccessRole));
             UpdateExternalEditorHints();
         }
@@ -74,6 +75,7 @@ namespace ConstructionControl
                 CheckUpdatesOnStart = CheckUpdatesOnStartCheckBox.IsChecked == true,
                 UpdateFeedUrl = (UpdateFeedUrlBox.Text ?? string.Empty).Trim(),
                 UiDensityMode = GetSelectedDensityMode(),
+                UiThemeMode = GetSelectedThemeMode(),
                 AccessRole = GetSelectedAccessRole(),
                 RequireCodeForCriticalOperations = RequireCodeForCriticalOperationsCheckBox.IsChecked != false
             };
@@ -207,6 +209,22 @@ namespace ConstructionControl
             }
 
             return "Стандартный";
+        }
+
+        private static string NormalizeThemeMode(string mode)
+        {
+            return UiThemeModes.Light;
+        }
+
+        private void SelectThemeMode(string mode)
+        {
+            _ = NormalizeThemeMode(mode);
+            ThemeModeBox.SelectedIndex = 0;
+        }
+
+        private string GetSelectedThemeMode()
+        {
+            return UiThemeModes.Light;
         }
 
         private void SelectAccessRole(string role)

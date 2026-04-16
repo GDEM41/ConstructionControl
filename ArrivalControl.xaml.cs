@@ -18,21 +18,22 @@ namespace ConstructionControl
         {
             InitializeComponent();
             ItemsGrid.ItemsSource = items;
-            ExtraTypeBox.ItemsSource = new[] { "Внутренние", "Малоценка" };
-            ExtraTypeBox.SelectedIndex = 0;
         }
 
-        private bool IsExtraMode => ExtraRadio != null && ExtraRadio.IsChecked == true;
+        private string SelectedCategory
+        {
+            get
+            {
+                if (MainRadio?.IsChecked == true)
+                    return "Основные";
+                if (LowCostRadio?.IsChecked == true)
+                    return "Малоценка";
+                return "Внутренние";
+            }
+        }
 
         private void ArrivalTypeChanged(object sender, RoutedEventArgs e)
         {
-            if (ExtraRadio == null || ExtraTypeBox == null)
-                return;
-
-            ExtraTypeBox.Visibility = IsExtraMode ? Visibility.Visible : Visibility.Collapsed;
-            if (IsExtraMode && ExtraTypeBox.SelectedItem == null)
-                ExtraTypeBox.SelectedIndex = 0;
-
             RefreshAllRowLookups();
         }
 
@@ -113,15 +114,21 @@ namespace ConstructionControl
 
         private bool IsMatchingCatalogEntry(MaterialCatalogItem entry, string group)
         {
-            if (IsExtraMode)
+            var category = SelectedCategory;
+            if (string.Equals(category, "Основные", System.StringComparison.CurrentCultureIgnoreCase))
             {
-                return string.Equals(entry.CategoryName, "Допы", System.StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals(entry.TypeName, ExtraTypeBox.SelectedItem?.ToString(), System.StringComparison.CurrentCultureIgnoreCase)
-                    && string.Equals(entry.SubTypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
+                return string.Equals(entry.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(entry.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
             }
 
-            return string.Equals(entry.CategoryName, "Основные", System.StringComparison.CurrentCultureIgnoreCase)
+            var matchesNewCategory = string.Equals(entry.CategoryName, category, System.StringComparison.CurrentCultureIgnoreCase)
                 && string.Equals(entry.TypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
+
+            var matchesLegacyCategory = string.Equals(entry.CategoryName, "Допы", System.StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(entry.TypeName, category, System.StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(entry.SubTypeName, group, System.StringComparison.CurrentCultureIgnoreCase);
+
+            return matchesNewCategory || matchesLegacyCategory;
         }
 
         private void AddRow()
@@ -227,8 +234,8 @@ namespace ConstructionControl
 
             ArrivalAdded?.Invoke(new Arrival
             {
-                Category = MainRadio.IsChecked == true ? "Основные" : "Допы",
-                SubCategory = IsExtraMode ? ExtraTypeBox.SelectedItem?.ToString() : null,
+                Category = SelectedCategory,
+                SubCategory = null,
                 TtnNumber = TtnBox.Text?.Trim(),
                 Items = rows.ToList()
             });

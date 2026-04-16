@@ -129,13 +129,17 @@ namespace ConstructionControl
         private readonly ObservableCollection<string> productionWeatherOptions = new();
         private readonly ObservableCollection<string> productionDeviationOptions = new();
         private readonly ObservableCollection<string> productionAutoFillProfileNames = new();
+        private static readonly IReadOnlyList<string> ProductionItemUnits = new[] { "шт", "м2", "м3", "м", "пм", "кг", "т" };
         private readonly ObservableCollection<InspectionJournalEntry> inspectionJournalRows = new();
+        private readonly ObservableCollection<ProjectNoteEntry> noteRows = new();
         private readonly ObservableCollection<string> inspectionJournalNames = new();
         private readonly ObservableCollection<string> inspectionNames = new();
         private string productionRowSnapshotJson;
         private ProductionJournalEntry selectedProductionRow;
+        private bool isApplyingProductionWorkRule;
         private string inspectionRowSnapshotJson;
         private InspectionJournalEntry selectedInspectionRow;
+        private ProjectNoteEntry selectedNoteRow;
         private bool initialUiPrepared;
         private bool arrivalMatrixMode;
         private bool arrivalLegacyRefreshPending;
@@ -233,10 +237,12 @@ namespace ConstructionControl
         private bool timesheetInitialized;
         private bool productionJournalInitialized;
         private bool inspectionJournalInitialized;
+        private bool notesInitialized;
         private bool productionLookupsDirty = true;
         private bool inspectionLookupsDirty = true;
         private bool productionStateDirty = true;
         private bool inspectionStateDirty = true;
+        private bool notesStateDirty = true;
         private static readonly HttpClient UpdateHttpClient = new();
         private bool isRefreshingProductionProfileSelection;
         private int summaryDataVersion = 1;
@@ -266,6 +272,61 @@ namespace ConstructionControl
         private const string GridPrefTimesheet = "tab_timesheet_grid";
         private const string GridPrefProduction = "tab_production_grid";
         private const string GridPrefInspection = "tab_inspection_grid";
+        private const string GridPrefNotes = "tab_notes_grid";
+        private static readonly IReadOnlyDictionary<string, string> LightThemeBrushColors = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["AppBgBrush"] = "#F5F7FA",
+            ["SurfaceBrush"] = "#FFFFFF",
+            ["SurfaceAltBrush"] = "#F9FAFB",
+            ["SecondaryBrush"] = "#E5E7EB",
+            ["SecondaryBrushHover"] = "#D1D5DB",
+            ["SecondaryBrushPressed"] = "#C8CED8",
+            ["StrokeBrush"] = "#E5E7EB",
+            ["DividerBrush"] = "#EEF2F7",
+            ["TextBrush"] = "#111827",
+            ["TextSecondaryBrush"] = "#6B7280",
+            ["TextMutedBrush"] = "#9CA3AF",
+            ["PrimaryBrush"] = "#3B82F6",
+            ["PrimaryBrushHover"] = "#2563EB",
+            ["PrimaryBrushPressed"] = "#1D4ED8",
+            ["SelectedBrush"] = "#DBEAFE",
+            ["RowHoverBrush"] = "#EEF4FF",
+            ["SuccessBrush"] = "#10B981",
+            ["SuccessSoftBrush"] = "#D1FAE5",
+            ["WarningBrush"] = "#F59E0B",
+            ["WarningSoftBrush"] = "#FEF3C7",
+            ["DangerBrush"] = "#EF4444",
+            ["DangerSoftBrush"] = "#FEE2E2",
+            ["OverlayBrush"] = "#66000000",
+            ["OverlayStrongBrush"] = "#88000000"
+        };
+        private static readonly IReadOnlyDictionary<string, string> DarkThemeBrushColors = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["AppBgBrush"] = "#0B1220",
+            ["SurfaceBrush"] = "#111827",
+            ["SurfaceAltBrush"] = "#1F2937",
+            ["SecondaryBrush"] = "#334155",
+            ["SecondaryBrushHover"] = "#475569",
+            ["SecondaryBrushPressed"] = "#64748B",
+            ["StrokeBrush"] = "#334155",
+            ["DividerBrush"] = "#1E293B",
+            ["TextBrush"] = "#E5E7EB",
+            ["TextSecondaryBrush"] = "#94A3B8",
+            ["TextMutedBrush"] = "#64748B",
+            ["PrimaryBrush"] = "#60A5FA",
+            ["PrimaryBrushHover"] = "#3B82F6",
+            ["PrimaryBrushPressed"] = "#2563EB",
+            ["SelectedBrush"] = "#1D4ED8",
+            ["RowHoverBrush"] = "#1E3A5F",
+            ["SuccessBrush"] = "#34D399",
+            ["SuccessSoftBrush"] = "#064E3B",
+            ["WarningBrush"] = "#FBBF24",
+            ["WarningSoftBrush"] = "#78350F",
+            ["DangerBrush"] = "#F87171",
+            ["DangerSoftBrush"] = "#7F1D1D",
+            ["OverlayBrush"] = "#AA000000",
+            ["OverlayStrongBrush"] = "#CC000000"
+        };
 
         private sealed class SummaryMatrixCacheEntry
         {
@@ -404,6 +465,108 @@ namespace ConstructionControl
                         return;
                     deviation = normalized;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Deviation)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class ProductionActionWorkReferenceRow : INotifyPropertyChanged
+        {
+            private string actionName = string.Empty;
+            private string workName = string.Empty;
+
+            public string ActionName
+            {
+                get => actionName;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(actionName, normalized, StringComparison.CurrentCulture))
+                        return;
+                    actionName = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActionName)));
+                }
+            }
+
+            public string WorkName
+            {
+                get => workName;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(workName, normalized, StringComparison.CurrentCulture))
+                        return;
+                    workName = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WorkName)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class ProductionTypeMaterialReferenceRow : INotifyPropertyChanged
+        {
+            private string materialType = string.Empty;
+            private string materialName = string.Empty;
+
+            public string MaterialType
+            {
+                get => materialType;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(materialType, normalized, StringComparison.CurrentCulture))
+                        return;
+                    materialType = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialType)));
+                }
+            }
+
+            public string MaterialName
+            {
+                get => materialName;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(materialName, normalized, StringComparison.CurrentCulture))
+                        return;
+                    materialName = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaterialName)));
+                }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        private sealed class HiddenWorkTitleReplacementReferenceRow : INotifyPropertyChanged
+        {
+            private string sourcePrefix = string.Empty;
+            private string replacement = string.Empty;
+
+            public string SourcePrefix
+            {
+                get => sourcePrefix;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(sourcePrefix, normalized, StringComparison.CurrentCulture))
+                        return;
+                    sourcePrefix = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SourcePrefix)));
+                }
+            }
+
+            public string Replacement
+            {
+                get => replacement;
+                set
+                {
+                    var normalized = value?.Trim() ?? string.Empty;
+                    if (string.Equals(replacement, normalized, StringComparison.CurrentCulture))
+                        return;
+                    replacement = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Replacement)));
                 }
             }
 
@@ -829,6 +992,7 @@ namespace ConstructionControl
         {
             private string materialName = string.Empty;
             private double quantity;
+            private string unit = "шт";
 
             public string MaterialName
             {
@@ -857,6 +1021,20 @@ namespace ConstructionControl
             }
 
             public ObservableCollection<string> AvailableNames { get; set; } = new();
+            public ObservableCollection<string> AvailableUnits { get; set; } = new();
+
+            public string Unit
+            {
+                get => unit;
+                set
+                {
+                    if (string.Equals(unit, value, StringComparison.CurrentCulture))
+                        return;
+
+                    unit = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Unit)));
+                }
+            }
 
             public event PropertyChangedEventHandler PropertyChanged;
         }
@@ -2327,6 +2505,7 @@ namespace ConstructionControl
             AttachGridPreferenceTracking(TimesheetGrid);
             AttachGridPreferenceTracking(ProductionJournalGrid);
             AttachGridPreferenceTracking(InspectionJournalGrid);
+            AttachGridPreferenceTracking(NotesGrid);
         }
 
         private void AttachGridPreferenceTracking(DataGrid grid)
@@ -2460,6 +2639,15 @@ namespace ConstructionControl
                 return;
             }
 
+            if (ReferenceEquals(tabItem, HiddenWorkActsTab))
+            {
+                if (!hiddenWorkActsInitialized)
+                    InitializeHiddenWorkActs();
+                else if (hiddenWorkActStateDirty)
+                    RefreshHiddenWorkActState();
+                return;
+            }
+
             if (ReferenceEquals(tabItem, InspectionTab))
             {
                 if (!inspectionJournalInitialized)
@@ -2468,6 +2656,15 @@ namespace ConstructionControl
                     RefreshInspectionJournalState();
                 else
                     RefreshInspectionLookups();
+                return;
+            }
+
+            if (ReferenceEquals(tabItem, NotesTab))
+            {
+                if (!notesInitialized)
+                    InitializeNotes();
+                else if (notesStateDirty)
+                    RefreshNotesState();
             }
         }
 
@@ -3321,7 +3518,9 @@ namespace ConstructionControl
             SetTabButtonState(OtTabButton, ReferenceEquals(MainTabs?.SelectedItem, OtTab), "ОТ");
             SetTabButtonState(TimesheetTabButton, ReferenceEquals(MainTabs?.SelectedItem, TimesheetTab), "Табель");
             SetTabButtonState(ProductionTabButton, ReferenceEquals(MainTabs?.SelectedItem, ProductionTab), "ПР");
+            SetTabButtonState(HiddenWorkActsTabButton, ReferenceEquals(MainTabs?.SelectedItem, HiddenWorkActsTab), "Акты");
             SetTabButtonState(InspectionTabButton, ReferenceEquals(MainTabs?.SelectedItem, InspectionTab), "Осмотры");
+            SetTabButtonState(NotesTabButton, ReferenceEquals(MainTabs?.SelectedItem, NotesTab), "Заметки");
             SetTabButtonState(PdfPinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, PdfTab), "ПДФ");
             SetTabButtonState(EstimatePinnedTabButton, ReferenceEquals(MainTabs?.SelectedItem, EstimateTab), "Сметы");
         }
@@ -3337,23 +3536,41 @@ namespace ConstructionControl
                 : null;
             var highlightReminder = ShouldHighlightReminderTabs() && hasReminder;
 
+            Brush GetThemeBrush(string key, string fallbackHex)
+            {
+                var themed = TryFindResource(key) as Brush;
+                if (themed != null)
+                    return themed;
+
+                return (Brush)new BrushConverter().ConvertFromString(fallbackHex);
+            }
+
+            var selectedBrush = GetThemeBrush("SelectedBrush", "#DBEAFE");
+            var primaryBrush = GetThemeBrush("PrimaryBrush", "#3B82F6");
+            var warningSoftBrush = GetThemeBrush("WarningSoftBrush", "#FEF3C7");
+            var warningBrush = GetThemeBrush("WarningBrush", "#F59E0B");
+            var surfaceAltBrush = GetThemeBrush("SurfaceAltBrush", "#F9FAFB");
+            var strokeBrush = GetThemeBrush("StrokeBrush", "#E5E7EB");
+            var textBrush = GetThemeBrush("TextBrush", "#111827");
+            var textSecondaryBrush = GetThemeBrush("TextSecondaryBrush", "#6B7280");
+
             if (isActive)
             {
-                button.Background = (Brush)new BrushConverter().ConvertFromString(highlightReminder ? "#FDE68A" : "#DBEAFE");
-                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString(highlightReminder ? "#F59E0B" : "#3B82F6");
-                button.Foreground = (Brush)new BrushConverter().ConvertFromString("#111827");
+                button.Background = highlightReminder ? warningSoftBrush : selectedBrush;
+                button.BorderBrush = highlightReminder ? warningBrush : primaryBrush;
+                button.Foreground = textBrush;
             }
             else if (highlightReminder)
             {
-                button.Background = (Brush)new BrushConverter().ConvertFromString("#FEF3C7");
-                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString("#F59E0B");
-                button.Foreground = (Brush)new BrushConverter().ConvertFromString("#92400E");
+                button.Background = warningSoftBrush;
+                button.BorderBrush = warningBrush;
+                button.Foreground = textBrush;
             }
             else
             {
-                button.Background = (Brush)new BrushConverter().ConvertFromString("#F9FAFB");
-                button.BorderBrush = (Brush)new BrushConverter().ConvertFromString("#E5E7EB");
-                button.Foreground = (Brush)new BrushConverter().ConvertFromString(isActive ? "#111827" : "#6B7280");
+                button.Background = surfaceAltBrush;
+                button.BorderBrush = strokeBrush;
+                button.Foreground = textSecondaryBrush;
             }
 
             button.ToolTip = reminderToolTip;
@@ -3375,6 +3592,7 @@ namespace ConstructionControl
         private void TimesheetTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(TimesheetTab);
         private void ProductionTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(ProductionTab);
         private void InspectionTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(InspectionTab);
+        private void NotesTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(NotesTab);
         private void PdfPinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(PdfTab);
         private void EstimatePinnedTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(EstimateTab);
 
@@ -6609,9 +6827,6 @@ namespace ConstructionControl
 
             if (ArrivalMatrixViewButton != null)
                 ArrivalMatrixViewButton.Opacity = arrivalMatrixMode ? 1.0 : 0.72;
-
-            if (ArrivalExtraSubtypeFiltersPanel != null)
-                ArrivalExtraSubtypeFiltersPanel.Visibility = arrivalMatrixMode ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void ArrivalLegacyViewButton_Click(object sender, RoutedEventArgs e)
@@ -6812,6 +7027,10 @@ namespace ConstructionControl
 
             currentObject.OtInstructionNumbersByProfession ??= new Dictionary<string, string>();
             currentObject.ProductionDeviationsByType ??= new Dictionary<string, List<string>>();
+            currentObject.ProductionWorksByAction ??= new Dictionary<string, List<string>>();
+            currentObject.ProductionMaterialsByType ??= new Dictionary<string, List<string>>();
+            currentObject.HiddenWorkTitlePrefixReplacements ??= new Dictionary<string, string>();
+            currentObject.HiddenWorkDefaults ??= new HiddenWorkActDefaults();
 
             var normalizedOt = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
             foreach (var pair in currentObject.OtInstructionNumbersByProfession)
@@ -6843,8 +7062,73 @@ namespace ConstructionControl
                 normalizedProduction[materialType] = deviations;
             }
 
-            currentObject.OtInstructionNumbersByProfession = normalizedOt.ToDictionary(x => x.Key, x => x.Value);
-            currentObject.ProductionDeviationsByType = normalizedProduction.ToDictionary(x => x.Key, x => x.Value);
+            var normalizedActionWorks = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (var pair in currentObject.ProductionWorksByAction)
+            {
+                var actionName = pair.Key?.Trim();
+                if (string.IsNullOrWhiteSpace(actionName))
+                    continue;
+
+                var workNames = (pair.Value ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(NormalizeProductionWorkForStorage)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+
+                if (workNames.Count == 0)
+                    continue;
+
+                normalizedActionWorks[actionName] = workNames;
+            }
+
+            var normalizedTypeMaterials = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (var pair in currentObject.ProductionMaterialsByType)
+            {
+                var materialType = NormalizeProductionWorkForStorage(pair.Key);
+                if (string.IsNullOrWhiteSpace(materialType))
+                    continue;
+
+                var materialNames = (pair.Value ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+                if (materialNames.Count == 0)
+                    continue;
+
+                normalizedTypeMaterials[materialType] = materialNames;
+            }
+
+            var normalizedTitleReplacements = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (var pair in currentObject.HiddenWorkTitlePrefixReplacements)
+            {
+                var sourcePrefix = pair.Key?.Trim();
+                var replacement = pair.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(sourcePrefix) || string.IsNullOrWhiteSpace(replacement))
+                    continue;
+
+                normalizedTitleReplacements[sourcePrefix] = replacement;
+            }
+
+            var defaults = currentObject.HiddenWorkDefaults ?? new HiddenWorkActDefaults();
+            defaults.FullObjectName = defaults.FullObjectName?.Trim() ?? string.Empty;
+            defaults.GeneralContractorInfo = defaults.GeneralContractorInfo?.Trim() ?? string.Empty;
+            defaults.TechnicalSupervisorInfo = defaults.TechnicalSupervisorInfo?.Trim() ?? string.Empty;
+            defaults.ProjectOrganizationInfo = defaults.ProjectOrganizationInfo?.Trim() ?? string.Empty;
+            defaults.WorkExecutorInfo = defaults.WorkExecutorInfo?.Trim() ?? string.Empty;
+            defaults.ProjectDocumentation = defaults.ProjectDocumentation?.Trim() ?? string.Empty;
+            defaults.Deviations = defaults.Deviations?.Trim() ?? string.Empty;
+            defaults.ContractorSignerName = defaults.ContractorSignerName?.Trim() ?? string.Empty;
+            defaults.TechnicalSupervisorSignerName = defaults.TechnicalSupervisorSignerName?.Trim() ?? string.Empty;
+            defaults.ProjectOrganizationSignerName = defaults.ProjectOrganizationSignerName?.Trim() ?? string.Empty;
+
+            currentObject.OtInstructionNumbersByProfession = new Dictionary<string, string>(normalizedOt, StringComparer.CurrentCultureIgnoreCase);
+            currentObject.ProductionDeviationsByType = new Dictionary<string, List<string>>(normalizedProduction, StringComparer.CurrentCultureIgnoreCase);
+            currentObject.ProductionWorksByAction = new Dictionary<string, List<string>>(normalizedActionWorks, StringComparer.CurrentCultureIgnoreCase);
+            currentObject.ProductionMaterialsByType = new Dictionary<string, List<string>>(normalizedTypeMaterials, StringComparer.CurrentCultureIgnoreCase);
+            currentObject.HiddenWorkTitlePrefixReplacements = new Dictionary<string, string>(normalizedTitleReplacements, StringComparer.CurrentCultureIgnoreCase);
+            currentObject.HiddenWorkDefaults = defaults;
         }
 
         private void BindOtJournal()
@@ -7591,6 +7875,29 @@ namespace ConstructionControl
                 });
             }
 
+            var dueNotes = (currentObject.Notes ?? new List<ProjectNoteEntry>())
+                .Where(x => x != null && x.IsReminderDueAt(DateTime.Now))
+                .OrderBy(x => x.NextReminderAt ?? DateTime.MaxValue)
+                .ThenByDescending(x => x.UpdatedAtUtc)
+                .ToList();
+            if (dueNotes.Count > 0)
+            {
+                totalCount += dueNotes.Count;
+                sections.Add(new ReminderSectionViewModel
+                {
+                    Header = "Вкладка Заметки",
+                    Items = dueNotes
+                        .Take(4)
+                        .Select(x =>
+                        {
+                            var title = string.IsNullOrWhiteSpace(x.Title) ? "Без заголовка" : x.Title.Trim();
+                            var next = x.NextReminderAt.HasValue ? x.NextReminderAt.Value.ToString("dd.MM.yyyy HH:mm") : "сейчас";
+                            return $"{title} ({x.ReminderModeDisplay}, {next})";
+                        })
+                        .ToList()
+                });
+            }
+
             var summaryBalanceItems = CollectSummaryBalanceReminderItems();
             if (summaryBalanceItems.Count > 0)
             {
@@ -7774,7 +8081,7 @@ namespace ConstructionControl
             var rowCategory = journal
                 .Where(x => string.Equals((x.MaterialGroup ?? string.Empty).Trim(), group, StringComparison.CurrentCultureIgnoreCase)
                          && string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase))
-                .Select(x => x.Category?.Trim())
+                .Select(x => NormalizeArrivalCategory(x.Category, x.SubCategory))
                 .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             return string.IsNullOrWhiteSpace(rowCategory) ? "Основные" : rowCategory;
         }
@@ -9702,6 +10009,7 @@ namespace ConstructionControl
             currentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
             currentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
             currentObject.ProductionAutoFillProfiles ??= new List<ProductionAutoFillProfile>();
+            currentObject.ProductionWorkRules ??= new List<ProductionWorkRule>();
             if (string.IsNullOrWhiteSpace(currentObject.SelectedProductionAutoFillProfileName)
                 && currentObject.ProductionAutoFillProfiles.Count > 0)
             {
@@ -9720,14 +10028,20 @@ namespace ConstructionControl
             EnsureProductionJournalStorage();
             NormalizeProductionJournalRows();
             RefreshProductionBlockDisplayValues();
-            ApplyProductionDisplayMerging();
             productionJournalRows.Clear();
 
             if (currentObject?.ProductionJournal != null)
             {
-                foreach (var row in currentObject.ProductionJournal)
+                foreach (var row in currentObject.ProductionJournal
+                    .OrderByDescending(x => x.Date.Date)
+                    .ThenBy(x => x.ActionName, StringComparer.CurrentCultureIgnoreCase)
+                    .ThenBy(x => x.WorkName, StringComparer.CurrentCultureIgnoreCase))
+                {
                     productionJournalRows.Add(row);
+                }
             }
+
+            ApplyProductionDisplayMerging(productionJournalRows);
 
             if (ProductionJournalGrid != null)
                 ProductionJournalGrid.ItemsSource = productionJournalRows;
@@ -9740,16 +10054,22 @@ namespace ConstructionControl
             if (selectedProductionRow != null && !productionJournalRows.Contains(selectedProductionRow))
                 selectedProductionRow = null;
             UpdateProductionFormState();
+            MarkHiddenWorkActStateDirty();
+            if (hiddenWorkActsInitialized && ReferenceEquals(MainTabs?.SelectedItem, HiddenWorkActsTab))
+                RefreshHiddenWorkActState();
             productionStateDirty = false;
         }
 
-        private void ApplyProductionDisplayMerging()
+        private void ApplyProductionDisplayMerging(IEnumerable<ProductionJournalEntry> sourceRows = null)
         {
-            if (currentObject?.ProductionJournal == null || currentObject.ProductionJournal.Count == 0)
+            var rows = (sourceRows ?? currentObject?.ProductionJournal ?? new List<ProductionJournalEntry>())
+                .Where(x => x != null)
+                .ToList();
+            if (rows.Count == 0)
                 return;
 
             ProductionJournalEntry previous = null;
-            foreach (var row in currentObject.ProductionJournal)
+            foreach (var row in rows)
             {
                 var sameAsPrevious = previous != null
                     && row.Date.Date == previous.Date.Date
@@ -9761,42 +10081,318 @@ namespace ConstructionControl
             }
         }
 
+        private static IEnumerable<string> NormalizeProductionLookupValues(IEnumerable<string> values)
+        {
+            var unique = new List<string>();
+            var seenKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var value in values ?? Enumerable.Empty<string>())
+            {
+                var trimmed = value?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed))
+                    continue;
+
+                var semanticKey = BuildProductionLookupSemanticKey(trimmed);
+                if (string.IsNullOrWhiteSpace(semanticKey))
+                    semanticKey = trimmed.ToLowerInvariant();
+
+                if (!seenKeys.Add(semanticKey))
+                    continue;
+
+                unique.Add(trimmed);
+            }
+
+            return unique.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        private static readonly string[] ProductionLookupRussianSuffixes =
+        {
+            "иями", "ями", "ами", "иях", "ях", "ами", "ев", "ов", "ей", "ий", "ый", "ой",
+            "ого", "ему", "ому", "ыми", "ими", "ах", "ам", "ям", "ом", "ем", "ою", "ею",
+            "ую", "юю", "а", "я", "ы", "и", "у", "ю", "е", "о", "ь"
+        };
+
+        private static string NormalizeProductionLookupTokenForMatching(string token)
+        {
+            var normalized = new string((token ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant()
+                .Replace('ё', 'е')
+                .Where(char.IsLetterOrDigit)
+                .ToArray());
+
+            if (string.IsNullOrWhiteSpace(normalized))
+                return string.Empty;
+
+            foreach (var suffix in ProductionLookupRussianSuffixes
+                .OrderByDescending(x => x.Length)
+                .Distinct(StringComparer.Ordinal))
+            {
+                if (normalized.Length <= suffix.Length + 2)
+                    continue;
+
+                if (!normalized.EndsWith(suffix, StringComparison.Ordinal))
+                    continue;
+
+                normalized = normalized[..^suffix.Length];
+                break;
+            }
+
+            return normalized;
+        }
+
+        private static string BuildProductionLookupSemanticKey(string value)
+        {
+            return string.Join(" ",
+                Regex.Split((value ?? string.Empty).Trim(), @"[\s,;:/\\\-]+")
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(NormalizeProductionLookupTokenForMatching)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+        }
+
+        private static bool AreProductionLookupValuesEquivalent(string left, string right)
+        {
+            if (string.Equals((left ?? string.Empty).Trim(), (right ?? string.Empty).Trim(), StringComparison.CurrentCultureIgnoreCase))
+                return true;
+
+            var leftKey = BuildProductionLookupSemanticKey(left);
+            var rightKey = BuildProductionLookupSemanticKey(right);
+            return !string.IsNullOrWhiteSpace(leftKey)
+                && string.Equals(leftKey, rightKey, StringComparison.Ordinal);
+        }
+
+        private static string ResolveProductionCanonicalValue(string value, IEnumerable<string> candidates)
+        {
+            var normalized = value?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalized))
+                return string.Empty;
+
+            foreach (var candidate in candidates ?? Enumerable.Empty<string>())
+            {
+                if (AreProductionLookupValuesEquivalent(normalized, candidate))
+                    return candidate?.Trim() ?? normalized;
+            }
+
+            return normalized;
+        }
+
+        private List<string> GetJournalProductionActionOptions()
+        {
+            return NormalizeProductionLookupValues(
+                currentObject?.ProductionJournal?.Select(x => x.ActionName) ?? Enumerable.Empty<string>())
+                .ToList();
+        }
+
+        private List<string> GetJournalProductionWorkOptions(string actionName = null)
+        {
+            var normalizedAction = actionName?.Trim() ?? string.Empty;
+            var source = currentObject?.ProductionJournal ?? new List<ProductionJournalEntry>();
+
+            var values = string.IsNullOrWhiteSpace(normalizedAction)
+                ? source.Select(x => x.WorkName)
+                : source
+                    .Where(x => string.Equals((x.ActionName ?? string.Empty).Trim(), normalizedAction, StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.WorkName);
+
+            return NormalizeProductionLookupValues(values).ToList();
+        }
+
+        private List<string> GetMappedProductionWorksForAction(string actionName)
+        {
+            EnsureReferenceMappingsStorage();
+            var normalizedAction = actionName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedAction) || currentObject?.ProductionWorksByAction == null)
+                return new List<string>();
+
+            if (currentObject.ProductionWorksByAction.TryGetValue(normalizedAction, out var mapped) && mapped != null)
+                return NormalizeProductionLookupValues(mapped).ToList();
+
+            var fallback = currentObject.ProductionWorksByAction.FirstOrDefault(x =>
+                string.Equals((x.Key ?? string.Empty).Trim(), normalizedAction, StringComparison.CurrentCultureIgnoreCase));
+            if (fallback.Equals(default(KeyValuePair<string, List<string>>)) || fallback.Value == null)
+                return new List<string>();
+
+            return NormalizeProductionLookupValues(fallback.Value).ToList();
+        }
+
+        private void UpsertProductionActionWorkMapping(string actionName, string workName)
+        {
+            EnsureReferenceMappingsStorage();
+            if (currentObject == null)
+                return;
+
+            var normalizedAction = actionName?.Trim() ?? string.Empty;
+            var normalizedWork = NormalizeProductionWorkForStorage(workName);
+            if (string.IsNullOrWhiteSpace(normalizedAction) || string.IsNullOrWhiteSpace(normalizedWork))
+                return;
+
+            currentObject.ProductionWorksByAction ??= new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+
+            var existingKey = currentObject.ProductionWorksByAction.Keys
+                .FirstOrDefault(key => string.Equals((key ?? string.Empty).Trim(), normalizedAction, StringComparison.CurrentCultureIgnoreCase));
+            if (string.IsNullOrWhiteSpace(existingKey))
+                existingKey = normalizedAction;
+
+            if (!currentObject.ProductionWorksByAction.TryGetValue(existingKey, out var values) || values == null)
+            {
+                values = new List<string>();
+                currentObject.ProductionWorksByAction[existingKey] = values;
+            }
+
+            if (!values.Any(x => AreProductionLookupValuesEquivalent(x, normalizedWork)))
+                values.Add(normalizedWork);
+        }
+
+        private List<string> GetMappedProductionMaterialsForWork(string workName)
+        {
+            EnsureReferenceMappingsStorage();
+            var normalizedWork = NormalizeProductionWorkForStorage(workName);
+            if (string.IsNullOrWhiteSpace(normalizedWork) || currentObject?.ProductionMaterialsByType == null)
+                return new List<string>();
+
+            if (currentObject.ProductionMaterialsByType.TryGetValue(normalizedWork, out var mapped) && mapped != null)
+            {
+                return mapped
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+            }
+
+            var fallback = currentObject.ProductionMaterialsByType.FirstOrDefault(x =>
+                AreProductionLookupValuesEquivalent(x.Key ?? string.Empty, normalizedWork));
+            return fallback.Value?
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList()
+                ?? new List<string>();
+        }
+
+        private void UpsertProductionTypeMaterialMapping(string workName, string materialName)
+        {
+            EnsureReferenceMappingsStorage();
+            if (currentObject == null)
+                return;
+
+            var normalizedWork = NormalizeProductionWorkForStorage(workName);
+            var normalizedMaterial = materialName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedWork) || string.IsNullOrWhiteSpace(normalizedMaterial))
+                return;
+
+            currentObject.ProductionMaterialsByType ??= new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+            var existingKey = currentObject.ProductionMaterialsByType.Keys
+                .FirstOrDefault(x => AreProductionLookupValuesEquivalent(x ?? string.Empty, normalizedWork));
+            if (string.IsNullOrWhiteSpace(existingKey))
+                existingKey = normalizedWork;
+
+            if (!currentObject.ProductionMaterialsByType.TryGetValue(existingKey, out var values) || values == null)
+            {
+                values = new List<string>();
+                currentObject.ProductionMaterialsByType[existingKey] = values;
+            }
+
+            if (!values.Any(x => AreProductionLookupValuesEquivalent(x, normalizedMaterial)))
+                values.Add(normalizedMaterial);
+        }
+
+        private List<string> GetAllProductionWorkOptions()
+        {
+            return NormalizeProductionLookupValues(
+                GetJournalProductionWorkOptions()
+                .Concat(currentObject?.ProductionWorksByAction?
+                    .Values
+                    .Where(x => x != null)
+                    .SelectMany(x => x ?? Enumerable.Empty<string>())
+                    ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.ProductionMaterialsByType?.Keys ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.ProductionDeviationsByType?.Keys ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.TypeName)
+                    ?? Enumerable.Empty<string>())
+                .Concat(currentObject?.MaterialCatalog?
+                    .Where(x => string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>())
+                .Concat(journal
+                    .Where(x => string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialGroup))
+                .Concat(journal
+                    .Where(x => string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                    .Select(x => x.MaterialName))
+                .Concat(currentObject?.ProductionJournal?
+                    .SelectMany(x => ParseProductionItems(x.ElementsText))
+                    .Select(x => x.MaterialName)
+                    ?? Enumerable.Empty<string>()))
+                .ToList();
+        }
+
+        private List<string> GetProductionWorkOptionsForAction(string actionName)
+        {
+            var normalizedAction = actionName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedAction))
+                return GetJournalProductionWorkOptions();
+
+            var mappedOptions = GetMappedProductionWorksForAction(normalizedAction);
+            var journalOptions = GetJournalProductionWorkOptions(normalizedAction);
+            return NormalizeProductionLookupValues(mappedOptions.Concat(journalOptions)).ToList();
+        }
+
+        private string GetSelectedProductionActionForLookups()
+        {
+            return ProductionActionBox?.Text?.Trim() ?? string.Empty;
+        }
+
+        private void RefreshProductionTargetOptions()
+        {
+            var currentText = NormalizeProductionWorkForStorage(ProductionWorkBox?.Text);
+            var selectedAction = GetSelectedProductionActionForLookups();
+            var values = GetProductionWorkOptionsForAction(selectedAction);
+            if (!string.IsNullOrWhiteSpace(currentText))
+                values.Add(currentText);
+
+            FillLookupCollection(productionTargets, values);
+
+            if (ProductionWorkBox != null && !string.IsNullOrWhiteSpace(currentText))
+                ProductionWorkBox.Text = currentText;
+        }
+
         private void RefreshProductionJournalLookups(bool force = false)
         {
             if (!force && !productionLookupsDirty)
                 return;
 
-            productionActions.Clear();
-            foreach (var value in new[] { "Монтаж", "Кладка", "Устройство" }
-                .Concat(currentObject?.ProductionJournal?.Select(x => x.ActionName) ?? Enumerable.Empty<string>())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
-                .Distinct(StringComparer.CurrentCultureIgnoreCase))
-            {
-                productionActions.Add(value);
-            }
-            FillLookupCollection(productionTargets,
-                (currentObject?.ProductionJournal?.Select(x => x.WorkName) ?? Enumerable.Empty<string>())
-                .Concat(currentObject?.MaterialCatalog?
-                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.TypeName) ?? Enumerable.Empty<string>())
-                .Concat(journal
-                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialGroup)));
-            FillLookupCollection(productionElements,
-                currentObject?.MaterialCatalog?
-                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName)
-                    ?? Enumerable.Empty<string>());
+            var currentAction = ProductionActionBox?.Text?.Trim() ?? string.Empty;
+            FillLookupCollection(productionActions, GetJournalProductionActionOptions());
+            if (ProductionActionBox != null && !string.IsNullOrWhiteSpace(currentAction))
+                ProductionActionBox.Text = currentAction;
+
+            RefreshProductionTargetOptions();
             FillLookupCollection(productionWeatherOptions,
                 currentObject?.ProductionJournal?.Select(x => x.Weather));
 
-            productionBlockOptions.Clear();
+            var blockValues = new List<string>();
             if (currentObject != null)
             {
                 for (var i = 1; i <= currentObject.BlocksCount; i++)
-                    productionBlockOptions.Add(i.ToString());
+                    blockValues.Add(i.ToString(CultureInfo.CurrentCulture));
+
+                if (currentObject.BlockAxesByNumber != null)
+                {
+                    blockValues.AddRange(currentObject.BlockAxesByNumber.Values
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Select(x => x.Trim()));
+                }
             }
+
+            blockValues.AddRange(currentObject?.ProductionJournal?
+                .SelectMany(x => SplitProductionBlockTokens(x.BlocksText))
+                ?? Enumerable.Empty<string>());
+
+            if (!string.IsNullOrWhiteSpace(ProductionBlocksBox?.Text))
+                blockValues.AddRange(SplitProductionBlockTokens(ProductionBlocksBox.Text));
+
+            FillLookupCollection(productionBlockOptions, blockValues);
 
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
@@ -9948,49 +10544,15 @@ namespace ConstructionControl
 
         private void RefreshProductionElementOptions()
         {
-            var currentText = ProductionElementsBox?.Text?.Trim();
-            var selectedWork = ProductionWorkBox?.Text?.Trim();
-            var values = new List<string>();
-
-            if (!string.IsNullOrWhiteSpace(selectedWork))
-            {
-                values.AddRange(currentObject?.MaterialCatalog?
-                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals(x.TypeName ?? string.Empty, selectedWork, StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName)
-                    ?? Enumerable.Empty<string>());
-
-                values.AddRange(journal
-                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals(x.MaterialGroup ?? string.Empty, selectedWork, StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName));
-            }
-            else
-            {
-                values.AddRange(currentObject?.MaterialCatalog?
-                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName)
-                    ?? Enumerable.Empty<string>());
-
-                values.AddRange(journal
-                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName));
-            }
-
-            values.AddRange(currentObject?.ProductionJournal?
-                .SelectMany(x => ParseProductionItems(x.ElementsText))
-                .Select(x => x.MaterialName)
-                ?? Enumerable.Empty<string>());
-
+            var selectedWork = GetSelectedProductionWorkForLookups();
+            var selectedAction = GetSelectedProductionActionForLookups();
+            var values = GetAvailableProductionElements(selectedWork, selectedAction);
             FillLookupCollection(productionElements, values);
-
-            if (ProductionElementsBox != null && !string.IsNullOrWhiteSpace(currentText))
-                ProductionElementsBox.Text = currentText;
         }
 
         private void RefreshProductionMarkOptions()
         {
-            var selectedWork = ProductionWorkBox?.Text?.Trim();
+            var selectedWork = GetSelectedProductionWorkForLookups();
             var currentMarksText = ProductionMarksBox?.Text?.Trim() ?? string.Empty;
             var values = new List<string>();
 
@@ -9998,7 +10560,7 @@ namespace ConstructionControl
             {
                 values.AddRange(LevelMarkHelper.GetMarksForGroup(currentObject, selectedWork));
                 values.AddRange(currentObject?.ProductionJournal?
-                    .Where(x => string.Equals((x.WorkName ?? string.Empty).Trim(), selectedWork, StringComparison.CurrentCultureIgnoreCase))
+                    .Where(x => AreProductionLookupValuesEquivalent((x.WorkName ?? string.Empty).Trim(), selectedWork))
                     .SelectMany(x => LevelMarkHelper.ParseMarks(x.MarksText))
                     ?? Enumerable.Empty<string>());
             }
@@ -10054,7 +10616,7 @@ namespace ConstructionControl
         {
             EnsureReferenceMappingsStorage();
             var options = new List<string>();
-            var normalizedWork = workName?.Trim() ?? string.Empty;
+            var normalizedWork = ResolveProductionCanonicalValue(workName, GetAllProductionWorkOptions());
 
             if (!string.IsNullOrWhiteSpace(normalizedWork)
                 && currentObject?.ProductionDeviationsByType != null
@@ -10066,7 +10628,7 @@ namespace ConstructionControl
             else if (!string.IsNullOrWhiteSpace(normalizedWork) && currentObject?.ProductionDeviationsByType != null)
             {
                 var mappedFallback = currentObject.ProductionDeviationsByType.FirstOrDefault(x =>
-                    string.Equals((x.Key ?? string.Empty).Trim(), normalizedWork, StringComparison.CurrentCultureIgnoreCase));
+                    AreProductionLookupValuesEquivalent((x.Key ?? string.Empty).Trim(), normalizedWork));
                 if (!mappedFallback.Equals(default(KeyValuePair<string, List<string>>)))
                     options.AddRange(mappedFallback.Value ?? new List<string>());
             }
@@ -10076,7 +10638,7 @@ namespace ConstructionControl
                 if (!string.IsNullOrWhiteSpace(normalizedWork))
                 {
                     options.AddRange(currentObject?.ProductionJournal?
-                        .Where(x => string.Equals((x.WorkName ?? string.Empty).Trim(), normalizedWork, StringComparison.CurrentCultureIgnoreCase))
+                        .Where(x => AreProductionLookupValuesEquivalent((x.WorkName ?? string.Empty).Trim(), normalizedWork))
                         .Select(x => x.Deviations)
                         ?? Enumerable.Empty<string>());
                 }
@@ -10107,9 +10669,19 @@ namespace ConstructionControl
             return options[index];
         }
 
+        private string GetSelectedProductionWorkForLookups()
+        {
+            return ResolveProductionCanonicalValue(ProductionWorkBox?.Text, GetAllProductionWorkOptions());
+        }
+
+        private string NormalizeProductionWorkForStorage(string workName)
+        {
+            return ResolveProductionCanonicalValue(workName, GetAllProductionWorkOptions());
+        }
+
         private void RefreshProductionDeviationOptions()
         {
-            var selectedWork = ProductionWorkBox?.Text?.Trim();
+            var selectedWork = GetSelectedProductionWorkForLookups();
             var currentText = ProductionDeviationBox?.Text?.Trim() ?? string.Empty;
             List<string> values;
 
@@ -10145,18 +10717,166 @@ namespace ConstructionControl
             ProductionDeviationBox.Text = productionDeviationOptions.FirstOrDefault() ?? string.Empty;
         }
 
-        private void ProductionWorkBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private ProductionWorkRule FindProductionWorkRule(string workName)
         {
+            var normalized = ResolveProductionCanonicalValue(workName, currentObject?.ProductionWorkRules?.Select(x => x.WorkName) ?? Enumerable.Empty<string>());
+            if (string.IsNullOrWhiteSpace(normalized))
+                return null;
+
+            return currentObject?.ProductionWorkRules?
+                .FirstOrDefault(x => AreProductionLookupValuesEquivalent(x.WorkName ?? string.Empty, normalized));
+        }
+
+        private void ApplyProductionWorkRuleToForm(bool resetWhenMissing = false)
+        {
+            if (isApplyingProductionWorkRule)
+                return;
+
+            isApplyingProductionWorkRule = true;
+            try
+            {
+                var rule = FindProductionWorkRule(GetSelectedProductionWorkForLookups());
+                if (rule == null)
+                {
+                    if (resetWhenMissing)
+                    {
+                        if (ProductionAllowCustomElementsCheckBox != null)
+                            ProductionAllowCustomElementsCheckBox.IsChecked = false;
+                    }
+
+                    return;
+                }
+
+                if (ProductionAllowCustomElementsCheckBox != null)
+                    ProductionAllowCustomElementsCheckBox.IsChecked = rule.AllowCustomElements;
+            }
+            finally
+            {
+                isApplyingProductionWorkRule = false;
+            }
+        }
+
+        private void UpsertProductionWorkRule(string workName, bool allowCustomElements)
+        {
+            EnsureProductionJournalStorage();
+
+            var normalized = workName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalized))
+                return;
+
+            currentObject.ProductionWorkRules ??= new List<ProductionWorkRule>();
+            var existing = currentObject.ProductionWorkRules
+                .FirstOrDefault(x => string.Equals(x.WorkName ?? string.Empty, normalized, StringComparison.CurrentCultureIgnoreCase));
+
+            if (!allowCustomElements)
+            {
+                if (existing != null)
+                    currentObject.ProductionWorkRules.Remove(existing);
+                return;
+            }
+
+            if (existing == null)
+            {
+                currentObject.ProductionWorkRules.Add(new ProductionWorkRule
+                {
+                    WorkName = normalized,
+                    AllowCustomElements = allowCustomElements,
+                    IgnorePhotoRule = false
+                });
+                return;
+            }
+
+            existing.WorkName = normalized;
+            existing.AllowCustomElements = allowCustomElements;
+            existing.IgnorePhotoRule = false;
+        }
+
+        private void SaveProductionWorkRuleFromEntry(ProductionJournalEntry row)
+        {
+            if (row == null)
+                return;
+
+            UpsertProductionWorkRule(row.WorkName, row.AllowCustomElements);
+        }
+
+        private bool IsKnownProductionItemName(string materialName, string workName = null)
+        {
+            var normalizedName = materialName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedName))
+                return false;
+
+            var normalizedWork = ResolveProductionCanonicalValue(workName, GetAllProductionWorkOptions());
+
+            var fromCatalog = currentObject?.MaterialCatalog?.Any(x =>
+                x != null
+                && string.Equals(x.CategoryName ?? string.Empty, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                && AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, normalizedName)
+                && (string.IsNullOrWhiteSpace(normalizedWork)
+                    || AreProductionLookupValuesEquivalent(x.TypeName ?? string.Empty, normalizedWork))) == true;
+
+            if (fromCatalog)
+                return true;
+
+            return journal.Any(x =>
+                string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
+                && AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, normalizedName)
+                && (string.IsNullOrWhiteSpace(normalizedWork)
+                    || AreProductionLookupValuesEquivalent(x.MaterialGroup ?? string.Empty, normalizedWork)));
+        }
+
+        private bool ShouldBypassProductionArrivalValidation(ProductionJournalEntry row, string materialName)
+        {
+            return row?.AllowCustomElements == true
+                && !IsKnownProductionItemName(materialName, row.WorkName);
+        }
+
+        private bool ShouldTrackProductionItemInDemand(ProductionJournalEntry row, string materialName)
+        {
+            return !ShouldBypassProductionArrivalValidation(row, materialName);
+        }
+
+        private void ProductionActionBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            RefreshProductionTargetOptions();
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
             RefreshProductionDeviationOptions();
+            ApplyProductionWorkRuleToForm();
+        }
+
+        private void ProductionActionBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            RefreshProductionTargetOptions();
+            RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
+            ApplyProductionWorkRuleToForm();
+        }
+
+        private void ProductionWorkBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var normalized = NormalizeProductionWorkForStorage(ProductionWorkBox?.Text);
+            if (ProductionWorkBox != null
+                && !string.IsNullOrWhiteSpace(normalized)
+                && !string.Equals(ProductionWorkBox.Text ?? string.Empty, normalized, StringComparison.CurrentCultureIgnoreCase))
+                ProductionWorkBox.Text = normalized;
+            RefreshProductionElementOptions();
+            RefreshProductionMarkOptions();
+            RefreshProductionDeviationOptions();
+            ApplyProductionWorkRuleToForm();
         }
 
         private void ProductionWorkBox_LostFocus(object sender, RoutedEventArgs e)
         {
+            var normalized = NormalizeProductionWorkForStorage(ProductionWorkBox?.Text);
+            if (ProductionWorkBox != null
+                && !string.IsNullOrWhiteSpace(normalized)
+                && !string.Equals(ProductionWorkBox.Text ?? string.Empty, normalized, StringComparison.CurrentCultureIgnoreCase))
+                ProductionWorkBox.Text = normalized;
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
             RefreshProductionDeviationOptions();
+            ApplyProductionWorkRuleToForm();
         }
 
         private void InitializeInspectionJournal()
@@ -10639,6 +11359,312 @@ namespace ConstructionControl
             SaveState();
         }
 
+        private void InitializeNotes()
+        {
+            EnsureNotesStorage();
+            if (NoteReminderModeBox != null)
+                NoteReminderModeBox.ItemsSource = new[] { "Без напоминания", "Разово", "Периодически", "Постоянно" };
+            if (NoteReminderIntervalUnitBox != null)
+                NoteReminderIntervalUnitBox.ItemsSource = new[] { "Минуты", "Часы", "Дни" };
+
+            RefreshNotesState();
+            notesInitialized = true;
+        }
+
+        private void EnsureNotesStorage()
+        {
+            if (currentObject == null)
+                return;
+
+            currentObject.Notes ??= new List<ProjectNoteEntry>();
+            foreach (var note in currentObject.Notes.Where(x => x != null))
+            {
+                if (note.Id == Guid.Empty)
+                    note.Id = Guid.NewGuid();
+                if (note.CreatedAtUtc == default)
+                    note.CreatedAtUtc = DateTime.UtcNow;
+                if (note.UpdatedAtUtc == default)
+                    note.UpdatedAtUtc = note.CreatedAtUtc;
+                note.Title ??= string.Empty;
+                note.Body ??= string.Empty;
+                note.ReminderMode = NoteReminderModes.Normalize(note.ReminderMode);
+                note.ReminderIntervalUnit = NoteReminderIntervalUnits.Normalize(note.ReminderIntervalUnit);
+                if (note.ReminderIntervalValue <= 0)
+                    note.ReminderIntervalValue = 1;
+            }
+        }
+
+        private void RefreshNotesState()
+        {
+            EnsureNotesStorage();
+            noteRows.Clear();
+
+            if (currentObject?.Notes != null)
+            {
+                foreach (var row in currentObject.Notes
+                    .Where(x => x != null)
+                    .OrderByDescending(x => x.UpdatedAtUtc)
+                    .ThenByDescending(x => x.CreatedAtUtc))
+                {
+                    noteRows.Add(row);
+                }
+            }
+
+            if (NotesGrid != null)
+                NotesGrid.ItemsSource = noteRows;
+
+            if (selectedNoteRow != null && !noteRows.Contains(selectedNoteRow))
+                selectedNoteRow = null;
+
+            if (selectedNoteRow == null)
+                selectedNoteRow = noteRows.FirstOrDefault();
+
+            if (NotesGrid != null)
+                NotesGrid.SelectedItem = selectedNoteRow;
+
+            UpdateNoteFormState();
+            RequestReminderRefresh();
+            notesStateDirty = false;
+        }
+
+        private static string NoteReminderModeFromDisplay(string display)
+        {
+            var normalized = (display ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "разово" => NoteReminderModes.Once,
+                "периодически" => NoteReminderModes.Periodic,
+                "постоянно" => NoteReminderModes.Persistent,
+                _ => NoteReminderModes.None
+            };
+        }
+
+        private static string NoteReminderModeToDisplay(string mode)
+            => NoteReminderModes.ToDisplay(mode);
+
+        private static string NoteReminderIntervalUnitFromDisplay(string display)
+        {
+            var normalized = (display ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "минуты" => NoteReminderIntervalUnits.Minutes,
+                "часы" => NoteReminderIntervalUnits.Hours,
+                _ => NoteReminderIntervalUnits.Days
+            };
+        }
+
+        private static string NoteReminderIntervalUnitToDisplay(string unit)
+            => NoteReminderIntervalUnits.ToDisplay(unit);
+
+        private static TimeSpan ParseReminderTimeOrDefault(string text, TimeSpan fallback)
+        {
+            var value = (text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(value))
+                return fallback;
+
+            if (TimeSpan.TryParseExact(value, new[] { "hh\\:mm", "h\\:mm" }, CultureInfo.InvariantCulture, out var parsed))
+                return parsed;
+            if (DateTime.TryParseExact(value, new[] { "HH:mm", "H:mm" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
+                return parsedDate.TimeOfDay;
+
+            return fallback;
+        }
+
+        private void UpdateNoteFormState(bool clearFields = false)
+        {
+            if (clearFields)
+                ResetNoteFormInputs();
+            else if (selectedNoteRow == null && string.IsNullOrWhiteSpace(NoteTitleBox?.Text) && string.IsNullOrWhiteSpace(NoteBodyBox?.Text))
+                ResetNoteFormInputs();
+
+            if (SaveNoteButton != null)
+                SaveNoteButton.Content = selectedNoteRow == null ? "➕ Добавить" : "💾 Обновить";
+        }
+
+        private void ResetNoteFormInputs()
+        {
+            if (NoteTitleBox != null) NoteTitleBox.Text = string.Empty;
+            if (NoteBodyBox != null) NoteBodyBox.Text = string.Empty;
+            if (NoteDoneCheckBox != null) NoteDoneCheckBox.IsChecked = false;
+            if (NoteReminderModeBox != null) NoteReminderModeBox.SelectedItem = NoteReminderModeToDisplay(NoteReminderModes.None);
+            if (NoteReminderStartDatePicker != null) NoteReminderStartDatePicker.SelectedDate = DateTime.Today;
+            if (NoteReminderTimeBox != null) NoteReminderTimeBox.Text = DateTime.Now.ToString("HH:mm");
+            if (NoteReminderIntervalValueBox != null) NoteReminderIntervalValueBox.Text = "1";
+            if (NoteReminderIntervalUnitBox != null) NoteReminderIntervalUnitBox.SelectedItem = NoteReminderIntervalUnitToDisplay(NoteReminderIntervalUnits.Days);
+        }
+
+        private void FillNoteForm(ProjectNoteEntry row)
+        {
+            if (row == null)
+                return;
+
+            if (NoteTitleBox != null) NoteTitleBox.Text = row.Title ?? string.Empty;
+            if (NoteBodyBox != null) NoteBodyBox.Text = row.Body ?? string.Empty;
+            if (NoteDoneCheckBox != null) NoteDoneCheckBox.IsChecked = row.IsDone;
+            if (NoteReminderModeBox != null) NoteReminderModeBox.SelectedItem = NoteReminderModeToDisplay(row.ReminderMode);
+
+            var start = row.ReminderStart ?? DateTime.Today;
+            if (NoteReminderStartDatePicker != null) NoteReminderStartDatePicker.SelectedDate = start.Date;
+            if (NoteReminderTimeBox != null) NoteReminderTimeBox.Text = start.ToString("HH:mm");
+            if (NoteReminderIntervalValueBox != null) NoteReminderIntervalValueBox.Text = Math.Max(1, row.ReminderIntervalValue).ToString(CultureInfo.InvariantCulture);
+            if (NoteReminderIntervalUnitBox != null) NoteReminderIntervalUnitBox.SelectedItem = NoteReminderIntervalUnitToDisplay(row.ReminderIntervalUnit);
+        }
+
+        private void ReadNoteForm(ProjectNoteEntry row)
+        {
+            var oldMode = row.ReminderMode;
+            var oldStart = row.ReminderStart;
+            var oldIntervalValue = row.ReminderIntervalValue;
+            var oldIntervalUnit = row.ReminderIntervalUnit;
+
+            row.Title = (NoteTitleBox?.Text ?? string.Empty).Trim();
+            row.Body = (NoteBodyBox?.Text ?? string.Empty).Trim();
+            row.IsDone = NoteDoneCheckBox?.IsChecked == true;
+
+            var mode = NoteReminderModeFromDisplay(NoteReminderModeBox?.SelectedItem?.ToString() ?? string.Empty);
+            row.ReminderMode = mode;
+
+            if (!int.TryParse((NoteReminderIntervalValueBox?.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var intervalValue) || intervalValue <= 0)
+                intervalValue = 1;
+            row.ReminderIntervalValue = intervalValue;
+            row.ReminderIntervalUnit = NoteReminderIntervalUnitFromDisplay(NoteReminderIntervalUnitBox?.SelectedItem?.ToString() ?? string.Empty);
+
+            if (mode == NoteReminderModes.None)
+            {
+                row.ReminderStart = null;
+                row.ReminderLastAcknowledgedAt = null;
+            }
+            else
+            {
+                var date = NoteReminderStartDatePicker?.SelectedDate ?? DateTime.Today;
+                var time = ParseReminderTimeOrDefault(NoteReminderTimeBox?.Text, new TimeSpan(9, 0, 0));
+                row.ReminderStart = date.Date + time;
+
+                if (!string.Equals(oldMode, row.ReminderMode, StringComparison.Ordinal)
+                    || oldStart != row.ReminderStart
+                    || oldIntervalValue != row.ReminderIntervalValue
+                    || !string.Equals(oldIntervalUnit, row.ReminderIntervalUnit, StringComparison.Ordinal))
+                {
+                    row.ReminderLastAcknowledgedAt = null;
+                }
+            }
+
+            if (row.CreatedAtUtc == default)
+                row.CreatedAtUtc = DateTime.UtcNow;
+            row.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        private static bool ValidateNoteRow(ProjectNoteEntry row, out string message)
+        {
+            message = null;
+            if (row == null)
+            {
+                message = "Не удалось прочитать заметку.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(row.Title) && string.IsNullOrWhiteSpace(row.Body))
+            {
+                message = "Введите заголовок или текст заметки.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void SaveNote_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentObject == null)
+            {
+                MessageBox.Show("Сначала создайте объект.");
+                return;
+            }
+
+            EnsureNotesStorage();
+            var row = selectedNoteRow ?? new ProjectNoteEntry();
+            var isNewRow = selectedNoteRow == null;
+            ReadNoteForm(row);
+
+            if (!ValidateNoteRow(row, out var message))
+            {
+                MessageBox.Show(message, "Заметки", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (isNewRow)
+                currentObject.Notes.Add(row);
+
+            selectedNoteRow = row;
+            notesStateDirty = true;
+            RefreshNotesState();
+            if (NotesGrid != null)
+                NotesGrid.SelectedItem = row;
+            SaveState();
+        }
+
+        private void DeleteNote_Click(object sender, RoutedEventArgs e)
+        {
+            var row = selectedNoteRow ?? NotesGrid?.SelectedItem as ProjectNoteEntry;
+            if (row == null || currentObject?.Notes == null)
+            {
+                MessageBox.Show("Выберите заметку.");
+                return;
+            }
+
+            PushUndo();
+            currentObject.Notes.Remove(row);
+            selectedNoteRow = null;
+            notesStateDirty = true;
+            RefreshNotesState();
+            SaveState();
+        }
+
+        private void ClearNoteForm_Click(object sender, RoutedEventArgs e)
+        {
+            selectedNoteRow = null;
+            if (NotesGrid != null)
+                NotesGrid.SelectedItem = null;
+            UpdateNoteFormState(clearFields: true);
+        }
+
+        private void AcknowledgeNoteReminder_Click(object sender, RoutedEventArgs e)
+        {
+            var row = selectedNoteRow ?? NotesGrid?.SelectedItem as ProjectNoteEntry;
+            if (row == null)
+            {
+                MessageBox.Show("Выберите заметку.");
+                return;
+            }
+
+            if (string.Equals(NoteReminderModes.Normalize(row.ReminderMode), NoteReminderModes.None, StringComparison.Ordinal))
+            {
+                MessageBox.Show("Для этой заметки не настроено напоминание.");
+                return;
+            }
+
+            row.AcknowledgeReminder(DateTime.Now);
+            row.UpdatedAtUtc = DateTime.UtcNow;
+            notesStateDirty = true;
+            RefreshNotesState();
+            if (NotesGrid != null)
+                NotesGrid.SelectedItem = row;
+            SaveState();
+        }
+
+        private void NotesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (NotesGrid?.SelectedItem is not ProjectNoteEntry row)
+            {
+                selectedNoteRow = null;
+                UpdateNoteFormState(clearFields: false);
+                return;
+            }
+
+            selectedNoteRow = row;
+            FillNoteForm(row);
+            UpdateNoteFormState();
+        }
+
         private void AddProductionRow_Click(object sender, RoutedEventArgs e) => SaveProductionForm_Click(sender, e);
 
         private void SaveProductionForm_Click(object sender, RoutedEventArgs e)
@@ -10653,8 +11679,11 @@ namespace ConstructionControl
             var row = selectedProductionRow ?? new ProductionJournalEntry();
             productionRowSnapshotJson = JsonSerializer.Serialize(row);
             ReadProductionForm(row);
+            EnsureArmoringCompanionDecision(row);
             if (!ApplyProductionRowChanges(row))
                 return;
+
+            SaveProductionWorkRuleFromEntry(row);
 
             if (selectedProductionRow == null)
                 currentObject.ProductionJournal.Add(row);
@@ -10733,30 +11762,65 @@ namespace ConstructionControl
                 ProductionSaveButton.Content = selectedProductionRow == null ? "➕ Добавить" : "💾 Обновить";
         }
 
-        private List<string> GetAvailableProductionElements(string workName)
+        private List<string> GetAvailableProductionElements(string workName, string actionName = null)
         {
-            var values = new List<string>();
-            if (!string.IsNullOrWhiteSpace(workName))
-            {
-                values.AddRange(currentObject?.MaterialCatalog?
-                    .Where(x => string.Equals(x.CategoryName, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals(x.TypeName ?? string.Empty, workName.Trim(), StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName)
-                    ?? Enumerable.Empty<string>());
+            var normalizedWork = ResolveProductionCanonicalValue(workName, GetAllProductionWorkOptions());
+            var normalizedAction = actionName?.Trim() ?? string.Empty;
+            var source = currentObject?.ProductionJournal ?? new List<ProductionJournalEntry>();
 
-                values.AddRange(journal
-                    .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals(x.MaterialGroup ?? string.Empty, workName.Trim(), StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.MaterialName));
-            }
-            else
+            IEnumerable<ProductionJournalEntry> filtered = source;
+
+            if (!string.IsNullOrWhiteSpace(normalizedAction))
             {
-                values.AddRange(productionElements);
+                filtered = filtered.Where(x =>
+                    string.Equals((x.ActionName ?? string.Empty).Trim(), normalizedAction, StringComparison.CurrentCultureIgnoreCase));
             }
 
-            return values
+            if (!string.IsNullOrWhiteSpace(normalizedWork))
+            {
+                filtered = filtered.Where(x =>
+                    AreProductionLookupValuesEquivalent((x.WorkName ?? string.Empty).Trim(), normalizedWork));
+            }
+            else if (!string.IsNullOrWhiteSpace(normalizedAction))
+            {
+                var mappedWorks = GetMappedProductionWorksForAction(normalizedAction);
+                if (mappedWorks.Count > 0)
+                {
+                    filtered = filtered.Where(x =>
+                        mappedWorks.Any(mapped =>
+                            AreProductionLookupValuesEquivalent((x.WorkName ?? string.Empty).Trim(), mapped)));
+                }
+            }
+
+            var fromJournalRows = filtered
+                .SelectMany(x => ParseProductionItems(x.ElementsText))
+                .Select(x => x.MaterialName)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
+                .Select(x => x.Trim());
+
+            var mappedNames = GetMappedProductionMaterialsForWork(normalizedWork);
+
+            var fromCatalog = currentObject?.MaterialCatalog?
+                .Where(x => x != null
+                    && string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase)
+                    && (string.IsNullOrWhiteSpace(normalizedWork)
+                        || AreProductionLookupValuesEquivalent((x.TypeName ?? string.Empty).Trim(), normalizedWork)))
+                .Select(x => x.MaterialName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                ?? Enumerable.Empty<string>();
+
+            var fromArrival = journal
+                .Where(x => x != null
+                    && string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(x.MaterialName)
+                    && (string.IsNullOrWhiteSpace(normalizedWork)
+                        || AreProductionLookupValuesEquivalent((x.MaterialGroup ?? string.Empty).Trim(), normalizedWork)))
+                .Select(x => x.MaterialName.Trim());
+
+            return fromJournalRows
+                .Concat(mappedNames)
+                .Concat(fromCatalog)
+                .Concat(fromArrival)
                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
                 .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
@@ -10764,13 +11828,16 @@ namespace ConstructionControl
 
         private void EditProductionItems_Click(object sender, RoutedEventArgs e)
         {
-            var availableNames = GetAvailableProductionElements(ProductionWorkBox?.Text);
+            var availableNames = GetAvailableProductionElements(
+                GetSelectedProductionWorkForLookups(),
+                GetSelectedProductionActionForLookups());
             var currentItems = ParseProductionItems(ProductionElementsBox?.Text);
             var result = PromptProductionItems(currentItems, availableNames);
             if (result == null)
                 return;
 
-            ProductionElementsBox.Text = FormatProductionItems(result);
+            if (ProductionElementsBox != null)
+                ProductionElementsBox.Text = FormatProductionItems(result);
         }
 
         private List<ProductionItemQuantity> PromptProductionItems(IEnumerable<ProductionItemQuantity> currentItems, List<string> availableNames)
@@ -10781,7 +11848,9 @@ namespace ConstructionControl
                 {
                     MaterialName = x.MaterialName,
                     Quantity = x.Quantity,
-                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                    Unit = NormalizeProductionItemUnit(x.Unit, defaultToPieces: true),
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>()),
+                    AvailableUnits = new ObservableCollection<string>(ProductionItemUnits)
                 }));
 
             if (rows.Count == 0)
@@ -10789,7 +11858,9 @@ namespace ConstructionControl
                 rows.Add(new ProductionItemEditorRow
                 {
                     Quantity = 1,
-                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                    Unit = "шт",
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>()),
+                    AvailableUnits = new ObservableCollection<string>(ProductionItemUnits)
                 });
             }
 
@@ -10809,7 +11880,7 @@ namespace ConstructionControl
 
             var hint = new TextBlock
             {
-                Text = "Количество вводится отдельно для каждого элемента. \"шт\" писать не нужно.",
+                Text = "Количество и единица задаются отдельно для каждого элемента. Можно вписывать свои названия вручную.",
                 Margin = new Thickness(0, 0, 0, 12),
                 Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105))
             };
@@ -10834,6 +11905,7 @@ namespace ConstructionControl
                     var rowGrid = new Grid { Margin = new Thickness(0, 0, 0, 10) };
                     rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                     rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
                     rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
                     var elementBox = new ComboBox
@@ -10868,6 +11940,23 @@ namespace ConstructionControl
                     Grid.SetColumn(quantityBox, 1);
                     rowGrid.Children.Add(quantityBox);
 
+                    var unitBox = new ComboBox
+                    {
+                        IsEditable = true,
+                        IsTextSearchEnabled = true,
+                        StaysOpenOnEdit = true,
+                        ItemsSource = row.AvailableUnits,
+                        Margin = new Thickness(0, 0, 10, 0)
+                    };
+                    unitBox.SetBinding(ComboBox.TextProperty, new Binding(nameof(ProductionItemEditorRow.Unit))
+                    {
+                        Source = row,
+                        Mode = BindingMode.TwoWay,
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                    });
+                    Grid.SetColumn(unitBox, 2);
+                    rowGrid.Children.Add(unitBox);
+
                     var deleteButton = new Button
                     {
                         Content = "Удалить",
@@ -10882,12 +11971,14 @@ namespace ConstructionControl
                             rows.Add(new ProductionItemEditorRow
                             {
                                 Quantity = 1,
-                                AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                                Unit = "шт",
+                                AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>()),
+                                AvailableUnits = new ObservableCollection<string>(ProductionItemUnits)
                             });
                         }
                         RenderRows();
                     };
-                    Grid.SetColumn(deleteButton, 2);
+                    Grid.SetColumn(deleteButton, 3);
                     rowGrid.Children.Add(deleteButton);
 
                     rowsPanel.Children.Add(rowGrid);
@@ -10911,7 +12002,9 @@ namespace ConstructionControl
                 rows.Add(new ProductionItemEditorRow
                 {
                     Quantity = 1,
-                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>())
+                    Unit = "шт",
+                    AvailableNames = new ObservableCollection<string>(availableNames ?? new List<string>()),
+                    AvailableUnits = new ObservableCollection<string>(ProductionItemUnits)
                 });
                 RenderRows();
             };
@@ -10946,7 +12039,8 @@ namespace ConstructionControl
                     .Select(x => new ProductionItemQuantity
                     {
                         MaterialName = x.MaterialName?.Trim(),
-                        Quantity = x.Quantity
+                        Quantity = x.Quantity,
+                        Unit = NormalizeProductionItemUnit(x.Unit, defaultToPieces: true)
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
                     .ToList();
@@ -11314,7 +12408,7 @@ namespace ConstructionControl
             var settings = ResolveProductionAutoFillSettingsForRun();
             var baseDate = ProductionDatePicker?.SelectedDate ?? DateTime.Today;
             var baseAction = string.IsNullOrWhiteSpace(ProductionActionBox?.Text) ? (productionActions.FirstOrDefault() ?? "Монтаж") : ProductionActionBox.Text.Trim();
-            var baseWork = ProductionWorkBox?.Text?.Trim();
+            var baseWork = ProductionWorkBox?.Text?.Trim() ?? string.Empty;
             var baseBlocks = string.IsNullOrWhiteSpace(ProductionBlocksBox?.Text) ? (productionBlockOptions.FirstOrDefault() ?? "1") : ProductionBlocksBox.Text.Trim();
             var baseMarks = string.IsNullOrWhiteSpace(ProductionMarksBox?.Text) ? (productionMarkOptions.FirstOrDefault() ?? string.Empty) : ProductionMarksBox.Text.Trim();
             var baseBrigade = ProductionBrigadeBox?.Text?.Trim();
@@ -11341,8 +12435,11 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(baseWork))
                 baseWork = groupForMarks;
 
-            if (ProductionWorkBox != null && !string.IsNullOrWhiteSpace(baseWork))
-                ProductionWorkBox.Text = baseWork;
+            if (ProductionWorkBox != null)
+            {
+                if (!string.IsNullOrWhiteSpace(baseWork))
+                    ProductionWorkBox.Text = baseWork;
+            }
             if (ProductionBlocksBox != null && !string.IsNullOrWhiteSpace(baseBlocks))
                 ProductionBlocksBox.Text = baseBlocks;
             if (ProductionMarksBox != null && !string.IsNullOrWhiteSpace(baseMarks))
@@ -11605,7 +12702,8 @@ namespace ConstructionControl
                     rowItems.Add(new ProductionItemQuantity
                     {
                         MaterialName = candidate.Material,
-                        Quantity = quantity
+                        Quantity = quantity,
+                        Unit = NormalizeProductionItemUnit(candidate.Unit, defaultToPieces: true)
                     });
 
                     candidate.RemainingToPlan = Math.Max(0, candidate.RemainingToPlan - quantity);
@@ -11645,7 +12743,8 @@ namespace ConstructionControl
                     new ProductionItemQuantity
                     {
                         MaterialName = extra.Material,
-                        Quantity = quantity
+                        Quantity = quantity,
+                        Unit = NormalizeProductionItemUnit(extra.Unit, defaultToPieces: true)
                     }
                 });
 
@@ -11688,16 +12787,21 @@ namespace ConstructionControl
 
             ProductionDatePicker.SelectedDate = DateTime.Today;
             ProductionActionBox.Text = productionActions.FirstOrDefault() ?? "Монтаж";
+            RefreshProductionTargetOptions();
             ProductionWorkBox.Text = productionTargets.FirstOrDefault() ?? string.Empty;
-            ProductionElementsBox.Text = string.Empty;
+            if (ProductionElementsBox != null)
+                ProductionElementsBox.Text = string.Empty;
             ProductionBlocksBox.Text = productionBlockOptions.FirstOrDefault() ?? "1";
             ProductionBrigadeBox.Text = timesheetAssignableBrigades.FirstOrDefault() ?? string.Empty;
             ProductionWeatherBox.Text = string.Empty;
             ProductionDeviationBox.Text = string.Empty;
+            if (ProductionAllowCustomElementsCheckBox != null)
+                ProductionAllowCustomElementsCheckBox.IsChecked = false;
             ProductionHiddenWorksCheckBox.IsChecked = false;
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
             RefreshProductionDeviationOptions();
+            ApplyProductionWorkRuleToForm(resetWhenMissing: true);
         }
 
         private void FillProductionForm(ProductionJournalEntry row)
@@ -11707,16 +12811,20 @@ namespace ConstructionControl
 
             ProductionDatePicker.SelectedDate = row.Date;
             ProductionActionBox.Text = row.ActionName ?? string.Empty;
+            RefreshProductionTargetOptions();
             ProductionWorkBox.Text = row.WorkName ?? string.Empty;
+            if (ProductionElementsBox != null)
+                ProductionElementsBox.Text = row.ElementsText ?? string.Empty;
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
             RefreshProductionDeviationOptions();
-            ProductionElementsBox.Text = row.ElementsText ?? string.Empty;
             ProductionBlocksBox.Text = row.BlocksText ?? string.Empty;
             ProductionMarksBox.Text = row.MarksText ?? string.Empty;
             ProductionBrigadeBox.Text = row.BrigadeName ?? string.Empty;
             ProductionWeatherBox.Text = row.Weather ?? string.Empty;
             ProductionDeviationBox.Text = row.Deviations ?? string.Empty;
+            if (ProductionAllowCustomElementsCheckBox != null)
+                ProductionAllowCustomElementsCheckBox.IsChecked = row.AllowCustomElements;
             ProductionHiddenWorksCheckBox.IsChecked = row.RequiresHiddenWorkAct;
         }
 
@@ -11724,13 +12832,17 @@ namespace ConstructionControl
         {
             row.Date = ProductionDatePicker.SelectedDate ?? DateTime.Today;
             row.ActionName = ProductionActionBox.Text?.Trim();
-            row.WorkName = ProductionWorkBox.Text?.Trim();
-            row.ElementsText = ProductionElementsBox.Text?.Trim();
+            row.WorkName = ProductionWorkBox.Text?.Trim() ?? string.Empty;
+            row.ElementsText = ProductionElementsBox?.Text?.Trim() ?? string.Empty;
             row.BlocksText = ProductionBlocksBox.Text?.Trim();
             row.MarksText = ProductionMarksBox.Text?.Trim();
             row.BrigadeName = ProductionBrigadeBox.Text?.Trim();
             row.Weather = ProductionWeatherBox.Text?.Trim();
             row.Deviations = ProductionDeviationBox.Text?.Trim();
+            var hasUnknownItems = ParseProductionItems(row.ElementsText)
+                .Any(x => !IsKnownProductionItemName(x.MaterialName, row.WorkName));
+            row.AllowCustomElements = (ProductionAllowCustomElementsCheckBox?.IsChecked == true) || hasUnknownItems;
+            row.IgnorePhotoRule = false;
             row.RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox.IsChecked == true;
         }
 
@@ -11751,17 +12863,23 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(name))
                 return;
 
+            var templateWorkName = ProductionWorkBox?.Text?.Trim() ?? string.Empty;
+            var templateElementsText = ProductionElementsBox?.Text?.Trim() ?? string.Empty;
+            var templateHasUnknownItems = ParseProductionItems(templateElementsText)
+                .Any(x => !IsKnownProductionItemName(x.MaterialName, templateWorkName));
             var template = new ProductionJournalTemplate
             {
                 Name = name,
                 ActionName = ProductionActionBox?.Text?.Trim() ?? string.Empty,
-                WorkName = ProductionWorkBox?.Text?.Trim() ?? string.Empty,
-                ElementsText = ProductionElementsBox?.Text?.Trim() ?? string.Empty,
+                WorkName = templateWorkName,
+                ElementsText = templateElementsText,
                 BlocksText = ProductionBlocksBox?.Text?.Trim() ?? string.Empty,
                 MarksText = ProductionMarksBox?.Text?.Trim() ?? string.Empty,
                 BrigadeName = ProductionBrigadeBox?.Text?.Trim() ?? string.Empty,
                 Weather = ProductionWeatherBox?.Text?.Trim() ?? string.Empty,
                 Deviations = ProductionDeviationBox?.Text?.Trim() ?? string.Empty,
+                AllowCustomElements = (ProductionAllowCustomElementsCheckBox?.IsChecked == true) || templateHasUnknownItems,
+                IgnorePhotoRule = false,
                 RequiresHiddenWorkAct = ProductionHiddenWorksCheckBox?.IsChecked == true
             };
 
@@ -11771,6 +12889,8 @@ namespace ConstructionControl
                 currentObject.ProductionTemplates.Remove(existing);
 
             currentObject.ProductionTemplates.Add(template);
+            UpsertProductionWorkRule(template.WorkName, template.AllowCustomElements);
+            productionLookupsDirty = true;
             SaveState();
         }
 
@@ -11782,16 +12902,20 @@ namespace ConstructionControl
 
             ProductionDatePicker.SelectedDate ??= DateTime.Today;
             ProductionActionBox.Text = template.ActionName ?? string.Empty;
+            RefreshProductionTargetOptions();
             ProductionWorkBox.Text = template.WorkName ?? string.Empty;
+            if (ProductionElementsBox != null)
+                ProductionElementsBox.Text = template.ElementsText ?? string.Empty;
             RefreshProductionElementOptions();
             RefreshProductionMarkOptions();
             RefreshProductionDeviationOptions();
-            ProductionElementsBox.Text = template.ElementsText ?? string.Empty;
             ProductionBlocksBox.Text = template.BlocksText ?? string.Empty;
             ProductionMarksBox.Text = template.MarksText ?? string.Empty;
             ProductionBrigadeBox.Text = template.BrigadeName ?? string.Empty;
             ProductionWeatherBox.Text = template.Weather ?? string.Empty;
             ProductionDeviationBox.Text = template.Deviations ?? string.Empty;
+            if (ProductionAllowCustomElementsCheckBox != null)
+                ProductionAllowCustomElementsCheckBox.IsChecked = template.AllowCustomElements;
             ProductionHiddenWorksCheckBox.IsChecked = template.RequiresHiddenWorkAct;
         }
 
@@ -11834,6 +12958,8 @@ namespace ConstructionControl
                     BrigadeName = template.BrigadeName ?? string.Empty,
                     Weather = template.Weather ?? string.Empty,
                     Deviations = template.Deviations ?? string.Empty,
+                    AllowCustomElements = template.AllowCustomElements,
+                    IgnorePhotoRule = false,
                     RequiresHiddenWorkAct = template.RequiresHiddenWorkAct
                 };
 
@@ -11962,6 +13088,18 @@ namespace ConstructionControl
 
             var originalItems = ParseProductionItems(row.ElementsText);
             var adjustedMessages = new List<string>();
+            var unknownItems = originalItems
+                .Where(x => ShouldBypassProductionArrivalValidation(row, x.MaterialName))
+                .Select(x => x.MaterialName?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            if (unknownItems.Count > 0)
+            {
+                adjustedMessages.Add(
+                    $"В приходе не найдено: {string.Join(", ", unknownItems)}. Запись сохранена как пользовательская (без проверки прихода).");
+            }
+
             var adjustedItems = AdjustProductionItems(row, originalItems, adjustedMessages, out var hasCorrections);
             row.IsAutoCorrectedQuantity = hasCorrections;
             row.ElementsText = FormatProductionItems(adjustedItems);
@@ -11986,6 +13124,9 @@ namespace ConstructionControl
                 return false;
             }
 
+            UpsertProductionActionWorkMapping(row.ActionName, row.WorkName);
+            foreach (var item in adjustedItems.Where(x => !string.IsNullOrWhiteSpace(x.MaterialName)))
+                UpsertProductionTypeMaterialMapping(row.WorkName, item.MaterialName);
             EnsureArmoringCompanionRow(row);
             NormalizeProductionJournalRows();
             RefreshProductionJournalLookups();
@@ -12015,6 +13156,16 @@ namespace ConstructionControl
                 row.WorkName = ParseProductionItems(row.ElementsText)
                     .Select(x => FindMaterialGroupByName(x.MaterialName))
                     .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? row.WorkName;
+            }
+
+            row.WorkName = NormalizeProductionWorkForStorage(row.WorkName);
+
+            row.IgnorePhotoRule = false;
+            var workRule = FindProductionWorkRule(row.WorkName);
+            if (workRule != null && !row.AllowCustomElements)
+            {
+                row.AllowCustomElements = workRule.AllowCustomElements;
+                row.IgnorePhotoRule = false;
             }
 
             if (string.IsNullOrWhiteSpace(row.Deviations))
@@ -12085,10 +13236,14 @@ namespace ConstructionControl
             row.BrigadeName = snapshot.BrigadeName;
             row.Weather = snapshot.Weather;
             row.Deviations = snapshot.Deviations;
+            row.AllowCustomElements = snapshot.AllowCustomElements;
+            row.IgnorePhotoRule = false;
             row.RequiresHiddenWorkAct = snapshot.RequiresHiddenWorkAct;
             row.RemainingInfo = snapshot.RemainingInfo;
             row.IsAutoCorrectedQuantity = snapshot.IsAutoCorrectedQuantity;
             row.IsGeneratedCompanion = snapshot.IsGeneratedCompanion;
+            row.ArmoringCompanionRequested = snapshot.ArmoringCompanionRequested;
+            row.ArmoringPromptHandled = snapshot.ArmoringPromptHandled;
         }
 
         private bool ValidateProductionRow(ProductionJournalEntry row, out string message)
@@ -12115,6 +13270,9 @@ namespace ConstructionControl
 
             foreach (var item in items)
             {
+                if (ShouldBypassProductionArrivalValidation(row, item.MaterialName))
+                    continue;
+
                 var group = FindMaterialGroupByName(item.MaterialName);
                 if (string.IsNullOrWhiteSpace(group))
                     continue;
@@ -12122,8 +13280,8 @@ namespace ConstructionControl
                 var alreadyMounted = GetMountedQuantityFromProductionJournal(item.MaterialName, excludeRow: row);
                 var arrived = journal
                     .Where(x => x.Category == "Основные"
-                        && string.Equals(x.MaterialGroup ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)
-                        && string.Equals(x.MaterialName ?? string.Empty, item.MaterialName, StringComparison.CurrentCultureIgnoreCase))
+                        && AreProductionLookupValuesEquivalent(x.MaterialGroup ?? string.Empty, group)
+                        && AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, item.MaterialName))
                     .Sum(x => x.Quantity);
 
                 if (alreadyMounted + item.Quantity > arrived + 0.0001)
@@ -12140,6 +13298,30 @@ namespace ConstructionControl
         {
             public string MaterialName { get; set; }
             public double Quantity { get; set; }
+            public string Unit { get; set; }
+        }
+
+        private static string NormalizeProductionItemUnit(string unit, bool defaultToPieces = false)
+        {
+            var normalized = (unit ?? string.Empty).Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return defaultToPieces ? "шт" : string.Empty;
+
+            normalized = normalized.Replace("²", "2").Replace("³", "3");
+            return normalized switch
+            {
+                "шт" => "шт",
+                "шт." => "шт",
+                "штука" => "шт",
+                "штук" => "шт",
+                "м2" => "м2",
+                "м3" => "м3",
+                "м" => "м",
+                "пм" => "пм",
+                "кг" => "кг",
+                "т" => "т",
+                _ => normalized
+            };
         }
 
         private List<ProductionItemQuantity> ParseProductionItems(string text)
@@ -12147,13 +13329,17 @@ namespace ConstructionControl
             var result = new List<ProductionItemQuantity>();
             foreach (var chunk in LevelMarkHelper.SplitText(text))
             {
-                var match = Regex.Match(chunk, @"^(?<name>.*?)(?:\s*[-–]\s*|\s+)(?<qty>\d+(?:[.,]\d+)?)\s*(?:шт\.?|шт)?$", RegexOptions.IgnoreCase);
+                var match = Regex.Match(
+                    chunk,
+                    @"^(?<name>.*?)(?:\s*[-–]\s*|\s+)(?<qty>\d+(?:[.,]\d+)?)\s*(?<unit>шт\.?|шт|м2|м²|м3|м³|м|т|кг|пм)?$",
+                    RegexOptions.IgnoreCase);
                 if (match.Success)
                 {
                     result.Add(new ProductionItemQuantity
                     {
                         MaterialName = match.Groups["name"].Value.Trim(),
-                        Quantity = ParseNumber(match.Groups["qty"].Value)
+                        Quantity = ParseNumber(match.Groups["qty"].Value),
+                        Unit = NormalizeProductionItemUnit(match.Groups["unit"].Value, defaultToPieces: true)
                     });
                 }
                 else
@@ -12161,7 +13347,8 @@ namespace ConstructionControl
                     result.Add(new ProductionItemQuantity
                     {
                         MaterialName = chunk.Trim(),
-                        Quantity = 1
+                        Quantity = 1,
+                        Unit = "шт"
                     });
                 }
             }
@@ -12178,13 +13365,24 @@ namespace ConstructionControl
 
             foreach (var item in items)
             {
+                if (ShouldBypassProductionArrivalValidation(row, item.MaterialName))
+                {
+                    result.Add(new ProductionItemQuantity
+                    {
+                        MaterialName = item.MaterialName?.Trim(),
+                        Quantity = item.Quantity,
+                        Unit = NormalizeProductionItemUnit(item.Unit, defaultToPieces: true)
+                    });
+                    continue;
+                }
+
                 var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
                 var alreadyMounted = GetMountedQuantityFromProductionJournal(item.MaterialName, excludeRow: row);
                 var arrived = journal
                     .Where(x => string.Equals(x.Category, "Основные", StringComparison.CurrentCultureIgnoreCase)
-                             && string.Equals(x.MaterialName ?? string.Empty, item.MaterialName, StringComparison.CurrentCultureIgnoreCase)
+                             && AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, item.MaterialName)
                              && (string.IsNullOrWhiteSpace(group)
-                                 || string.Equals(x.MaterialGroup ?? string.Empty, group, StringComparison.CurrentCultureIgnoreCase)))
+                                 || AreProductionLookupValuesEquivalent(x.MaterialGroup ?? string.Empty, group)))
                     .Sum(x => x.Quantity);
 
                 var allowed = Math.Max(0, arrived - alreadyMounted);
@@ -12205,7 +13403,8 @@ namespace ConstructionControl
                 result.Add(new ProductionItemQuantity
                 {
                     MaterialName = item.MaterialName,
-                    Quantity = finalQuantity
+                    Quantity = finalQuantity,
+                    Unit = NormalizeProductionItemUnit(item.Unit, defaultToPieces: true)
                 });
             }
 
@@ -12216,7 +13415,12 @@ namespace ConstructionControl
         {
             return string.Join(", ", (items ?? Enumerable.Empty<ProductionItemQuantity>())
                 .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName) && x.Quantity > 0)
-                .Select(x => $"{x.MaterialName.Trim()} - {x.Quantity:0.##}"));
+                .Select(x =>
+                {
+                    var unit = NormalizeProductionItemUnit(x.Unit, defaultToPieces: true);
+                    var suffix = string.Equals(unit, "шт", StringComparison.CurrentCultureIgnoreCase) ? string.Empty : $" {unit}";
+                    return $"{x.MaterialName.Trim()} - {x.Quantity:0.##}{suffix}";
+                }));
         }
 
         private void NormalizeProductionJournalRows()
@@ -12242,17 +13446,22 @@ namespace ConstructionControl
         {
             if (row == null
                 || currentObject?.ProductionJournal == null
-                || !string.Equals(row.ActionName?.Trim(), "Устройство", StringComparison.CurrentCultureIgnoreCase)
-                || string.IsNullOrWhiteSpace(row.WorkName)
                 || row.Date <= DateTime.MinValue)
                 return;
 
-            var workName = row.WorkName.Trim();
-            if (workName.IndexOf("бетонир", StringComparison.CurrentCultureIgnoreCase) < 0)
+            var actionName = row.ActionName?.Trim() ?? string.Empty;
+            var workName = row.WorkName?.Trim() ?? string.Empty;
+            var hasBetoning = actionName.IndexOf("бетонир", StringComparison.CurrentCultureIgnoreCase) >= 0
+                || workName.IndexOf("бетонир", StringComparison.CurrentCultureIgnoreCase) >= 0;
+            if (!hasBetoning)
+                return;
+
+            if (!row.ArmoringCompanionRequested)
                 return;
 
             var previousDay = row.Date.AddDays(-1).Date;
-            var armoringWork = Regex.Replace(workName, "бетонир\\w*", "армирование", RegexOptions.IgnoreCase);
+            var armoringAction = BuildArmoringCompanionActionName(actionName);
+            var armoringWork = BuildArmoringCompanionWorkName(workName);
             var previousWeather = currentObject.ProductionJournal
                 .Where(x => !ReferenceEquals(x, row)
                          && x.Date.Date == previousDay
@@ -12261,23 +13470,14 @@ namespace ConstructionControl
                 .Select(x => x.Weather)
                 .FirstOrDefault() ?? row.Weather;
 
-            var exists = currentObject.ProductionJournal.Any(x =>
-                !ReferenceEquals(x, row)
-                && x.Date.Date == previousDay
-                && string.Equals(x.ActionName?.Trim(), row.ActionName?.Trim(), StringComparison.CurrentCultureIgnoreCase)
-                && string.Equals(x.WorkName?.Trim(), armoringWork, StringComparison.CurrentCultureIgnoreCase)
-                && string.Equals(x.ElementsText?.Trim(), row.ElementsText?.Trim(), StringComparison.CurrentCultureIgnoreCase)
-                && string.Equals(x.BlocksText?.Trim(), row.BlocksText?.Trim(), StringComparison.CurrentCultureIgnoreCase)
-                && string.Equals(x.MarksText?.Trim(), row.MarksText?.Trim(), StringComparison.CurrentCultureIgnoreCase));
-
-            if (exists)
+            if (HasExistingArmoringCompanion(row))
                 return;
 
             currentObject.ProductionJournal.Add(new ProductionJournalEntry
             {
                 Date = previousDay,
-                ActionName = row.ActionName,
-                WorkName = armoringWork,
+                ActionName = string.IsNullOrWhiteSpace(armoringAction) ? row.ActionName : armoringAction,
+                WorkName = string.IsNullOrWhiteSpace(armoringWork) ? row.WorkName : armoringWork,
                 ElementsText = row.ElementsText,
                 BlocksText = row.BlocksText,
                 MarksText = row.MarksText,
@@ -12285,7 +13485,8 @@ namespace ConstructionControl
                 Weather = previousWeather,
                 Deviations = row.Deviations,
                 RequiresHiddenWorkAct = row.RequiresHiddenWorkAct,
-                IsGeneratedCompanion = true
+                IsGeneratedCompanion = true,
+                ArmoringPromptHandled = true
             });
         }
 
@@ -12297,7 +13498,7 @@ namespace ConstructionControl
             return currentObject.ProductionJournal
                 .Where(x => !ReferenceEquals(x, excludeRow))
                 .SelectMany(x => ParseProductionItems(x.ElementsText))
-                .Where(x => string.Equals(x.MaterialName, materialName, StringComparison.CurrentCultureIgnoreCase))
+                .Where(x => AreProductionLookupValuesEquivalent(x.MaterialName, materialName))
                 .Sum(x => x.Quantity);
         }
 
@@ -12306,8 +13507,10 @@ namespace ConstructionControl
             if (string.IsNullOrWhiteSpace(materialName))
                 return null;
 
+            var normalizedMaterialName = materialName.Trim();
+
             var fromCatalog = currentObject?.MaterialCatalog?
-                .FirstOrDefault(x => string.Equals(x.MaterialName ?? string.Empty, materialName, StringComparison.CurrentCultureIgnoreCase))
+                .FirstOrDefault(x => AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, normalizedMaterialName))
                 ?.TypeName;
 
             if (!string.IsNullOrWhiteSpace(fromCatalog))
@@ -12315,7 +13518,7 @@ namespace ConstructionControl
 
             return journal
                 .Where(x => x.Category == "Основные"
-                    && string.Equals(x.MaterialName ?? string.Empty, materialName, StringComparison.CurrentCultureIgnoreCase))
+                    && AreProductionLookupValuesEquivalent(x.MaterialName ?? string.Empty, normalizedMaterialName))
                 .Select(x => x.MaterialGroup)
                 .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         }
@@ -12348,14 +13551,23 @@ namespace ConstructionControl
 
                 foreach (var item in items)
                 {
+                    if (!ShouldTrackProductionItemInDemand(row, item.MaterialName))
+                        continue;
+
                     var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
                     if (string.IsNullOrWhiteSpace(group))
                         continue;
 
                     EnsureSummaryMarksForGroup(group, marks);
                     var demandKey = BuildDemandKey(group, item.MaterialName);
-                    var demand = GetOrCreateDemand(demandKey, GetUnitForMaterial(group, item.MaterialName));
-                    var unit = demand?.Unit;
+                    var fallbackUnit = !string.IsNullOrWhiteSpace(item.Unit)
+                        ? item.Unit
+                        : GetUnitForMaterial(group, item.MaterialName);
+                    var demand = GetOrCreateDemand(demandKey, fallbackUnit);
+                    if (demand != null && string.IsNullOrWhiteSpace(demand.Unit))
+                        demand.Unit = fallbackUnit;
+
+                    var unit = !string.IsNullOrWhiteSpace(demand?.Unit) ? demand.Unit : fallbackUnit;
                     var isDiscrete = IsDiscreteUnit(unit);
 
                     if (isDiscrete)
@@ -12418,11 +13630,31 @@ namespace ConstructionControl
 
         private string BuildProductionBlocksDisplayText(string blocksText)
         {
-            var blocks = LevelMarkHelper.ParseBlocks(blocksText);
-            if (blocks.Count == 0)
+            var labels = new List<string>();
+            var seen = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var token in SplitProductionBlockTokens(blocksText))
+            {
+                var label = token;
+                if (int.TryParse(token, NumberStyles.Integer, CultureInfo.CurrentCulture, out var block)
+                    || int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out block))
+                {
+                    label = GetProductionBlockLabel(block);
+                }
+
+                if (string.IsNullOrWhiteSpace(label))
+                    continue;
+
+                if (!seen.Add(label))
+                    continue;
+
+                labels.Add(label);
+            }
+
+            if (labels.Count == 0)
                 return blocksText?.Trim() ?? string.Empty;
 
-            return string.Join(", ", blocks.Select(GetProductionBlockLabel));
+            return string.Join(", ", labels);
         }
 
         private string GetProductionBlockLabel(int block)
@@ -12489,12 +13721,17 @@ namespace ConstructionControl
             var parts = new List<string>();
             foreach (var item in items)
             {
+                if (!ShouldTrackProductionItemInDemand(row, item.MaterialName))
+                    continue;
+
                 var group = FindMaterialGroupByName(item.MaterialName) ?? row.WorkName?.Trim();
                 if (string.IsNullOrWhiteSpace(group))
                     continue;
 
                 var demandKey = BuildDemandKey(group, item.MaterialName);
-                var fallbackUnit = GetUnitForMaterial(group, item.MaterialName);
+                var fallbackUnit = !string.IsNullOrWhiteSpace(item.Unit)
+                    ? item.Unit
+                    : GetUnitForMaterial(group, item.MaterialName);
                 var demand = GetOrCreateDemand(demandKey, fallbackUnit);
                 if (demand != null && string.IsNullOrWhiteSpace(demand.Unit))
                     demand.Unit = fallbackUnit;
@@ -13027,9 +14264,11 @@ namespace ConstructionControl
                 timesheetInitialized = false;
                 productionJournalInitialized = false;
                 inspectionJournalInitialized = false;
+                notesInitialized = false;
                 timesheetRows.Clear();
                 productionJournalRows.Clear();
                 inspectionJournalRows.Clear();
+                noteRows.Clear();
                 RefreshDocumentLibraries();
                 AppendChangeLog("Создание объекта", $"Создан новый объект: {currentObject.Name}");
             }
@@ -13653,22 +14892,22 @@ namespace ConstructionControl
             foreach (var i in arrival.Items)
             {
                 var rowGroup = i.MaterialGroup?.Trim() ?? string.Empty;
+                var normalizedCategory = NormalizeArrivalCategory(arrival.Category, arrival.SubCategory);
 
                 if (!string.IsNullOrWhiteSpace(i.MaterialName))
                 {
-                    var categoryName = arrival.Category ?? string.Empty;
-                    var typeName = arrival.Category == "Основные" ? rowGroup : (arrival.SubCategory ?? string.Empty);
-                    var subTypeName = arrival.Category == "Основные" ? string.Empty : rowGroup;
+                    var typeName = rowGroup;
+                    var subTypeName = string.Empty;
 
                       if (!currentObject.MaterialCatalog.Any(x =>
-                          string.Equals(x.CategoryName ?? string.Empty, categoryName, StringComparison.CurrentCultureIgnoreCase)
+                          string.Equals(x.CategoryName ?? string.Empty, normalizedCategory, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.TypeName ?? string.Empty, typeName, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.SubTypeName ?? string.Empty, subTypeName, StringComparison.CurrentCultureIgnoreCase)
                         && string.Equals(x.MaterialName ?? string.Empty, i.MaterialName, StringComparison.CurrentCultureIgnoreCase)))
                     {
                         currentObject.MaterialCatalog.Add(new MaterialCatalogItem
                         {
-                            CategoryName = categoryName,
+                            CategoryName = normalizedCategory,
                             TypeName = typeName,
                             SubTypeName = subTypeName,
                             MaterialName = i.MaterialName
@@ -13676,7 +14915,7 @@ namespace ConstructionControl
                     }
                 }
 
-                  if (arrival.Category == "Основные")
+                  if (string.Equals(normalizedCategory, "Основные", StringComparison.CurrentCultureIgnoreCase))
                   {
                       if (!currentObject.MaterialGroups.Any(g => g.Name == rowGroup))
                           currentObject.MaterialGroups.Add(new MaterialGroup { Name = rowGroup });
@@ -13713,8 +14952,8 @@ namespace ConstructionControl
                 {
                       Date = i.Date,
                       ObjectName = currentObject.Name,
-                      Category = arrival.Category,
-                      SubCategory = arrival.SubCategory,
+                      Category = normalizedCategory,
+                      SubCategory = string.Empty,
                       MaterialGroup = rowGroup,
                       MaterialName = i.MaterialName,
                     Unit = i.Unit,
@@ -13868,16 +15107,23 @@ namespace ConstructionControl
                 IsExpanded = true
             };
 
-            var extraNode = new TreeViewItem
+            var lowCostNode = new TreeViewItem
             {
-                Header = "Допы",
+                Header = "Малоценка",
+                Tag = "Category",
+                IsExpanded = true
+            };
+
+            var internalNode = new TreeViewItem
+            {
+                Header = "Внутренние",
                 Tag = "Category",
                 IsExpanded = true
             };
 
             // ===== ОСНОВНЫЕ =====
             var mainGroups = journal
-                .Where(j => j.Category == "Основные")
+                .Where(j => string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Основные", StringComparison.CurrentCultureIgnoreCase))
                 .GroupBy(j => j.MaterialGroup)
                 .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
 
@@ -13920,33 +15166,61 @@ namespace ConstructionControl
                 mainNode.Items.Add(groupNode);
             }
 
-            // ===== ДОПЫ =====
-            var extraGroups = journal
-                .Where(j => j.Category == "Допы")
-                 .GroupBy(j => j.SubCategory)
+            // ===== МАЛОЦЕНКА =====
+            var lowCostGroups = journal
+                .Where(j => string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Малоценка", StringComparison.CurrentCultureIgnoreCase))
+                .GroupBy(ResolveArrivalGroupForCategory)
                 .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
 
-            foreach (var g in extraGroups)
+            foreach (var g in lowCostGroups)
             {
-                var subNode = new TreeViewItem
+                var groupNode = new TreeViewItem
                 {
                     Header = g.Key,
-                    Tag = "SubCategory",
+                    Tag = "Group",
                     IsExpanded = false
                 };
 
                 foreach (var m in g.Select(x => x.MaterialName)
-                              .Distinct()
+                              .Where(x => !string.IsNullOrWhiteSpace(x))
+                              .Distinct(StringComparer.CurrentCultureIgnoreCase)
                               .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
                 {
-                    AddMaterialTreeNodes(subNode, m, null, "Допы", g.Key);
+                    AddMaterialTreeNodes(groupNode, m, g.Key, "Малоценка", string.Empty);
                 }
 
-                extraNode.Items.Add(subNode);
+                lowCostNode.Items.Add(groupNode);
+            }
+
+            // ===== ВНУТРЕННИЕ =====
+            var internalGroups = journal
+                .Where(j => string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Внутренние", StringComparison.CurrentCultureIgnoreCase))
+                .GroupBy(ResolveArrivalGroupForCategory)
+                .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var g in internalGroups)
+            {
+                var groupNode = new TreeViewItem
+                {
+                    Header = g.Key,
+                    Tag = "Group",
+                    IsExpanded = false
+                };
+
+                foreach (var m in g.Select(x => x.MaterialName)
+                              .Where(x => !string.IsNullOrWhiteSpace(x))
+                              .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                              .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    AddMaterialTreeNodes(groupNode, m, g.Key, "Внутренние", string.Empty);
+                }
+
+                internalNode.Items.Add(groupNode);
             }
 
             newRoot.Items.Add(mainNode);
-            newRoot.Items.Add(extraNode);
+            newRoot.Items.Add(lowCostNode);
+            newRoot.Items.Add(internalNode);
 
             ObjectsTree.Items.Add(newRoot);
         }
@@ -14062,7 +15336,76 @@ namespace ConstructionControl
         private void ObjectsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             SyncArrivalMatrixSelectionWithTree();
+            SyncSummarySelectionWithTree();
             RequestArrivalFilterRefresh(immediate: true);
+        }
+
+        private void SyncSummarySelectionWithTree()
+        {
+            if (currentObject == null || ObjectsTree?.SelectedItem is not TreeViewItem node)
+                return;
+
+            string selectedCategory = null;
+            string selectedGroup = null;
+            string selectedSubType = null;
+
+            foreach (var currentNode in EnumerateNodeWithParents(node))
+            {
+                var kind = GetNodeKind(currentNode);
+                var header = currentNode.Header?.ToString()?.Trim();
+
+                if (string.Equals(kind, "Category", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(header)
+                    && string.IsNullOrWhiteSpace(selectedCategory))
+                {
+                    selectedCategory = header;
+                }
+                else if (string.Equals(kind, "Group", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(header)
+                    && string.IsNullOrWhiteSpace(selectedGroup))
+                {
+                    selectedGroup = header;
+                }
+                else if (string.Equals(kind, "SubType", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(header)
+                    && string.IsNullOrWhiteSpace(selectedSubType))
+                {
+                    selectedSubType = header;
+                }
+
+                if (currentNode.Tag is TreeNodeMeta meta)
+                {
+                    if (string.IsNullOrWhiteSpace(selectedCategory) && !string.IsNullOrWhiteSpace(meta.Category))
+                        selectedCategory = meta.Category.Trim();
+
+                    if (string.IsNullOrWhiteSpace(selectedGroup) && !string.IsNullOrWhiteSpace(meta.GroupName))
+                        selectedGroup = meta.GroupName.Trim();
+
+                    if (string.IsNullOrWhiteSpace(selectedSubType) && !string.IsNullOrWhiteSpace(meta.SubCategory))
+                        selectedSubType = meta.SubCategory.Trim();
+                }
+            }
+
+            if (!string.Equals(selectedCategory, "Основные", StringComparison.CurrentCultureIgnoreCase))
+                return;
+
+            if (!string.IsNullOrWhiteSpace(selectedGroup))
+            {
+                var currentSelectedGroup = currentObject.SummaryVisibleGroups?
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+
+                if (!string.Equals(currentSelectedGroup, selectedGroup, StringComparison.CurrentCultureIgnoreCase))
+                    currentObject.SummaryVisibleGroups = new List<string> { selectedGroup };
+            }
+
+            if (string.IsNullOrWhiteSpace(selectedSubType))
+            {
+                summarySelectedSubType = string.Empty;
+            }
+            else if (!string.Equals(summarySelectedSubType, selectedSubType, StringComparison.CurrentCultureIgnoreCase))
+            {
+                summarySelectedSubType = selectedSubType;
+            }
         }
 
         private void SyncArrivalMatrixSelectionWithTree()
@@ -14514,34 +15857,46 @@ namespace ConstructionControl
             RequestArrivalFilterRefresh();
         }
 
+        private static string NormalizeArrivalCategory(string category, string subCategory)
+        {
+            var normalizedCategory = (category ?? string.Empty).Trim();
+            var normalizedSubCategory = (subCategory ?? string.Empty).Trim();
+
+            if (string.Equals(normalizedCategory, "Допы", StringComparison.CurrentCultureIgnoreCase))
+            {
+                if (string.Equals(normalizedSubCategory, "Малоценка", StringComparison.CurrentCultureIgnoreCase))
+                    return "Малоценка";
+                if (string.Equals(normalizedSubCategory, "Внутренние", StringComparison.CurrentCultureIgnoreCase))
+                    return "Внутренние";
+            }
+
+            return string.IsNullOrWhiteSpace(normalizedCategory) ? "Основные" : normalizedCategory;
+        }
+
+        private static string ResolveArrivalGroupForCategory(JournalRecord row)
+        {
+            var group = row?.MaterialGroup?.Trim();
+            if (!string.IsNullOrWhiteSpace(group))
+                return group;
+
+            var subCategory = row?.SubCategory?.Trim();
+            return string.IsNullOrWhiteSpace(subCategory) ? "Без типа" : subCategory;
+        }
+
 
 
         private void ApplyAllFilters()
         {
             IEnumerable<JournalRecord> data = journal;
-            // === ПРИХОД: КАТЕГОРИЯ ОСНОВНЫЕ/ДОПЫ ===
+            // === ПРИХОД: КАТЕГОРИИ ===
             bool showMain = ArrivalMainCheck?.IsChecked == true;
-            bool showExtra = ArrivalExtraCheck?.IsChecked == true;
+            bool showLowCost = ArrivalExtraCheck?.IsChecked == true;
+            bool showInternal = ArrivalLowCostCheck?.IsChecked == true;
 
             data = data.Where(j =>
-                (showMain && j.Category == "Основные")
-                || (showExtra && j.Category == "Допы")
-            );
-
-
-
-            // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ =====
-            // ===== ДОПОЛНИТЕЛЬНЫЕ ФИЛЬТРЫ (ДОПЫ ПО УМОЛЧАНИЮ СКРЫТЫ) =====
-            // === ПРИХОД: ДОПОЛНИТЕЛЬНЫЕ ПОДТИПЫ ===
-            bool showLowCost = ArrivalLowCostCheck?.IsChecked == true;
-            bool showInternal = ArrivalInternalCheck?.IsChecked == true;
-
-            data = data.Where(j =>
-                j.Category != "Допы"
-                || (
-                    (showLowCost && j.SubCategory == "Малоценка")
-                    || (showInternal && j.SubCategory == "Внутренние")
-                )
+                (showMain && string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                || (showLowCost && string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Малоценка", StringComparison.CurrentCultureIgnoreCase))
+                || (showInternal && string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), "Внутренние", StringComparison.CurrentCultureIgnoreCase))
             );
             // === ПРИХОД: ФИЛЬТР ПО ТИПАМ ===
             if (selectedArrivalTypes.Count > 0)
@@ -14570,7 +15925,7 @@ namespace ConstructionControl
                     else if (kind == "SubCategory")
                         data = data.Where(j => j.SubCategory == value);
                     else if (kind == "Category")
-                        data = data.Where(j => j.Category == value);
+                        data = data.Where(j => string.Equals(NormalizeArrivalCategory(j.Category, j.SubCategory), value ?? string.Empty, StringComparison.CurrentCultureIgnoreCase));
                     else if (currentNode.Tag is TreeNodeMeta nodeMeta && nodeMeta.PrefixSegments?.Count > 0)
                     {
                         if (kind == "Material")
@@ -14718,7 +16073,6 @@ namespace ConstructionControl
             ArrivalMainCheck.IsChecked = true;
             ArrivalExtraCheck.IsChecked = true;
             ArrivalLowCostCheck.IsChecked = true;
-            ArrivalInternalCheck.IsChecked = true;
 
             ArrivalDateFrom.SelectedDate = null;
             ArrivalDateTo.SelectedDate = null;
@@ -15498,6 +16852,7 @@ namespace ConstructionControl
                     continue;
 
                 var keys = ParseProductionItems(row.ElementsText)
+                    .Where(x => ShouldTrackProductionItemInDemand(row, x.MaterialName))
                     .Select(x => BuildDemandKey(row.WorkName, x.MaterialName))
                     .Distinct(StringComparer.CurrentCultureIgnoreCase);
 
@@ -15884,11 +17239,14 @@ namespace ConstructionControl
             timesheetInitialized = false;
             productionJournalInitialized = false;
             inspectionJournalInitialized = false;
+            notesInitialized = false;
             productionStateDirty = true;
             inspectionStateDirty = true;
+            notesStateDirty = true;
             timesheetRows.Clear();
             productionJournalRows.Clear();
             inspectionJournalRows.Clear();
+            noteRows.Clear();
             tabOpenDiagnostics.Clear();
             UpdateTabOpenDiagnosticsText();
             lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
@@ -16299,6 +17657,31 @@ namespace ConstructionControl
                 .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
         }
 
+        private ObservableCollection<string> BuildProductionActionReferenceOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            if (currentObject?.ProductionWorksByAction != null)
+                values.AddRange(currentObject.ProductionWorksByAction.Keys);
+
+            if (currentObject?.ProductionJournal != null)
+            {
+                values.AddRange(currentObject.ProductionJournal
+                    .Select(x => x.ActionName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            if (currentObject?.ProductionTemplates != null)
+            {
+                values.AddRange(currentObject.ProductionTemplates
+                    .Select(x => x.ActionName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            return new ObservableCollection<string>(NormalizeProductionLookupValues(values));
+        }
+
         private ObservableCollection<string> BuildProductionTypeReferenceOptions()
         {
             EnsureReferenceMappingsStorage();
@@ -16306,29 +17689,253 @@ namespace ConstructionControl
 
             if (currentObject?.ProductionDeviationsByType != null)
                 values.AddRange(currentObject.ProductionDeviationsByType.Keys);
+            if (currentObject?.ProductionMaterialsByType != null)
+                values.AddRange(currentObject.ProductionMaterialsByType.Keys);
 
-            values.AddRange(productionTargets);
+            values.AddRange(currentObject?.ProductionWorksByAction?
+                .Values
+                .Where(x => x != null)
+                .SelectMany(x => x ?? Enumerable.Empty<string>())
+                ?? Enumerable.Empty<string>());
+            values.AddRange(currentObject?.ProductionJournal?.Select(x => x.WorkName) ?? Enumerable.Empty<string>());
+            values.AddRange(currentObject?.MaterialCatalog?
+                .Where(x => x != null && string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                ?? Enumerable.Empty<string>());
+            values.AddRange(journal
+                .Where(x => x != null && string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+            values.AddRange(currentObject?.ProductionJournal?
+                .SelectMany(x => ParseProductionItems(x.ElementsText))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                ?? Enumerable.Empty<string>());
+
+            return new ObservableCollection<string>(NormalizeProductionLookupValues(values));
+        }
+
+        private ObservableCollection<string> BuildProductionWorkReferenceOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            values.AddRange(GetAllProductionWorkOptions());
+            values.AddRange(currentObject?.ProductionMaterialsByType?.Keys ?? Enumerable.Empty<string>());
 
             if (currentObject?.MaterialCatalog != null)
             {
                 values.AddRange(currentObject.MaterialCatalog
                     .Where(x => string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
-                    .Select(x => x.TypeName)
+                    .Select(x => x.MaterialName)
                     .Where(x => !string.IsNullOrWhiteSpace(x)));
             }
+
+            values.AddRange(journal
+                .Where(x => string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            return new ObservableCollection<string>(NormalizeProductionLookupValues(values));
+        }
+
+        private ObservableCollection<string> BuildProductionMainMaterialReferenceOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            values.AddRange(currentObject?.ProductionMaterialsByType?
+                .Values
+                .Where(x => x != null)
+                .SelectMany(x => x ?? Enumerable.Empty<string>())
+                ?? Enumerable.Empty<string>());
+
+            values.AddRange(currentObject?.MaterialCatalog?
+                .Where(x => x != null && string.Equals((x.CategoryName ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                ?? Enumerable.Empty<string>());
+
+            values.AddRange(journal
+                .Where(x => x != null && string.Equals((x.Category ?? string.Empty).Trim(), "Основные", StringComparison.CurrentCultureIgnoreCase))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            values.AddRange(currentObject?.ProductionJournal?
+                .SelectMany(x => ParseProductionItems(x.ElementsText))
+                .Select(x => x.MaterialName)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                ?? Enumerable.Empty<string>());
+
+            return new ObservableCollection<string>(NormalizeProductionLookupValues(values));
+        }
+
+        private ObservableCollection<ProductionTypeMaterialReferenceRow> BuildProductionTypeMaterialReferenceRows()
+        {
+            EnsureReferenceMappingsStorage();
+            var rows = new List<ProductionTypeMaterialReferenceRow>();
+            var pairSet = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            if (currentObject?.ProductionMaterialsByType != null)
+            {
+                foreach (var pair in currentObject.ProductionMaterialsByType)
+                {
+                    var materialType = NormalizeProductionWorkForStorage(pair.Key);
+                    if (string.IsNullOrWhiteSpace(materialType))
+                        continue;
+
+                    foreach (var material in pair.Value ?? new List<string>())
+                    {
+                        var materialName = material?.Trim();
+                        if (string.IsNullOrWhiteSpace(materialName))
+                            continue;
+
+                        var key = $"{materialType}|||{materialName}";
+                        if (!pairSet.Add(key))
+                            continue;
+
+                        rows.Add(new ProductionTypeMaterialReferenceRow
+                        {
+                            MaterialType = materialType,
+                            MaterialName = materialName
+                        });
+                    }
+                }
+            }
+
+            if (rows.Count == 0)
+                rows.Add(new ProductionTypeMaterialReferenceRow());
+
+            return new ObservableCollection<ProductionTypeMaterialReferenceRow>(rows);
+        }
+
+        private ObservableCollection<string> BuildHiddenWorkTitleReplacementPrefixOptions()
+        {
+            EnsureReferenceMappingsStorage();
+            var values = new List<string>();
+
+            values.AddRange(currentObject?.HiddenWorkTitlePrefixReplacements?.Keys ?? Enumerable.Empty<string>());
+            values.AddRange(GetAllProductionWorkOptions());
 
             if (currentObject?.ProductionJournal != null)
             {
                 values.AddRange(currentObject.ProductionJournal
-                    .Select(x => x.WorkName)
+                    .Where(x => x != null)
+                    .Select(x =>
+                    {
+                        var action = x.ActionName?.Trim() ?? string.Empty;
+                        var work = NormalizeProductionWorkForStorage(x.WorkName);
+                        if (string.IsNullOrWhiteSpace(action))
+                            return work;
+                        return string.IsNullOrWhiteSpace(work) ? action : $"{action} {work}";
+                    })
                     .Where(x => !string.IsNullOrWhiteSpace(x)));
             }
 
-            return new ObservableCollection<string>(values
+            return new ObservableCollection<string>(NormalizeProductionLookupValues(values));
+        }
+
+        private ObservableCollection<HiddenWorkTitleReplacementReferenceRow> BuildHiddenWorkTitleReplacementReferenceRows()
+        {
+            EnsureReferenceMappingsStorage();
+            var rows = new List<HiddenWorkTitleReplacementReferenceRow>();
+
+            if (currentObject?.HiddenWorkTitlePrefixReplacements != null)
+            {
+                foreach (var pair in currentObject.HiddenWorkTitlePrefixReplacements
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+                    .OrderBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    rows.Add(new HiddenWorkTitleReplacementReferenceRow
+                    {
+                        SourcePrefix = pair.Key.Trim(),
+                        Replacement = pair.Value.Trim()
+                    });
+                }
+            }
+
+            if (rows.Count == 0)
+                rows.Add(new HiddenWorkTitleReplacementReferenceRow());
+
+            return new ObservableCollection<HiddenWorkTitleReplacementReferenceRow>(rows);
+        }
+
+        private List<string> SplitProductionWorkReferenceValues(string value)
+        {
+            return Regex.Split(value ?? string.Empty, @"[\r\n,;]+")
+                .Select(NormalizeProductionWorkForStorage)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x.Trim())
                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase));
+                .ToList();
+        }
+
+        private ObservableCollection<ProductionActionWorkReferenceRow> BuildProductionActionWorkReferenceRows()
+        {
+            EnsureReferenceMappingsStorage();
+            var map = new Dictionary<string, HashSet<string>>(StringComparer.CurrentCultureIgnoreCase);
+
+            if (currentObject?.ProductionWorksByAction != null)
+            {
+                foreach (var pair in currentObject.ProductionWorksByAction)
+                {
+                    var action = pair.Key?.Trim();
+                    if (string.IsNullOrWhiteSpace(action))
+                        continue;
+
+                    if (!map.TryGetValue(action, out var set))
+                    {
+                        set = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+                        map[action] = set;
+                    }
+
+                    foreach (var work in pair.Value ?? new List<string>())
+                    {
+                        var normalizedWork = NormalizeProductionWorkForStorage(work);
+                        if (string.IsNullOrWhiteSpace(normalizedWork))
+                            continue;
+
+                        set.Add(normalizedWork);
+                    }
+                }
+            }
+
+            if (map.Count == 0 && currentObject?.ProductionJournal != null)
+            {
+                foreach (var row in currentObject.ProductionJournal
+                    .Where(x => !string.IsNullOrWhiteSpace(x.ActionName) && !string.IsNullOrWhiteSpace(x.WorkName))
+                    .OrderByDescending(x => x.Date))
+                {
+                    var action = row.ActionName.Trim();
+                    var work = NormalizeProductionWorkForStorage(row.WorkName);
+                    if (string.IsNullOrWhiteSpace(action) || string.IsNullOrWhiteSpace(work))
+                        continue;
+
+                    if (!map.TryGetValue(action, out var set))
+                    {
+                        set = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+                        map[action] = set;
+                    }
+
+                    set.Add(work);
+                }
+            }
+
+            var rows = map
+                .OrderBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase)
+                .Select(x => new ProductionActionWorkReferenceRow
+                {
+                    ActionName = x.Key,
+                    WorkName = string.Join(", ", x.Value
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .OrderBy(v => v, StringComparer.CurrentCultureIgnoreCase))
+                })
+                .ToList();
+
+            if (rows.Count == 0)
+                rows.Add(new ProductionActionWorkReferenceRow());
+
+            return new ObservableCollection<ProductionActionWorkReferenceRow>(rows);
         }
 
         private ObservableCollection<OtInstructionReferenceRow> BuildOtInstructionReferenceRows()
@@ -16451,9 +18058,23 @@ namespace ConstructionControl
             EnsureReferenceMappingsStorage();
 
             var professionOptions = BuildProfessionReferenceOptions();
+            var productionActionOptions = BuildProductionActionReferenceOptions();
+            var productionWorkOptions = BuildProductionWorkReferenceOptions();
             var materialTypeOptions = BuildProductionTypeReferenceOptions();
+            var hiddenWorkPrefixOptions = BuildHiddenWorkTitleReplacementPrefixOptions();
             var otRows = BuildOtInstructionReferenceRows();
+            var actionWorkRows = BuildProductionActionWorkReferenceRows();
             var prRows = BuildProductionDeviationReferenceRows();
+            var hiddenWorkTitleRows = BuildHiddenWorkTitleReplacementReferenceRows();
+
+            foreach (var value in actionWorkRows
+                .SelectMany(x => SplitProductionWorkReferenceValues(x?.WorkName ?? string.Empty))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase))
+            {
+                if (!productionWorkOptions.Any(existing => AreProductionLookupValuesEquivalent(existing, value)))
+                    productionWorkOptions.Add(value);
+            }
 
             var window = new Window
             {
@@ -16556,6 +18177,321 @@ namespace ConstructionControl
                     otRows.Remove(selected);
             };
 
+            var actionWorkTab = new TabItem { Header = "ПР: вид работы и чего" };
+            var actionWorkHost = new Grid { Margin = new Thickness(10) };
+            actionWorkHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            actionWorkHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            actionWorkHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            actionWorkTab.Content = actionWorkHost;
+
+            var actionWorkButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var addActionWorkButton = new Button
+            {
+                Content = "Добавить строку",
+                Style = TryFindResource("PrimaryButton") as Style
+            };
+            var deleteActionWorkButton = new Button
+            {
+                Content = "Удалить строку",
+                Style = TryFindResource("SecondaryButton") as Style,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            actionWorkButtons.Children.Add(addActionWorkButton);
+            actionWorkButtons.Children.Add(deleteActionWorkButton);
+            actionWorkHost.Children.Add(actionWorkButtons);
+
+            var actionWorkHint = new TextBlock
+            {
+                Text = "Для одного вида работы можно указать несколько вариантов \"чего\": через запятую, ; или с новой строки.",
+                Margin = new Thickness(0, 0, 0, 8),
+                Foreground = TryFindResource("TextSecondaryBrush") as Brush ?? new SolidColorBrush(Color.FromRgb(107, 114, 128))
+            };
+            Grid.SetRow(actionWorkHint, 1);
+            actionWorkHost.Children.Add(actionWorkHint);
+
+            var actionWorkGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = actionWorkRows,
+                ColumnWidth = DataGridLength.SizeToHeader
+            };
+            Grid.SetRow(actionWorkGrid, 2);
+            DataGridSizingHelper.SetEnableSmartSizing(actionWorkGrid, true);
+
+            var actionCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            actionCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(ProductionActionWorkReferenceRow.ActionName)));
+            var actionEditFactory = new FrameworkElementFactory(typeof(ComboBox));
+            actionEditFactory.SetValue(ComboBox.IsEditableProperty, true);
+            actionEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            actionEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            actionEditFactory.SetValue(ComboBox.ItemsSourceProperty, productionActionOptions);
+            actionEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(ProductionActionWorkReferenceRow.ActionName))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            actionWorkGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Вид работы",
+                Width = 280,
+                CellTemplate = new DataTemplate { VisualTree = actionCellFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = actionEditFactory }
+            });
+
+            string BuildProductionWorkReferenceValue(IEnumerable<string> values)
+            {
+                var normalized = NormalizeProductionLookupValues(values ?? Enumerable.Empty<string>()).ToList();
+                return normalized.Count == 0 ? string.Empty : string.Join(", ", normalized);
+            }
+
+            string ShowProductionWorkMultiSelectDialog(string currentText)
+            {
+                var workOptions = NormalizeProductionLookupValues(
+                    productionWorkOptions
+                        .Concat(actionWorkRows.SelectMany(x => SplitProductionWorkReferenceValues(x?.WorkName ?? string.Empty)))
+                        .Concat(SplitProductionWorkReferenceValues(currentText ?? string.Empty)));
+
+                var selected = new HashSet<string>(
+                    SplitProductionWorkReferenceValues(currentText ?? string.Empty),
+                    StringComparer.CurrentCultureIgnoreCase);
+
+                var dialog = new Window
+                {
+                    Title = "Выбор типов",
+                    Owner = window,
+                    Width = 560,
+                    Height = 620,
+                    MinWidth = 500,
+                    MinHeight = 500,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Background = TryFindResource("AppBgBrush") as Brush ?? Brushes.WhiteSmoke
+                };
+
+                var layout = new Grid { Margin = new Thickness(12) };
+                layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                dialog.Content = layout;
+
+                var hint = new TextBlock
+                {
+                    Text = "Выберите несколько типов (Ctrl/Shift) или допишите вручную через запятую.",
+                    Margin = new Thickness(0, 0, 0, 10),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = TryFindResource("TextSecondaryBrush") as Brush ?? new SolidColorBrush(Color.FromRgb(107, 114, 128))
+                };
+                layout.Children.Add(hint);
+
+                var editorGrid = new Grid();
+                editorGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                editorGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(editorGrid, 1);
+                layout.Children.Add(editorGrid);
+
+                var list = new ListBox
+                {
+                    ItemsSource = workOptions,
+                    SelectionMode = SelectionMode.Extended,
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = TryFindResource("StrokeBrush") as Brush ?? Brushes.Gainsboro
+                };
+                list.Loaded += (_, _) =>
+                {
+                    foreach (var value in workOptions.Where(selected.Contains))
+                        list.SelectedItems.Add(value);
+                };
+                editorGrid.Children.Add(list);
+
+                var manualBox = new TextBox
+                {
+                    Margin = new Thickness(0, 10, 0, 0),
+                    Tag = "Можно вводить вручную: через запятую, ; или с новой строки",
+                    Text = BuildProductionWorkReferenceValue(selected)
+                };
+                Grid.SetRow(manualBox, 1);
+                editorGrid.Children.Add(manualBox);
+
+                var buttons = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 10, 0, 0)
+                };
+                Grid.SetRow(buttons, 2);
+                layout.Children.Add(buttons);
+
+                var cancelButton = new Button
+                {
+                    Content = "Отмена",
+                    MinWidth = 110,
+                    IsCancel = true,
+                    Style = TryFindResource("SecondaryButton") as Style
+                };
+                var okButton = new Button
+                {
+                    Content = "Применить",
+                    MinWidth = 130,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    IsDefault = true,
+                    Style = TryFindResource("PrimaryButton") as Style
+                };
+                buttons.Children.Add(cancelButton);
+                buttons.Children.Add(okButton);
+
+                string result = null;
+                okButton.Click += (_, _) =>
+                {
+                    var values = list.SelectedItems.OfType<string>()
+                        .Concat(SplitProductionWorkReferenceValues(manualBox.Text));
+                    result = BuildProductionWorkReferenceValue(values);
+                    dialog.DialogResult = true;
+                    dialog.Close();
+                };
+                cancelButton.Click += (_, _) =>
+                {
+                    dialog.DialogResult = false;
+                    dialog.Close();
+                };
+
+                return dialog.ShowDialog() == true ? result : null;
+            }
+
+            var workCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            workCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(ProductionActionWorkReferenceRow.WorkName)));
+            workCellFactory.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+
+            var workEditorComboFactory = new FrameworkElementFactory(typeof(ComboBox));
+            workEditorComboFactory.SetValue(ComboBox.IsEditableProperty, true);
+            workEditorComboFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            workEditorComboFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            workEditorComboFactory.SetValue(ComboBox.ItemsSourceProperty, productionWorkOptions);
+            workEditorComboFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(ProductionActionWorkReferenceRow.WorkName))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            var chooseWorkButtonFactory = new FrameworkElementFactory(typeof(Button));
+            chooseWorkButtonFactory.SetValue(Button.ContentProperty, "Выбрать...");
+            chooseWorkButtonFactory.SetValue(Button.StyleProperty, TryFindResource("SecondaryButton"));
+            chooseWorkButtonFactory.SetValue(Button.MarginProperty, new Thickness(8, 0, 0, 0));
+            chooseWorkButtonFactory.SetValue(Button.MinWidthProperty, 106d);
+            chooseWorkButtonFactory.SetValue(DockPanel.DockProperty, Dock.Right);
+            chooseWorkButtonFactory.AddHandler(Button.ClickEvent, new RoutedEventHandler((senderButton, _) =>
+            {
+                if (senderButton is not Button button || button.DataContext is not ProductionActionWorkReferenceRow row)
+                    return;
+
+                var selectedValue = ShowProductionWorkMultiSelectDialog(row.WorkName);
+                if (selectedValue == null)
+                    return;
+
+                row.WorkName = selectedValue;
+                foreach (var value in SplitProductionWorkReferenceValues(row.WorkName))
+                {
+                    if (!productionWorkOptions.Any(existing => AreProductionLookupValuesEquivalent(existing, value)))
+                        productionWorkOptions.Add(value);
+                }
+            }));
+
+            var workEditingTemplate = new DataTemplate();
+            var workEditorRootFactory = new FrameworkElementFactory(typeof(DockPanel));
+            workEditorRootFactory.SetValue(DockPanel.LastChildFillProperty, true);
+            workEditorRootFactory.AppendChild(chooseWorkButtonFactory);
+            workEditorRootFactory.AppendChild(workEditorComboFactory);
+            workEditingTemplate.VisualTree = workEditorRootFactory;
+
+            actionWorkGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Чего / типы",
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                CellTemplate = new DataTemplate { VisualTree = workCellFactory },
+                CellEditingTemplate = workEditingTemplate
+            });
+            actionWorkHost.Children.Add(actionWorkGrid);
+
+            addActionWorkButton.Click += (_, _) => actionWorkRows.Add(new ProductionActionWorkReferenceRow());
+            deleteActionWorkButton.Click += (_, _) =>
+            {
+                if (actionWorkGrid.SelectedItem is ProductionActionWorkReferenceRow selected)
+                    actionWorkRows.Remove(selected);
+            };
+
+            var hiddenWorkTitleTab = new TabItem { Header = "Акты: замены названий" };
+            var hiddenWorkTitleHost = new Grid { Margin = new Thickness(10) };
+            hiddenWorkTitleHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            hiddenWorkTitleHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            hiddenWorkTitleTab.Content = hiddenWorkTitleHost;
+
+            var hiddenWorkTitleButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var addHiddenWorkTitleButton = new Button
+            {
+                Content = "Добавить строку",
+                Style = TryFindResource("PrimaryButton") as Style
+            };
+            var deleteHiddenWorkTitleButton = new Button
+            {
+                Content = "Удалить строку",
+                Style = TryFindResource("SecondaryButton") as Style,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            hiddenWorkTitleButtons.Children.Add(addHiddenWorkTitleButton);
+            hiddenWorkTitleButtons.Children.Add(deleteHiddenWorkTitleButton);
+            hiddenWorkTitleHost.Children.Add(hiddenWorkTitleButtons);
+
+            var hiddenWorkTitleGrid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                ItemsSource = hiddenWorkTitleRows,
+                ColumnWidth = DataGridLength.SizeToHeader
+            };
+            Grid.SetRow(hiddenWorkTitleGrid, 1);
+            DataGridSizingHelper.SetEnableSmartSizing(hiddenWorkTitleGrid, true);
+
+            var hiddenWorkPrefixCellFactory = new FrameworkElementFactory(typeof(TextBlock));
+            hiddenWorkPrefixCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(HiddenWorkTitleReplacementReferenceRow.SourcePrefix)));
+            var hiddenWorkPrefixEditFactory = new FrameworkElementFactory(typeof(ComboBox));
+            hiddenWorkPrefixEditFactory.SetValue(ComboBox.IsEditableProperty, true);
+            hiddenWorkPrefixEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            hiddenWorkPrefixEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
+            hiddenWorkPrefixEditFactory.SetValue(ComboBox.ItemsSourceProperty, hiddenWorkPrefixOptions);
+            hiddenWorkPrefixEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(HiddenWorkTitleReplacementReferenceRow.SourcePrefix))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+
+            hiddenWorkTitleGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = "Начало названия работы",
+                Width = 320,
+                CellTemplate = new DataTemplate { VisualTree = hiddenWorkPrefixCellFactory },
+                CellEditingTemplate = new DataTemplate { VisualTree = hiddenWorkPrefixEditFactory }
+            });
+            hiddenWorkTitleGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Заменять на",
+                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                Binding = new Binding(nameof(HiddenWorkTitleReplacementReferenceRow.Replacement))
+                {
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                }
+            });
+            hiddenWorkTitleHost.Children.Add(hiddenWorkTitleGrid);
+
+            addHiddenWorkTitleButton.Click += (_, _) => hiddenWorkTitleRows.Add(new HiddenWorkTitleReplacementReferenceRow());
+            deleteHiddenWorkTitleButton.Click += (_, _) =>
+            {
+                if (hiddenWorkTitleGrid.SelectedItem is HiddenWorkTitleReplacementReferenceRow selected)
+                    hiddenWorkTitleRows.Remove(selected);
+            };
+
             var prTab = new TabItem { Header = "ПР: тип и отклонения" };
             var prHost = new Grid { Margin = new Thickness(10) };
             prHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -16629,6 +18565,8 @@ namespace ConstructionControl
             };
 
             tabs.Items.Add(otTab);
+            tabs.Items.Add(actionWorkTab);
+            tabs.Items.Add(hiddenWorkTitleTab);
             tabs.Items.Add(prTab);
 
             var footer = new StackPanel
@@ -16669,6 +18607,37 @@ namespace ConstructionControl
                     otMap[profession] = numbers;
                 }
 
+                var actionWorkMap = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var row in actionWorkRows)
+                {
+                    var actionName = row?.ActionName?.Trim();
+                    if (string.IsNullOrWhiteSpace(actionName))
+                        continue;
+
+                    foreach (var workName in SplitProductionWorkReferenceValues(row?.WorkName ?? string.Empty))
+                    {
+                        if (!actionWorkMap.TryGetValue(actionName, out var list))
+                        {
+                            list = new List<string>();
+                            actionWorkMap[actionName] = list;
+                        }
+
+                        if (!list.Any(x => AreProductionLookupValuesEquivalent(x, workName)))
+                            list.Add(workName);
+                    }
+                }
+
+                var hiddenWorkTitleMap = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var row in hiddenWorkTitleRows)
+                {
+                    var sourcePrefix = row?.SourcePrefix?.Trim();
+                    var replacement = row?.Replacement?.Trim();
+                    if (string.IsNullOrWhiteSpace(sourcePrefix) || string.IsNullOrWhiteSpace(replacement))
+                        continue;
+
+                    hiddenWorkTitleMap[sourcePrefix] = replacement;
+                }
+
                 var productionMap = new Dictionary<string, List<string>>(StringComparer.CurrentCultureIgnoreCase);
                 foreach (var row in prRows)
                 {
@@ -16687,14 +18656,24 @@ namespace ConstructionControl
                         list.Add(deviation);
                 }
 
-                currentObject.OtInstructionNumbersByProfession = otMap.ToDictionary(x => x.Key, x => x.Value);
+                currentObject.OtInstructionNumbersByProfession = new Dictionary<string, string>(otMap, StringComparer.CurrentCultureIgnoreCase);
+                currentObject.ProductionWorksByAction = actionWorkMap.ToDictionary(
+                    x => x.Key,
+                    x => x.Value
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Select(v => v.Trim())
+                        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                        .ToList(),
+                    StringComparer.CurrentCultureIgnoreCase);
+                currentObject.HiddenWorkTitlePrefixReplacements = new Dictionary<string, string>(hiddenWorkTitleMap, StringComparer.CurrentCultureIgnoreCase);
                 currentObject.ProductionDeviationsByType = productionMap.ToDictionary(
                     x => x.Key,
                     x => x.Value
                         .Where(v => !string.IsNullOrWhiteSpace(v))
                         .Select(v => v.Trim())
                         .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                        .ToList());
+                        .ToList(),
+                    StringComparer.CurrentCultureIgnoreCase);
                 EnsureReferenceMappingsStorage();
 
                 if (currentObject.OtJournal != null)
@@ -16709,6 +18688,9 @@ namespace ConstructionControl
                 productionLookupsDirty = true;
                 RefreshProductionJournalLookups(force: true);
                 RefreshProductionDeviationOptions();
+                MarkHiddenWorkActStateDirty();
+                if (hiddenWorkActsInitialized)
+                    RefreshHiddenWorkActState();
                 SaveState(SaveTrigger.System);
                 AppendChangeLog("Справочники", "Обновлены справочники ОТ и ПР.");
                 window.DialogResult = true;
@@ -17152,14 +19134,21 @@ namespace ConstructionControl
             currentObject.ArrivalHistory = new List<ArrivalItem>();
             currentObject.SummaryVisibleGroups = new List<string>();
             currentObject.SummaryMarksByGroup = new Dictionary<string, List<string>>();
+            currentObject.ProductionWorksByAction = new Dictionary<string, List<string>>();
+            currentObject.ProductionMaterialsByType = new Dictionary<string, List<string>>();
+            currentObject.HiddenWorkTitlePrefixReplacements = new Dictionary<string, string>();
             currentObject.OtJournal = new List<OtJournalEntry>();
             currentObject.TimesheetPeople = new List<TimesheetPersonEntry>();
             currentObject.ProductionJournal = new List<ProductionJournalEntry>();
+            currentObject.ProductionWorkRules = new List<ProductionWorkRule>();
             currentObject.ProductionAutoFillSettings = new ProductionAutoFillSettings();
             currentObject.InspectionJournal = new List<InspectionJournalEntry>();
             currentObject.PdfDocuments = new List<DocumentTreeNode>();
             currentObject.EstimateDocuments = new List<DocumentTreeNode>();
             currentObject.ChangeLog = new List<ProjectChangeLogEntry>();
+            currentObject.HiddenWorkDefaults = new HiddenWorkActDefaults();
+            currentObject.HiddenWorkActs = new List<HiddenWorkActRecord>();
+            currentObject.HiddenWorkMaterialPresets = new List<HiddenWorkMaterialPreset>();
 
             EnsureProjectUiSettings();
             EnsureDocumentLibraries();
@@ -18761,8 +20750,17 @@ namespace ConstructionControl
                 UpdateTreePanelState(forceVisible: false);
         }
 
-        private bool IsDocumentLibraryTabSelected()
-            => ReferenceEquals(MainTabs?.SelectedItem, PdfTab) || ReferenceEquals(MainTabs?.SelectedItem, EstimateTab);
+        private bool IsTreeHiddenForCurrentTab()
+        {
+            var selectedTab = MainTabs?.SelectedItem;
+            return ReferenceEquals(selectedTab, PdfTab)
+                || ReferenceEquals(selectedTab, EstimateTab)
+                || ReferenceEquals(selectedTab, OtTab)
+                || ReferenceEquals(selectedTab, TimesheetTab)
+                || ReferenceEquals(selectedTab, ProductionTab)
+                || ReferenceEquals(selectedTab, HiddenWorkActsTab)
+                || ReferenceEquals(selectedTab, InspectionTab);
+        }
 
         private void UpdateTreePanelState(bool forceVisible)
         {
@@ -18782,7 +20780,7 @@ namespace ConstructionControl
                 return;
             }
 
-            if (IsDocumentLibraryTabSelected())
+            if (IsTreeHiddenForCurrentTab())
             {
                 TreePanelBorder.Visibility = Visibility.Collapsed;
                 TreeHoverStrip.Visibility = Visibility.Collapsed;
@@ -19080,6 +21078,12 @@ namespace ConstructionControl
             if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.UiDensityMode))
                 currentObject.UiSettings.UiDensityMode = "Стандартный";
 
+            if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.UiThemeMode))
+                currentObject.UiSettings.UiThemeMode = UiThemeModes.Light;
+
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.UiThemeMode = NormalizeUiThemeMode(currentObject.UiSettings.UiThemeMode);
+
             if (currentObject?.UiSettings != null)
                 currentObject.UiSettings.ReminderPresentationMode = NormalizeReminderPresentationMode(currentObject.UiSettings.ReminderPresentationMode);
 
@@ -19115,6 +21119,7 @@ namespace ConstructionControl
             EnsureProjectUiSettings();
             InitializeSpreadsheetEditorPreference();
             InitializePdfEditorPreference();
+            ApplyUiThemeMode();
             ApplyUiDensityMode();
             UpdateAutoSaveTimerInterval();
 
@@ -19182,6 +21187,80 @@ namespace ConstructionControl
                 return "Редактирование";
 
             return "Полный";
+        }
+
+        private string NormalizeUiThemeMode(string themeMode)
+        {
+            return UiThemeModes.Light;
+        }
+
+        private static bool IsSystemDarkThemePreferred()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                if (key?.GetValue("AppsUseLightTheme") is int intValue)
+                    return intValue == 0;
+                if (key?.GetValue("AppsUseLightTheme") is byte byteValue)
+                    return byteValue == 0;
+            }
+            catch
+            {
+                // Ignore and keep light fallback.
+            }
+
+            return false;
+        }
+
+        private void ApplyUiThemeMode()
+        {
+            var mode = UiThemeModes.Light;
+            if (currentObject?.UiSettings != null)
+                currentObject.UiSettings.UiThemeMode = mode;
+
+            ApplyThemeBrushPalette(LightThemeBrushColors);
+        }
+
+        private static void ApplyThemeBrushPalette(IReadOnlyDictionary<string, string> palette)
+        {
+            var resources = Application.Current?.Resources;
+            if (resources == null || palette == null)
+                return;
+
+            foreach (var pair in palette)
+                TryAssignThemeBrushColor(resources, pair.Key, pair.Value);
+        }
+
+        private static void TryAssignThemeBrushColor(ResourceDictionary resources, string key, string colorValue)
+        {
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(colorValue))
+                return;
+
+            Color color;
+            try
+            {
+                color = (Color)ColorConverter.ConvertFromString(colorValue);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (resources[key] is SolidColorBrush brush)
+            {
+                if (!brush.IsFrozen)
+                {
+                    brush.Color = color;
+                    return;
+                }
+
+                var clone = brush.CloneCurrentValue();
+                clone.Color = color;
+                resources[key] = clone;
+                return;
+            }
+
+            resources[key] = new SolidColorBrush(color);
         }
 
         private void SetLastOperationStatus(string text)
@@ -19298,6 +21377,8 @@ namespace ConstructionControl
                 return ProductionTab;
             if (string.Equals(header, "Осмотры", StringComparison.CurrentCultureIgnoreCase))
                 return InspectionTab;
+            if (string.Equals(header, "Заметки", StringComparison.CurrentCultureIgnoreCase))
+                return NotesTab;
             if (string.Equals(header, "ПДФ", StringComparison.CurrentCultureIgnoreCase))
                 return PdfTab;
             if (string.Equals(header, "Сметы", StringComparison.CurrentCultureIgnoreCase))
@@ -19319,6 +21400,8 @@ namespace ConstructionControl
                 map[GridPrefProduction] = ProductionJournalGrid;
             if (InspectionJournalGrid != null)
                 map[GridPrefInspection] = InspectionJournalGrid;
+            if (NotesGrid != null)
+                map[GridPrefNotes] = NotesGrid;
             return map;
         }
 
@@ -19334,6 +21417,8 @@ namespace ConstructionControl
                 return GridPrefProduction;
             if (ReferenceEquals(grid, InspectionJournalGrid))
                 return GridPrefInspection;
+            if (ReferenceEquals(grid, NotesGrid))
+                return GridPrefNotes;
             return string.Empty;
         }
 
@@ -19685,6 +21770,8 @@ namespace ConstructionControl
                 return ProductionJournalGrid;
             if (string.Equals(header, "Осмотры", StringComparison.CurrentCultureIgnoreCase))
                 return InspectionJournalGrid;
+            if (string.Equals(header, "Заметки", StringComparison.CurrentCultureIgnoreCase))
+                return NotesGrid;
 
             return null;
         }
@@ -20064,13 +22151,44 @@ namespace ConstructionControl
 
         private static string NormalizeProductionBlocksText(string text)
         {
-            var blocks = LevelMarkHelper.ParseBlocks(text)
-                .Where(x => x > 0)
-                .Distinct()
-                .OrderBy(x => x)
-                .ToList();
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
 
-            return blocks.Count == 0 ? string.Empty : string.Join(", ", blocks);
+            foreach (var token in SplitProductionBlockTokens(text))
+            {
+                var normalized = NormalizeProductionBlockToken(token);
+                if (string.IsNullOrWhiteSpace(normalized))
+                    continue;
+
+                if (!seen.Add(normalized))
+                    continue;
+
+                result.Add(normalized);
+            }
+
+            return result.Count == 0 ? string.Empty : string.Join(", ", result);
+        }
+
+        private static IEnumerable<string> SplitProductionBlockTokens(string text)
+        {
+            return LevelMarkHelper.SplitText(text)
+                .Select(x => x?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x));
+        }
+
+        private static string NormalizeProductionBlockToken(string token)
+        {
+            var normalized = (token ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return string.Empty;
+
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.CurrentCulture, out var block)
+                || int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out block))
+            {
+                return block > 0 ? block.ToString(CultureInfo.CurrentCulture) : string.Empty;
+            }
+
+            return normalized;
         }
 
         private static string NormalizeProductionMarksText(string text)
@@ -20411,6 +22529,31 @@ namespace ConstructionControl
                 }
             }
 
+            if (currentObject?.Notes != null)
+            {
+                foreach (var row in currentObject.Notes)
+                {
+                    if (!Match(
+                        row.Title,
+                        row.Body,
+                        row.ReminderModeDisplay,
+                        row.ReminderStatus,
+                        row.NextReminderText,
+                        row.UpdatedAtLocal.ToString("dd.MM.yyyy HH:mm")))
+                    {
+                        continue;
+                    }
+
+                    results.Add(new GlobalSearchResult
+                    {
+                        TabHeader = "Заметки",
+                        Title = string.IsNullOrWhiteSpace(row.Title) ? "Без заголовка" : row.Title,
+                        Description = $"{row.ReminderModeDisplay}; {row.ReminderStatusDisplay}",
+                        NavigateAction = () => NavigateToNoteRow(row)
+                    });
+                }
+            }
+
             if (currentObject?.Demand != null)
             {
                 foreach (var pair in currentObject.Demand)
@@ -20498,6 +22641,15 @@ namespace ConstructionControl
 
             SelectMainTab(InspectionTab);
             Dispatcher.BeginInvoke(new Action(() => SelectGridItem(InspectionJournalGrid, row)), DispatcherPriority.Background);
+        }
+
+        private void NavigateToNoteRow(ProjectNoteEntry row)
+        {
+            if (row == null)
+                return;
+
+            SelectMainTab(NotesTab);
+            Dispatcher.BeginInvoke(new Action(() => SelectGridItem(NotesGrid, row)), DispatcherPriority.Background);
         }
 
         private static void SelectGridItem(DataGrid grid, object item)
@@ -21027,6 +23179,15 @@ namespace ConstructionControl
                     Name = "Открыть вкладку Осмотры",
                     Hint = "Перейти на вкладку Осмотры",
                     ExecuteAction = () => SelectMainTab(InspectionTab)
+                },
+                new()
+                {
+                    Id = "tab_notes",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("tab_notes", string.Empty),
+                    Name = "Открыть вкладку Заметки",
+                    Hint = "Перейти на вкладку Заметки",
+                    ExecuteAction = () => SelectMainTab(NotesTab)
                 },
                 new()
                 {
@@ -22222,7 +24383,7 @@ namespace ConstructionControl
                 ShowMain = ArrivalMainCheck?.IsChecked == true,
                 ShowExtra = ArrivalExtraCheck?.IsChecked == true,
                 ShowLowCost = ArrivalLowCostCheck?.IsChecked == true,
-                ShowInternal = ArrivalInternalCheck?.IsChecked == true,
+                ShowInternal = true,
                 DateFrom = ArrivalDateFrom?.SelectedDate,
                 DateTo = ArrivalDateTo?.SelectedDate,
                 SearchText = ArrivalSearchBox?.Text?.Trim() ?? string.Empty
@@ -22262,7 +24423,6 @@ namespace ConstructionControl
             if (ArrivalMainCheck != null) ArrivalMainCheck.IsChecked = template.ShowMain;
             if (ArrivalExtraCheck != null) ArrivalExtraCheck.IsChecked = template.ShowExtra;
             if (ArrivalLowCostCheck != null) ArrivalLowCostCheck.IsChecked = template.ShowLowCost;
-            if (ArrivalInternalCheck != null) ArrivalInternalCheck.IsChecked = template.ShowInternal;
             if (ArrivalDateFrom != null) ArrivalDateFrom.SelectedDate = template.DateFrom;
             if (ArrivalDateTo != null) ArrivalDateTo.SelectedDate = template.DateTo;
             if (ArrivalSearchBox != null) ArrivalSearchBox.Text = template.SearchText ?? string.Empty;

@@ -6,9 +6,9 @@
         Width="450"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="{StaticResource AppBgBrush}">
+        Background="{DynamicResource AppBgBrush}">
 
-    <Border Background="{StaticResource SurfaceBrush}"
+    <Border Background="{DynamicResource SurfaceBrush}"
             CornerRadius="10"
             Padding="20">
 
@@ -23,21 +23,21 @@
             <TextBlock Text="Создание объекта"
                        FontSize="18"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource TextBrush}"
+                       Foreground="{DynamicResource TextBrush}"
                        Margin="0,0,0,15"/>
 
             <!-- Поле ввода -->
             <StackPanel Grid.Row="1">
                 <TextBlock Text="Название объекта"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Margin="0,0,0,5"/>
 
                 <TextBox x:Name="ObjectNameBox"
                          Height="36"
                          Padding="10,6"
                          FontSize="14"
-                         Background="{StaticResource SurfaceAltBrush}"
-                         BorderBrush="{StaticResource StrokeBrush}"
+                         Background="{DynamicResource SurfaceAltBrush}"
+                         BorderBrush="{DynamicResource StrokeBrush}"
                          BorderThickness="1"/>
             </StackPanel>
 
@@ -51,15 +51,15 @@
                         Width="100"
                         Height="36"
                         Margin="0,0,10,0"
-                        Background="{StaticResource StrokeBrush}"
+                        Background="{DynamicResource StrokeBrush}"
                         BorderThickness="0"
                         Click="Cancel_Click"/>
 
                 <Button Content="Создать"
                         Width="110"
                         Height="36"
-                        Background="{StaticResource PrimaryBrush}"
-                        Foreground="{StaticResource SurfaceBrush}"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource SurfaceBrush}"
                         FontWeight="SemiBold"
                         BorderThickness="0"
                         Click="Ok_Click"/>
