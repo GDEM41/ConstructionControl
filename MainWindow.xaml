@@ -2661,11 +2661,8 @@
                                             <TextBlock Text="Предпросмотр"
                                                        FontWeight="SemiBold"
                                                        Margin="0,0,0,10"/>
-                                            <FlowDocumentScrollViewer x:Name="HiddenWorkActPreviewViewer"
-                                                                      Grid.Row="1"
-                                                                      VerticalScrollBarVisibility="Auto"
-                                                                      IsToolBarVisible="False"
-                                                                      Zoom="100"/>
+                                            <DocumentViewer x:Name="HiddenWorkActPreviewViewer"
+                                                            Grid.Row="1"/>
                                         </Grid>
                                     </Border>
                                 </Grid>

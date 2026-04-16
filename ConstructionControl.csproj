@@ -60,7 +60,7 @@
 
   <Target Name="GenerateHiddenWorksActTemplate"
           BeforeTargets="BeforeBuild"
-          Inputs="$(MSBuildProjectDirectory)\scripts\New-HiddenWorksActTemplate.ps1"
+          Inputs="$(MSBuildProjectDirectory)\scripts\New-HiddenWorksActTemplate.ps1;$(MSBuildProjectDirectory)\templates\HiddenWorksActTemplate.reference.docx"
           Outputs="$(MSBuildProjectDirectory)\templates\HiddenWorksActTemplate.docx">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\New-HiddenWorksActTemplate.ps1&quot;" />
   </Target>

@@ -11,8 +11,11 @@ namespace ConstructionControl
     internal static class HiddenWorksActDocumentBuilder
     {
         private static readonly CultureInfo RuCulture = new("ru-RU");
-        private const double A4Width = 793.7;
-        private const double A4Height = 1122.5;
+        // Match reference DOCX: Letter 8.5x11 with custom page margins.
+        private const double ReferencePageWidth = 816.0;
+        private const double ReferencePageHeight = 1056.0;
+        private static readonly Thickness ReferencePagePadding = new(94.5, 35.9, 41.6, 28.3);
+        private static readonly double ReferenceContentWidth = ReferencePageWidth - ReferencePagePadding.Left - ReferencePagePadding.Right;
 
         public static FlowDocument BuildSingle(HiddenWorkActRecord act)
             => Build(act == null ? Array.Empty<HiddenWorkActRecord>() : new[] { act });
@@ -47,11 +50,11 @@ namespace ConstructionControl
             return new FlowDocument
             {
                 FontFamily = new FontFamily("Times New Roman"),
-                FontSize = 10.5,
-                PageWidth = A4Width,
-                PageHeight = A4Height,
-                ColumnWidth = A4Width,
-                PagePadding = new Thickness(28, 22, 28, 22),
+                FontSize = 11,
+                PageWidth = ReferencePageWidth,
+                PageHeight = ReferencePageHeight,
+                ColumnWidth = ReferencePageWidth,
+                PagePadding = ReferencePagePadding,
                 TextAlignment = TextAlignment.Left
             };
         }
@@ -64,7 +67,7 @@ namespace ConstructionControl
 
             document.Blocks.Add(CreateParagraph(
                 TextAlignment.Center,
-                14,
+                13,
                 FontWeights.Bold,
                 null,
                 new Thickness(0, 0, 0, 3),
@@ -85,7 +88,7 @@ namespace ConstructionControl
             document.Blocks.Add(CreateCaption("наименование работ"));
 
             document.Blocks.Add(CreateParagraph(
-                TextAlignment.Center,
+                TextAlignment.Left,
                 11,
                 null,
                 null,
@@ -93,7 +96,7 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run("выполненных на объекте: "),
-                CreateUnderline($"«{NormalizeText(act.FullObjectName)}»", italic: true)));
+                CreateUnderline($"«{NormalizeText(act.FullObjectName)}»", italic: true, fillToLineEnd: true, prefixForMeasure: "выполненных на объекте: ", fontSize: 10)));
 
             document.Blocks.Add(CreateParagraph(
                 TextAlignment.Left,
@@ -104,11 +107,11 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run("«"),
-                CreateUnderline(act.EndDate.Day.ToString("00", CultureInfo.InvariantCulture), italic: true),
+                CreateUnderline(act.EndDate.Day.ToString("00", CultureInfo.InvariantCulture), italic: true, fontSize: 10),
                 new Run("» "),
-                CreateUnderline(GetGenitiveMonthName(act.EndDate), italic: true),
+                CreateUnderline(GetGenitiveMonthName(act.EndDate), italic: true, fontSize: 10),
                 new Run(" "),
-                CreateUnderline(act.EndDate.Year.ToString(CultureInfo.InvariantCulture), italic: true),
+                CreateUnderline(act.EndDate.Year.ToString(CultureInfo.InvariantCulture), italic: true, fontSize: 10),
                 new Run(" года.")));
 
             document.Blocks.Add(CreateParagraph(
@@ -147,7 +150,7 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run("произвела осмотр работ, выполненных "),
-                CreateUnderline(NormalizeText(act.WorkExecutorInfo), italic: true)));
+                CreateUnderline(NormalizeText(act.WorkExecutorInfo), italic: true, fillToLineEnd: true, prefixForMeasure: "произвела осмотр работ, выполненных ", fontSize: 10)));
             document.Blocks.Add(CreateCaption("наименование строительно-монтажной организации"));
 
             document.Blocks.Add(CreateParagraph(
@@ -189,7 +192,7 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run("2. Работы выполнены по проектной документации "),
-                CreateUnderline(NormalizeText(act.ProjectDocumentation), italic: true)));
+                CreateUnderline(NormalizeText(act.ProjectDocumentation), italic: true, fillToLineEnd: true, prefixForMeasure: "2. Работы выполнены по проектной документации ", fontSize: 10)));
             document.Blocks.Add(CreateCaption("наименование проектной организации, номер чертежей и дата их составления"));
 
             document.Blocks.Add(CreateParagraph(
@@ -201,7 +204,7 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run("3. При выполнении работ применены: "),
-                CreateUnderline(materialsText, italic: true)));
+                CreateUnderline(materialsText, italic: true, fillToLineEnd: true, prefixForMeasure: "3. При выполнении работ применены: ", fontSize: 10)));
             document.Blocks.Add(CreateCaption("наименование материалов, конструкций, изделий со ссылкой на сертификаты или иные документы, подтверждающие качество"));
 
             document.Blocks.Add(CreateParagraph(
@@ -214,14 +217,14 @@ namespace ConstructionControl
                 false,
                 new Run("4. При выполнении работ отсутствуют/допущены (нужное подчеркнуть) нарушения требований ТНПА и (или) проектной документации ")));
             document.Blocks.Add(CreateParagraph(
-                TextAlignment.Center,
+                TextAlignment.Left,
                 11,
                 null,
                 FontStyles.Italic,
                 new Thickness(0, 0, 0, 0),
                 null,
                 false,
-                CreateUnderline(NormalizeText(deviationsText), italic: true)));
+                CreateUnderline(NormalizeText(deviationsText), italic: true, fillToLineEnd: true, fontSize: 10)));
             document.Blocks.Add(CreateCaption("при наличии отклонений указывается, кем согласованы, номер чертежей и дата согласования"));
 
             document.Blocks.Add(BuildWorkDatesTable(act));
@@ -240,7 +243,7 @@ namespace ConstructionControl
                 null,
                 false,
                 new Run(title),
-                CreateUnderline(value, italic: true));
+                CreateUnderline(value, italic: true, fillToLineEnd: true, prefixForMeasure: title, fontSize: 10));
         }
 
         private static Table BuildSignatureTable(HiddenWorkActRecord act)
@@ -319,9 +322,9 @@ namespace ConstructionControl
         {
             var valueRow = new TableRow();
             valueRow.Cells.Add(CreateSignatureCell(role, TextAlignment.Left, false));
-            valueRow.Cells.Add(CreateSignatureCell("______________", TextAlignment.Center, true));
-            valueRow.Cells.Add(CreateSignatureCell("______________", TextAlignment.Center, true));
-            valueRow.Cells.Add(CreateSignatureCell(NormalizeText(personName), TextAlignment.Center, true));
+            valueRow.Cells.Add(CreateSignatureCell(string.Empty, TextAlignment.Center, true, targetWidth: 106));
+            valueRow.Cells.Add(CreateSignatureCell(string.Empty, TextAlignment.Center, true, targetWidth: 92));
+            valueRow.Cells.Add(CreateSignatureCell(NormalizeText(personName), TextAlignment.Center, true, targetWidth: 166));
             group.Rows.Add(valueRow);
 
             var captionRow = new TableRow();
@@ -332,7 +335,7 @@ namespace ConstructionControl
             group.Rows.Add(captionRow);
         }
 
-        private static TableCell CreateSignatureCell(string text, TextAlignment alignment, bool underline, double fontSize = 10.5)
+        private static TableCell CreateSignatureCell(string text, TextAlignment alignment, bool underline, double fontSize = 10.5, double targetWidth = 0)
         {
             var paragraph = CreateParagraph(
                 alignment,
@@ -343,7 +346,7 @@ namespace ConstructionControl
                 null,
                 false,
                 underline
-                    ? CreateUnderline(text, italic: underline)
+                    ? CreateUnderline(text, italic: underline, fillToLineEnd: true, fontSize: fontSize, targetWidth: targetWidth)
                     : new Run(text ?? string.Empty));
 
             return new TableCell(paragraph)
@@ -357,7 +360,7 @@ namespace ConstructionControl
         {
             return CreateParagraph(
                 TextAlignment.Center,
-                7.5,
+                6,
                 null,
                 null,
                 new Thickness(0, 0, 0, 1),
@@ -381,7 +384,6 @@ namespace ConstructionControl
                 Margin = margin ?? new Thickness(0, 0, 0, 2),
                 TextAlignment = alignment,
                 FontSize = fontSize,
-                LineHeight = Math.Max(fontSize + 1.4, 9.5),
                 BreakPageBefore = breakPageBefore
             };
 
@@ -401,12 +403,40 @@ namespace ConstructionControl
             return paragraph;
         }
 
-        private static Inline CreateUnderline(string text, bool bold = false, bool italic = false)
+        private static Inline CreateUnderline(
+            string text,
+            bool bold = false,
+            bool italic = false,
+            bool fillToLineEnd = false,
+            string prefixForMeasure = "",
+            double fontSize = 11,
+            double targetWidth = 0)
         {
-            var run = new Run(string.IsNullOrWhiteSpace(text) ? "____________________" : text.Trim())
+            var normalized = text?.Trim() ?? string.Empty;
+            if (fillToLineEnd)
+            {
+                var fontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal;
+                var fontStyle = italic ? FontStyles.Italic : FontStyles.Normal;
+                var availableWidth = targetWidth > 1 ? targetWidth : ReferenceContentWidth;
+                var prefixWidth = MeasureTextWidth(prefixForMeasure ?? string.Empty, 11, FontWeights.Normal, FontStyles.Normal);
+                var valueWidth = MeasureTextWidth(normalized, fontSize, fontWeight, fontStyle);
+                var spaceWidth = Math.Max(MeasureTextWidth("\u00A0", fontSize, fontWeight, fontStyle), 1.0);
+                var remainingWidth = availableWidth - prefixWidth - valueWidth;
+                var fillerCount = Math.Max(2, (int)Math.Ceiling(Math.Max(remainingWidth, 0) / spaceWidth));
+
+                normalized += new string('\u00A0', fillerCount);
+            }
+            else if (normalized.Length == 0)
+            {
+                normalized = new string('\u00A0', 24);
+            }
+
+            var run = new Run(normalized)
             {
                 TextDecorations = TextDecorations.Underline
             };
+
+            run.FontSize = fontSize;
 
             if (bold)
                 run.FontWeight = FontWeights.SemiBold;
@@ -414,6 +444,24 @@ namespace ConstructionControl
                 run.FontStyle = FontStyles.Italic;
 
             return run;
+        }
+
+        private static double MeasureTextWidth(string text, double fontSize, FontWeight weight, FontStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+
+            var typeface = new Typeface(new FontFamily("Times New Roman"), style, weight, FontStretches.Normal);
+            var formatted = new FormattedText(
+                text,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                Brushes.Black,
+                1.0);
+
+            return formatted.WidthIncludingTrailingWhitespace;
         }
 
         private static string BuildMaterialsText(HiddenWorkActRecord act)
@@ -436,12 +484,12 @@ namespace ConstructionControl
                 })
                 .ToList();
 
-            return materials.Count == 0 ? "____________________" : string.Join("; ", materials);
+            return materials.Count == 0 ? string.Empty : string.Join("; ", materials);
         }
 
         private static string NormalizeText(string text)
         {
-            return string.IsNullOrWhiteSpace(text) ? "____________________" : text.Trim();
+            return text?.Trim() ?? string.Empty;
         }
 
         private static string GetGenitiveMonthName(DateTime date)

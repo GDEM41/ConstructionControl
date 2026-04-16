@@ -2340,6 +2340,7 @@ namespace ConstructionControl
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             StopEstimateEmbeddedSecondaryPreview();
+            ClearHiddenWorkActFixedPreview();
             DisposeEstimateExcelApplication();
             ClosePdfExternalProcess();
             RemoveSessionMarker();

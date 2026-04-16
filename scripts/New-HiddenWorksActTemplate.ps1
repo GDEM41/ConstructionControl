@@ -13,6 +13,14 @@ if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
     New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 }
 
+# Primary path: keep template 1:1 with approved reference document.
+$referenceTemplatePath = Join-Path $projectRoot 'templates\HiddenWorksActTemplate.reference.docx'
+if (Test-Path -LiteralPath $referenceTemplatePath) {
+    Copy-Item -LiteralPath $referenceTemplatePath -Destination $OutputPath -Force
+    Write-Host "Создан шаблон Word из эталона: $OutputPath"
+    return
+}
+
 $openXmlPathCandidates = @(
     (Join-Path $env:USERPROFILE '.nuget\packages\documentformat.openxml\3.1.1\lib\net46\DocumentFormat.OpenXml.dll'),
     (Join-Path $env:USERPROFILE '.nuget\packages\documentformat.openxml\3.1.1\lib\net8.0\DocumentFormat.OpenXml.dll')

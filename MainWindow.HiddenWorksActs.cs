@@ -4,12 +4,14 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Threading;
+using System.Windows.Xps.Packaging;
 
 namespace ConstructionControl
 {
@@ -26,6 +28,9 @@ namespace ConstructionControl
         private bool isUpdatingHiddenWorkActEditor;
         private bool hiddenWorkActPreviewRefreshQueued;
         private string lastHiddenWorkActPreviewKey = string.Empty;
+        private int hiddenWorkActPreviewRenderVersion;
+        private XpsDocument hiddenWorkActPreviewXpsDocument;
+        private HiddenWorksActPreviewArtifact hiddenWorkActPreviewArtifact;
 
         private sealed class HiddenWorkActSourceSegment
         {
@@ -500,7 +505,7 @@ namespace ConstructionControl
             Dispatcher.BeginInvoke(new Action(RenderHiddenWorkActPreview), DispatcherPriority.Background);
         }
 
-        private void RenderHiddenWorkActPreview()
+        private async void RenderHiddenWorkActPreview()
         {
             hiddenWorkActPreviewRefreshQueued = false;
 
@@ -511,21 +516,63 @@ namespace ConstructionControl
             if (string.Equals(previewKey, lastHiddenWorkActPreviewKey, StringComparison.Ordinal))
                 return;
 
-            try
+            var renderVersion = ++hiddenWorkActPreviewRenderVersion;
+
+            if (selectedHiddenWorkAct == null)
             {
                 lastHiddenWorkActPreviewKey = previewKey;
+                ClearHiddenWorkActFixedPreview();
+                HiddenWorkActPreviewViewer.Document = HiddenWorksActDocumentBuilder.Build(Array.Empty<HiddenWorkActRecord>());
+                return;
+            }
 
-                FlowDocument document = selectedHiddenWorkAct == null
-                    ? HiddenWorksActDocumentBuilder.Build(Array.Empty<HiddenWorkActRecord>())
-                    : HiddenWorksActDocumentBuilder.BuildSingle(selectedHiddenWorkAct);
+            try
+            {
+                var snapshot = CloneHiddenWorkAct(selectedHiddenWorkAct);
+                var previewArtifact = await HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(snapshot);
 
-                HiddenWorkActPreviewViewer.Document = document;
+                if (renderVersion != hiddenWorkActPreviewRenderVersion
+                    || !string.Equals(previewKey, BuildHiddenWorkActPreviewKey(selectedHiddenWorkAct), StringComparison.Ordinal))
+                {
+                    previewArtifact.Dispose();
+                    return;
+                }
+
+                var newXpsDocument = new XpsDocument(previewArtifact.XpsPath, FileAccess.Read);
+                var newSequence = newXpsDocument.GetFixedDocumentSequence();
+
+                ClearHiddenWorkActFixedPreview();
+
+                hiddenWorkActPreviewXpsDocument = newXpsDocument;
+                hiddenWorkActPreviewArtifact = previewArtifact;
+                lastHiddenWorkActPreviewKey = previewKey;
+                HiddenWorkActPreviewViewer.Document = newSequence;
             }
             catch
             {
                 lastHiddenWorkActPreviewKey = string.Empty;
-                HiddenWorkActPreviewViewer.Document = HiddenWorksActDocumentBuilder.Build(Array.Empty<HiddenWorkActRecord>());
+                ClearHiddenWorkActFixedPreview();
+                HiddenWorkActPreviewViewer.Document = HiddenWorksActDocumentBuilder.BuildSingle(CloneHiddenWorkAct(selectedHiddenWorkAct));
             }
+        }
+
+        private void ClearHiddenWorkActFixedPreview()
+        {
+            try
+            {
+                hiddenWorkActPreviewXpsDocument?.Close();
+            }
+            catch
+            {
+                // Ignore preview document cleanup errors.
+            }
+            finally
+            {
+                hiddenWorkActPreviewXpsDocument = null;
+            }
+
+            hiddenWorkActPreviewArtifact?.Dispose();
+            hiddenWorkActPreviewArtifact = null;
         }
 
         private static string BuildHiddenWorkActPreviewKey(HiddenWorkActRecord act)
