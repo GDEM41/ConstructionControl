@@ -183,13 +183,22 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="ModernSummaryActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="Padding" Value="16,0"/>
-            <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrushHover}"/>
+        <Style x:Key="SummaryToolbarButtonBase" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="MinWidth" Value="148"/>
+            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ModernSummaryActionButton" TargetType="Button" BasedOn="{StaticResource SummaryToolbarButtonBase}">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrushHover}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -216,24 +225,53 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SummaryToolbarSecondaryButton" TargetType="Button" BasedOn="{StaticResource AppSecondaryButton}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="MinWidth" Value="148"/>
+            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
         <Style x:Key="ModernSummaryModeToggle" TargetType="CheckBox">
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Background" Value="{DynamicResource SelectedBrush}"/>
+            <Setter Property="MinHeight" Value="42"/>
+            <Setter Property="MinWidth" Value="154"/>
+            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Background" Value="{DynamicResource SecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="Bd" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
+                        <Border x:Name="Bd"
+                                CornerRadius="12"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SecondaryBrushHover}"/>
+                            </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -288,6 +326,244 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="ArrivalFilterDatePickerTextBox" TargetType="{x:Type DatePickerTextBox}">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,0,8,0"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
+                        <Grid Background="Transparent">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          CanContentScroll="False"/>
+                            <TextBlock x:Name="Watermark"
+                                       Margin="{TemplateBinding Padding}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       Text="дд.мм.гггг"
+                                       Visibility="Collapsed"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ArrivalFilterDatePicker" TargetType="DatePicker">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DatePicker">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="42"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <DatePickerTextBox x:Name="PART_TextBox"
+                                                       Grid.Column="0"
+                                                       Style="{StaticResource ArrivalFilterDatePickerTextBox}"
+                                                       HorizontalContentAlignment="Left"/>
+
+                                    <Border x:Name="ButtonHost"
+                                            Grid.Column="1"
+                                            Margin="0"
+                                            CornerRadius="0,10,10,0"
+                                            Background="{DynamicResource SurfaceAltBrush}"
+                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                            BorderThickness="1,0,0,0">
+                                        <Button x:Name="PART_Button"
+                                                Focusable="False"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="0"
+                                                MinWidth="0">
+                                            <TextBlock FontFamily="Segoe MDL2 Assets"
+                                                       Text=""
+                                                       FontSize="15"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Button>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   StaysOpen="False">
+                                <Border Margin="0,6,0,0"
+                                        Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource StrokeBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12"
+                                        Effect="{StaticResource ComboShadow}">
+                                    <Calendar x:Name="PART_Calendar"
+                                              Background="{DynamicResource SurfaceBrush}"
+                                              Foreground="{DynamicResource TextBrush}"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="RootBorder" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                            </Trigger>
+                            <Trigger SourceName="PART_Button" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonHost" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                            </Trigger>
+                            <Trigger SourceName="PART_Button" Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonHost" Property="Background" Value="{DynamicResource StrokeBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarSectionBorder" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarButtonBase" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="MinWidth" Value="126"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarPrimaryButton" TargetType="Button" BasedOn="{StaticResource TimesheetToolbarButtonBase}">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarSecondaryButton" TargetType="Button" BasedOn="{StaticResource AppSecondaryButton}">
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="MinWidth" Value="126"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarFieldTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
+        </Style>
+
+        <Style x:Key="TimesheetToolbarFieldComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
+        </Style>
+
+        <Style x:Key="TimesheetFlagCheckBox" TargetType="CheckBox">
+            <Setter Property="MinHeight" Value="42"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="Glyph"
+                                           Text="☐"
+                                           Margin="0,0,8,0"
+                                           FontSize="15"
+                                           VerticalAlignment="Center"/>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SecondaryBrushHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter TargetName="Glyph" Property="Text" Value="☑"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ProductionToolbarSectionBorder" TargetType="Border" BasedOn="{StaticResource TimesheetToolbarSectionBorder}"/>
+
+        <Style x:Key="ProductionToolbarFieldTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Height" Value="42"/>
+        </Style>
+
+        <Style x:Key="ProductionToolbarFieldComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Height" Value="42"/>
+        </Style>
+
+        <Style x:Key="ProductionToolbarPrimaryButton" TargetType="Button" BasedOn="{StaticResource TimesheetToolbarPrimaryButton}">
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+
+        <Style x:Key="ProductionToolbarSecondaryButton" TargetType="Button" BasedOn="{StaticResource TimesheetToolbarSecondaryButton}">
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+
+        <Style x:Key="ProductionToolbarSwitch" TargetType="CheckBox" BasedOn="{StaticResource ModernSwitchCheckBox}">
+            <Setter Property="Margin" Value="0,0,14,0"/>
         </Style>
 
 
@@ -953,12 +1229,16 @@
                         <TabItem x:Name="SummaryTab" Header="Сводка">
                             <DockPanel>
                             <StackPanel DockPanel.Dock="Top"
-                                        Margin="0,0,0,8">
-                                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                                  VerticalScrollBarVisibility="Disabled"
-                                                  CanContentScroll="False">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Grid Width="260" Margin="0,0,10,6">
+                                        Margin="0,0,0,10">
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="260"/>
+                                        <ColumnDefinition Width="14"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Grid.Column="0"
+                                          Margin="0,0,0,10"
+                                          VerticalAlignment="Top">
                                             <ToggleButton x:Name="SummaryFilterButton"
                                                       Style="{StaticResource SummaryFilterToggle}"
                                                       HorizontalContentAlignment="Left">
@@ -984,19 +1264,41 @@
                                                     </StackPanel>
                                                 </Border>
                                             </Popup>
-                                        </Grid>
-                                        <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="8" Margin="0,0,0,6">
-                                            <StackPanel Orientation="Horizontal">
-                                                <Button Content="Потребность по отметкам" Style="{StaticResource ModernSummaryActionButton}" Click="OpenDemandEditor_Click"/>
-                                                <Button Content="Дозаказать" Style="{StaticResource ModernSummaryActionButton}" Margin="8,0,0,0" Click="OpenReorderWindow_Click"/>
-                                                <Button Content="Дефициты/излишки" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" MinWidth="150" Click="OpenSummaryBalanceWindow_Click"/>
-                                                <Button Content="Сравнение" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" MinWidth="120" Click="OpenSummaryComparisonWindow_Click"/>
-                                                <CheckBox x:Name="SummaryMountedModeSwitch" Content="Режим монтажа" Style="{StaticResource ModernSummaryModeToggle}" Checked="SummaryModeSwitch_Changed" Unchecked="SummaryModeSwitch_Changed"/>
-                                            </StackPanel>
-                                        </Border>
-                                        </StackPanel>
-                                    </ScrollViewer>
-                                </StackPanel>
+                                    </Grid>
+                                    <Border Grid.Column="2"
+                                            Background="{DynamicResource SurfaceAltBrush}"
+                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="14"
+                                            Padding="12,12,2,2"
+                                            Margin="0,0,0,10"
+                                            VerticalAlignment="Top">
+                                        <WrapPanel VerticalAlignment="Top">
+                                            <Button Content="Потребность по отметкам"
+                                                    MinWidth="192"
+                                                    Style="{StaticResource ModernSummaryActionButton}"
+                                                    Click="OpenDemandEditor_Click"/>
+                                            <Button Content="Дозаказать"
+                                                    MinWidth="148"
+                                                    Style="{StaticResource ModernSummaryActionButton}"
+                                                    Click="OpenReorderWindow_Click"/>
+                                            <Button Content="Дефициты/излишки"
+                                                    MinWidth="176"
+                                                    Style="{StaticResource SummaryToolbarSecondaryButton}"
+                                                    Click="OpenSummaryBalanceWindow_Click"/>
+                                            <Button Content="Сравнение"
+                                                    MinWidth="142"
+                                                    Style="{StaticResource SummaryToolbarSecondaryButton}"
+                                                    Click="OpenSummaryComparisonWindow_Click"/>
+                                            <CheckBox x:Name="SummaryMountedModeSwitch"
+                                                      Content="Режим монтажа"
+                                                      Style="{StaticResource ModernSummaryModeToggle}"
+                                                      Checked="SummaryModeSwitch_Changed"
+                                                      Unchecked="SummaryModeSwitch_Changed"/>
+                                        </WrapPanel>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
                             <ListBox x:Name="SummaryPanel"
                                      BorderThickness="0"
                                      Background="Transparent"
@@ -1410,20 +1712,32 @@
                        FontWeight="SemiBold"
                        Margin="0,12,0,4"/>
 
-                                        <StackPanel Orientation="Horizontal">
-                                            <DatePicker x:Name="ArrivalDateFrom"
-                Margin="0,0,8,0"
-                SelectedDateChanged="ArrivalFilters_Changed"
-                Width="150"/>
+                                        <Grid Width="404">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="24"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
 
-                                            <TextBlock Text=" — "
-               VerticalAlignment="Center"
-               Margin="0,0,8,0"/>
+                                            <DatePicker x:Name="ArrivalDateFrom"
+                                                        Grid.Column="0"
+                                                        Style="{StaticResource ArrivalFilterDatePicker}"
+                                                        SelectedDateFormat="Short"
+                                                        SelectedDateChanged="ArrivalFilters_Changed"/>
+
+                                            <TextBlock Grid.Column="1"
+                                                       Text="—"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="16"/>
 
                                             <DatePicker x:Name="ArrivalDateTo"
-                SelectedDateChanged="ArrivalFilters_Changed"
-                Width="150"/>
-                                        </StackPanel>
+                                                        Grid.Column="2"
+                                                        Style="{StaticResource ArrivalFilterDatePicker}"
+                                                        SelectedDateFormat="Short"
+                                                        SelectedDateChanged="ArrivalFilters_Changed"/>
+                                        </Grid>
 
 
                                         <!-- ====== КНОПКИ ====== -->
@@ -1515,59 +1829,64 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <ToggleButton x:Name="OtToolsPinToggle"
-                                                  Style="{StaticResource AutoHidePanelPinToggleStyle}"
-                                                  Margin="0,0,0,8"
-                                                  ToolTip="Закрепить панель ОТ"
-                                                  Checked="JournalToolsPinToggle_Checked"
-                                                  Unchecked="JournalToolsPinToggle_Unchecked"
-                                                  Tag="Ot"/>
+                                        <Grid Grid.Row="0"
+                                              Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="360"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
 
-                                    <Grid Grid.Row="1">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
+                                            <WrapPanel Grid.Column="0"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,12,0">
+                                                <TextBlock Text="Статус:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <ComboBox x:Name="OtStatusFilterBox"
+                                                          Width="170"
+                                                          Margin="0,0,12,0"
+                                                          SelectionChanged="OtFilters_SelectionChanged"/>
+                                                <TextBlock Text="Специальность:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <ComboBox x:Name="OtSpecialtyFilterBox"
+                                                          Width="220"
+                                                          Margin="0,0,12,0"
+                                                          SelectionChanged="OtFilters_SelectionChanged"/>
+                                                <TextBlock Text="Бригада:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <ComboBox x:Name="OtBrigadeFilterBox"
+                                                          Width="200"
+                                                          SelectionChanged="OtFilters_SelectionChanged"/>
+                                            </WrapPanel>
 
-                                        <TextBox x:Name="OtSearchTextBox"
-                                                 Grid.Row="0"
-                                                 Width="360"
-                                                 Tag="Поиск по ФИО, например: Иванов"
-                                                 TextChanged="OtSearchTextBox_TextChanged"/>
+                                            <TextBox x:Name="OtSearchTextBox"
+                                                     Grid.Column="1"
+                                                     Margin="0"
+                                                     VerticalAlignment="Center"
+                                                     Tag="Поиск по ФИО, например: Иванов"
+                                                     TextChanged="OtSearchTextBox_TextChanged"/>
 
-                                        <WrapPanel Grid.Row="1" Margin="0,10,0,0">
-                                            <TextBlock Text="Статус:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <ComboBox x:Name="OtStatusFilterBox"
-                                                      Width="170"
-                                                      Margin="0,0,12,0"
-                                                      SelectionChanged="OtFilters_SelectionChanged"/>
-                                            <TextBlock Text="Специальность:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <ComboBox x:Name="OtSpecialtyFilterBox"
-                                                      Width="220"
-                                                      Margin="0,0,12,0"
-                                                      SelectionChanged="OtFilters_SelectionChanged"/>
-                                            <TextBlock Text="Бригада:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <ComboBox x:Name="OtBrigadeFilterBox"
-                                                      Width="200"
-                                                      SelectionChanged="OtFilters_SelectionChanged"/>
-                                        </WrapPanel>
+                                            <ToggleButton x:Name="OtToolsPinToggle"
+                                                          Grid.Column="2"
+                                                          Style="{StaticResource AutoHidePanelPinToggleStyle}"
+                                                          Margin="12,0,0,0"
+                                                          VerticalAlignment="Top"
+                                                          ToolTip="Закрепить панель ОТ"
+                                                          Checked="JournalToolsPinToggle_Checked"
+                                                          Unchecked="JournalToolsPinToggle_Unchecked"
+                                                          Tag="Ot"/>
+                                        </Grid>
 
-                                         <ScrollViewer Grid.Row="2"
-                                                       Margin="0,12,0,0"
-                                                       HorizontalScrollBarVisibility="Auto"
-                                                       VerticalScrollBarVisibility="Disabled"
-                                                       CanContentScroll="False">
-                                             <StackPanel Orientation="Horizontal">
-                                                 <Button Style="{StaticResource PrimaryButton}" Click="AddOtRow_Click">➕ Добавить запись</Button>
-                                                 <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedRepeatDone_Click" Margin="8,0,0,0">✅ Отметить инструктаж</Button>
-                                                 <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedPersonDismissed_Click" Margin="8,0,0,0">🚫 Снять с объекта</Button>
-                                                 <Button Style="{StaticResource SecondaryButton}" Click="OpenOtPersonHistory_Click" Margin="8,0,0,0">🕘 История сотрудника</Button>
-                                                 <Button Style="{StaticResource SecondaryButton}" Click="OpenTodayActionsReport_Click" Margin="8,0,0,0">📌 Действия на сегодня</Button>
-                                                 <Button Style="{StaticResource SecondaryButton}" Click="DeleteSelectedOtRow_Click" Margin="8,0,0,0">🗑 Удалить запись</Button>
-                                             </StackPanel>
-                                         </ScrollViewer>
-                                    </Grid>
+                                    <ScrollViewer Grid.Row="1"
+                                                  HorizontalScrollBarVisibility="Auto"
+                                                  VerticalScrollBarVisibility="Disabled"
+                                                  CanContentScroll="False">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Style="{StaticResource PrimaryButton}" Click="AddOtRow_Click">➕ Добавить запись</Button>
+                                            <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedRepeatDone_Click" Margin="8,0,0,0">✅ Отметить инструктаж</Button>
+                                            <Button Style="{StaticResource SecondaryButton}" Click="MarkSelectedPersonDismissed_Click" Margin="8,0,0,0">🚫 Снять с объекта</Button>
+                                            <Button Style="{StaticResource SecondaryButton}" Click="OpenOtPersonHistory_Click" Margin="8,0,0,0">🕘 История сотрудника</Button>
+                                            <Button Style="{StaticResource SecondaryButton}" Click="OpenTodayActionsReport_Click" Margin="8,0,0,0">📌 Действия на сегодня</Button>
+                                            <Button Style="{StaticResource SecondaryButton}" Click="DeleteSelectedOtRow_Click" Margin="8,0,0,0">🗑 Удалить запись</Button>
+                                        </StackPanel>
+                                    </ScrollViewer>
                                 </Grid>
                             </Border>
 
@@ -1726,101 +2045,142 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <ToggleButton x:Name="TimesheetToolsPinToggle"
-                                                      Style="{StaticResource AutoHidePanelPinToggleStyle}"
-                                                      Margin="0,0,0,8"
-                                                      ToolTip="Закрепить панель табеля"
-                                                      Checked="JournalToolsPinToggle_Checked"
-                                                      Unchecked="JournalToolsPinToggle_Unchecked"
-                                                      Tag="Timesheet"/>
+                                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource TimesheetToolbarSectionBorder}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                            Click="TimesheetPrevMonth_Click">◀ Предыдущий</Button>
+                                                    <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                            Click="TimesheetCurrentMonth_Click">Сегодня</Button>
+                                                    <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                            Margin="0"
+                                                            Click="TimesheetNextMonth_Click">Следующий ▶</Button>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource TimesheetToolbarSectionBorder}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock x:Name="TimesheetMonthText"
+                                                               Grid.Column="0"
+                                                               Margin="0,0,18,0"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="SemiBold"
+                                                               FontSize="15"/>
+                                                    <ComboBox x:Name="TimesheetBrigadeFilter"
+                                                              Grid.Column="1"
+                                                              Width="260"
+                                                              HorizontalAlignment="Left"
+                                                              Style="{StaticResource TimesheetToolbarFieldComboBox}"
+                                                              Margin="0"
+                                                              Tag="Фильтр по бригаде"
+                                                              SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
+                                                </Grid>
+                                            </Border>
+
+                                            <Border Grid.Column="4"
+                                                    Style="{StaticResource TimesheetToolbarSectionBorder}">
+                                                <StackPanel Orientation="Horizontal"
+                                                            VerticalAlignment="Center">
+                                                    <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                            Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
+                                                    <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                            Margin="0"
+                                                            Click="TimesheetPrintBlank_Click">🖨 Печать пустого</Button>
+                                                    <ToggleButton x:Name="TimesheetToolsPinToggle"
+                                                                  Style="{StaticResource AutoHidePanelPinToggleStyle}"
+                                                                  Margin="10,0,0,0"
+                                                                  VerticalAlignment="Center"
+                                                                  ToolTip="Закрепить панель табеля"
+                                                                  Checked="JournalToolsPinToggle_Checked"
+                                                                  Unchecked="JournalToolsPinToggle_Unchecked"
+                                                                  Tag="Timesheet"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
 
                                         <Grid Grid.Row="1">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
 
-                                            <Grid Grid.Row="0" Margin="0,0,0,12">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="220"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource TimesheetToolbarSectionBorder}">
+                                                <WrapPanel>
+                                                    <TextBox x:Name="TimesheetFullNameTextBox"
+                                                             Width="260"
+                                                             Style="{StaticResource TimesheetToolbarFieldTextBox}"
+                                                             Tag="ФИО сотрудника"/>
+                                                    <ComboBox x:Name="TimesheetSpecialtyTextBox"
+                                                              Width="200"
+                                                              Style="{StaticResource TimesheetToolbarFieldComboBox}"
+                                                              Tag="Специальность"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=Specialties}"/>
+                                                    <ComboBox x:Name="TimesheetWorkModeComboBox"
+                                                              Width="160"
+                                                              Style="{StaticResource TimesheetToolbarFieldComboBox}"
+                                                              SelectedIndex="0"
+                                                              Tag="Режим работы">
+                                                        <ComboBoxItem Content="Обычно (8 ч)"/>
+                                                        <ComboBoxItem Content="Вахта (12 ч)"/>
+                                                    </ComboBox>
+                                                    <TextBox x:Name="TimesheetRankTextBox"
+                                                             Width="86"
+                                                             Style="{StaticResource TimesheetToolbarFieldTextBox}"
+                                                             Tag="Разряд"
+                                                             MaxLength="2"
+                                                             PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
+                                                    <ComboBox x:Name="TimesheetBrigadeComboBox"
+                                                              Width="214"
+                                                              Style="{StaticResource TimesheetToolbarFieldComboBox}"
+                                                              Tag="Название бригады"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
+                                                    <CheckBox x:Name="TimesheetIsBrigadierCheckBox"
+                                                              Content="Бригадир"
+                                                              Style="{StaticResource TimesheetFlagCheckBox}"/>
+                                                </WrapPanel>
+                                            </Border>
 
-                                                <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Click="TimesheetPrevMonth_Click">◀ Предыдущий</Button>
-                                                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="TimesheetCurrentMonth_Click" Margin="8,0,0,0">Сегодня</Button>
-                                                <Button Grid.Column="2" Style="{StaticResource SecondaryButton}" Click="TimesheetNextMonth_Click" Margin="8,0,0,0">Следующий ▶</Button>
-                                                <TextBlock x:Name="TimesheetMonthText" Grid.Column="3" Margin="16,0,18,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="15"/>
-                                    <ComboBox x:Name="TimesheetBrigadeFilter"
-                                                          Grid.Column="4"
-                                                          Width="210"
-                                                          Tag="Фильтр по бригаде"
-                                                          SelectionChanged="TimesheetBrigadeFilter_SelectionChanged"/>
-                                                <StackPanel Grid.Column="5" Orientation="Horizontal" HorizontalAlignment="Right">
-                                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintFilled_Click">🖨 Печать табеля</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" Click="TimesheetPrintBlank_Click" Margin="8,0,0,0">🖨 Печать пустого</Button>
-                                                </StackPanel>
-                                            </Grid>
-
-                                            <Grid Grid.Row="1">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="220"/>
-                                                    <ColumnDefinition Width="170"/>
-                                                    <ColumnDefinition Width="140"/>
-                                                    <ColumnDefinition Width="80"/>
-                                                    <ColumnDefinition Width="180"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBox x:Name="TimesheetFullNameTextBox" Grid.Column="0" Margin="0,0,10,0" Tag="ФИО сотрудника"/>
-                                                <ComboBox x:Name="TimesheetSpecialtyTextBox"
-                                                          Grid.Column="1"
-                                                          Margin="0,0,10,0"
-                                                          Tag="Специальность"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=Specialties}"/>
-                                                <ComboBox x:Name="TimesheetWorkModeComboBox"
-                                                          Grid.Column="2"
-                                                          Margin="0,0,10,0"
-                                                          SelectedIndex="0"
-                                                          Tag="Режим работы">
-                                                    <ComboBoxItem Content="Обычно (8 ч)"/>
-                                                    <ComboBoxItem Content="Вахта (12 ч)"/>
-                                                </ComboBox>
-                                                <TextBox x:Name="TimesheetRankTextBox"
-                                                         Grid.Column="3"
-                                                         Margin="0,0,10,0"
-                                                         Tag="Разряд"
-                                                         MaxLength="2"
-                                                         PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
-                                                <ComboBox x:Name="TimesheetBrigadeComboBox"
-                                                          Grid.Column="4"
-                                                          Margin="0,0,10,0"
-                                                          Tag="Название бригады"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
-                                                <CheckBox x:Name="TimesheetIsBrigadierCheckBox" Grid.Column="5" Content="Бригадир" Margin="0,0,12,0"/>
-                                                <ScrollViewer Grid.Column="6"
-                                                              HorizontalAlignment="Right"
-                                                              HorizontalScrollBarVisibility="Auto"
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource TimesheetToolbarSectionBorder}">
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                                               VerticalScrollBarVisibility="Disabled"
                                                               CanContentScroll="False">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <Button Style="{StaticResource PrimaryButton}" Click="AddTimesheetPerson_Click">➕ Добавить</Button>
-                                                        <Button Style="{StaticResource SecondaryButton}" Click="DeleteTimesheetPerson_Click" Margin="8,0,0,0">🗑 Удалить</Button>
-                                                        <Button Style="{StaticResource SecondaryButton}" Click="EditSelectedDayComment_Click" Margin="8,0,0,0">💬 Комментарий</Button>
-                                                        <Button Style="{StaticResource SecondaryButton}" Click="ToggleSelectedDayDocument_Click" Margin="8,0,0,0">📄 Документ</Button>
+                                                        <Button Style="{StaticResource TimesheetToolbarPrimaryButton}"
+                                                                Click="AddTimesheetPerson_Click">➕ Добавить</Button>
+                                                        <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                                Click="DeleteTimesheetPerson_Click">🗑 Удалить</Button>
+                                                        <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                                Click="EditSelectedDayComment_Click">💬 Комментарий</Button>
+                                                        <Button Style="{StaticResource TimesheetToolbarSecondaryButton}"
+                                                                Margin="0"
+                                                                Click="ToggleSelectedDayDocument_Click">📄 Документ</Button>
                                                     </StackPanel>
                                                 </ScrollViewer>
-                                            </Grid>
+                                            </Border>
                                         </Grid>
                                     </Grid>
                                 </Border>
@@ -1895,14 +2255,6 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <ToggleButton x:Name="ProductionToolsPinToggle"
-                                                      Style="{StaticResource AutoHidePanelPinToggleStyle}"
-                                                      Margin="0,0,0,8"
-                                                      ToolTip="Закрепить панель ПР"
-                                                      Checked="JournalToolsPinToggle_Checked"
-                                                      Unchecked="JournalToolsPinToggle_Unchecked"
-                                                      Tag="Production"/>
-
                                         <Grid Grid.Row="1">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
@@ -1915,184 +2267,244 @@
                                                 <ColumnDefinition Width="0.9*"/>
                                                 <ColumnDefinition Width="1.1*"/>
                                                 <ColumnDefinition Width="1.1*"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Дата" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <DatePicker x:Name="ProductionDatePicker"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Дата" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <DatePicker x:Name="ProductionDatePicker"
+                                                                Width="220"
+                                                                HorizontalAlignment="Left"
+                                                                Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                SelectedDateFormat="Short"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Вид работы" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionActionBox"
-                                                          Tag="Например: монтаж"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          SelectionChanged="ProductionActionBox_SelectionChanged"
-                                                          LostFocus="ProductionActionBox_LostFocus"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionActions}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Вид работы" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionActionBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: монтаж"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              SelectionChanged="ProductionActionBox_SelectionChanged"
+                                                              LostFocus="ProductionActionBox_LostFocus"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionActions}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                                <TextBlock Text="Чего" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionWorkBox"
-                                                          Tag="Тип элементов, например: ригелей"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          SelectionChanged="ProductionWorkBox_SelectionChanged"
-                                                          LostFocus="ProductionWorkBox_LostFocus"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionTargets}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Чего" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionWorkBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Тип элементов, например: ригелей"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              SelectionChanged="ProductionWorkBox_SelectionChanged"
+                                                              LostFocus="ProductionWorkBox_LostFocus"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionTargets}"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="3"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Padding="8">
+                                                <ToggleButton x:Name="ProductionToolsPinToggle"
+                                                              Style="{StaticResource AutoHidePanelPinToggleStyle}"
+                                                              Margin="0"
+                                                              VerticalAlignment="Top"
+                                                              ToolTip="Закрепить панель ПР"
+                                                              Checked="JournalToolsPinToggle_Checked"
+                                                              Unchecked="JournalToolsPinToggle_Unchecked"
+                                                              Tag="Production"/>
+                                            </Border>
                                         </Grid>
 
                                         <Grid Grid.Row="1" Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="1.9*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="1.15*"/>
+                                                <ColumnDefinition Width="0.85*"/>
+                                                <ColumnDefinition Width="0.85*"/>
+                                                <ColumnDefinition Width="0.95*"/>
                                             </Grid.ColumnDefinitions>
 
-                                             <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                 <TextBox x:Name="ProductionElementsBox"
-                                                          Visibility="Collapsed"
-                                                          Width="0"
-                                                          Height="0"
-                                                          IsReadOnly="True"/>
-                                                 <WrapPanel>
-                                                     <Button Content="Элементы..."
-                                                             Margin="0"
-                                                             MinWidth="118"
-                                                             Click="EditProductionItems_Click"/>
-                                                     <Button x:Name="ProductionAutoMasterButton"
-                                                             Content="Автомастер ▼"
-                                                             Margin="10,0,0,0"
-                                                             MinWidth="150"
-                                                             Style="{StaticResource SecondaryButton}"
-                                                             Click="ProductionAutoMasterButton_Click">
-                                                        <Button.ContextMenu>
-                                                            <ContextMenu x:Name="ProductionAutoMasterMenu"
-                                                                         Opened="ProductionAutoMasterMenu_Opened">
-                                                                <MenuItem Header="Автозаполнить"
-                                                                          Click="AutoFillProduction_Click"/>
-                                                                <MenuItem Header="Настройки автомастера"
-                                                                          Click="ConfigureProductionAutoFill_Click"/>
-                                                                <Separator/>
-                                                                <MenuItem Header="Профиль автомастера"
-                                                                          Tag="AutoMasterProfilesRoot"/>
-                                                            </ContextMenu>
-                                                        </Button.ContextMenu>
-                                                    </Button>
-                                                </WrapPanel>
-                                                <ComboBox x:Name="ProductionAutoFillProfileBox"
-                                                          Visibility="Collapsed"
-                                                          Width="0"
-                                                          Height="0"
-                                                          IsEditable="False"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionAutoFillProfileNames}"
-                                                          SelectionChanged="ProductionAutoFillProfileBox_SelectionChanged"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Инструменты" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="ProductionElementsBox"
+                                                             Visibility="Collapsed"
+                                                             Width="0"
+                                                             Height="0"
+                                                             IsReadOnly="True"/>
+                                                    <WrapPanel>
+                                                        <Button Content="Элементы..."
+                                                                Style="{StaticResource ProductionToolbarPrimaryButton}"
+                                                                MinWidth="132"
+                                                                Click="EditProductionItems_Click"/>
+                                                        <Button x:Name="ProductionAutoMasterButton"
+                                                                Content="Автомастер ▼"
+                                                                MinWidth="164"
+                                                                Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                Click="ProductionAutoMasterButton_Click">
+                                                            <Button.ContextMenu>
+                                                                <ContextMenu x:Name="ProductionAutoMasterMenu"
+                                                                             Opened="ProductionAutoMasterMenu_Opened">
+                                                                    <MenuItem Header="Автозаполнить"
+                                                                              Click="AutoFillProduction_Click"/>
+                                                                    <MenuItem Header="Настройки автомастера"
+                                                                              Click="ConfigureProductionAutoFill_Click"/>
+                                                                    <Separator/>
+                                                                    <MenuItem Header="Профиль автомастера"
+                                                                              Tag="AutoMasterProfilesRoot"/>
+                                                                </ContextMenu>
+                                                            </Button.ContextMenu>
+                                                        </Button>
+                                                    </WrapPanel>
+                                                    <ComboBox x:Name="ProductionAutoFillProfileBox"
+                                                              Visibility="Collapsed"
+                                                              Width="0"
+                                                              Height="0"
+                                                              IsEditable="False"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionAutoFillProfileNames}"
+                                                              SelectionChanged="ProductionAutoFillProfileBox_SelectionChanged"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Блоки" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionBlocksBox"
-                                                          Tag="Например: 1, 2"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="False"
-                                                          StaysOpenOnEdit="True"
-                                                          LostFocus="ProductionBlocksBox_LostFocus"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionBlockOptions}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Блоки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionBlocksBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: 1, 2"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="False"
+                                                              StaysOpenOnEdit="True"
+                                                              LostFocus="ProductionBlocksBox_LostFocus"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionBlockOptions}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                                <TextBlock Text="Отметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionMarksBox"
-                                                          Tag="Например: +0.080, +3.220"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="False"
-                                                          StaysOpenOnEdit="True"
-                                                          LostFocus="ProductionMarksBox_LostFocus"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionMarkOptions}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Отметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionMarksBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: +0.080, +3.220"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="False"
+                                                              StaysOpenOnEdit="True"
+                                                              LostFocus="ProductionMarksBox_LostFocus"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionMarkOptions}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="3">
-                                                <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionBrigadeBox"
-                                                          Tag="Какая бригада выполняла"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="3"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Бригада" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionBrigadeBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Какая бригада выполняла"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=TimesheetAssignableBrigades}"/>
+                                                </StackPanel>
+                                            </Border>
                                         </Grid>
 
                                         <Grid Grid.Row="2">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="1.2*"/>
-                                                <ColumnDefinition Width="1.8*"/>
+                                                <ColumnDefinition Width="0.85*"/>
+                                                <ColumnDefinition Width="1.25*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Погода" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionWeatherBox"
-                                                          Tag="Например: +15, ясно"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionWeatherOptions}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Погода" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionWeatherBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: +15, ясно"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionWeatherOptions}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Отклонения" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="ProductionDeviationBox"
-                                                          Tag="Например: отклонение от осей +3 мм"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Отклонения" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="ProductionDeviationBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: отклонение от осей +3 мм"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=ProductionDeviationOptions}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                             <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
-                                                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                                               VerticalScrollBarVisibility="Disabled"
-                                                               CanContentScroll="False">
-                                                     <StackPanel Orientation="Horizontal">
-                                                         <CheckBox x:Name="ProductionAllowCustomElementsCheckBox"
-                                                                   Content="Свои элементы без проверки прихода"
-                                                                   Style="{StaticResource ModernSwitchCheckBox}"
-                                                                   Margin="0,0,12,8"/>
-                                                         <CheckBox x:Name="ProductionHiddenWorksCheckBox" Content="Нужен акт скрытых работ" Margin="0,0,12,8"/>
-                                                         <Button x:Name="OpenProductionHiddenWorkActButton"
-                                                                 Content="Акт"
-                                                                IsEnabled="{Binding ElementName=ProductionHiddenWorksCheckBox, Path=IsChecked}"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Height="32"
-                                                                MinWidth="72"
-                                                                Margin="0,0,8,0"
-                                                                Click="OpenProductionHiddenWorkActButton_Click"/>
-                                                        <Button x:Name="ProductionSaveButton"
-                                                                Content="➕ Добавить"
-                                                                Click="SaveProductionForm_Click"
-                                                                Height="32"
-                                                                MinWidth="118"/>
-                                                        <Button Content="Очистить"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Margin="8,0,0,0"
-                                                                Height="32"
-                                                                MinWidth="96"
-                                                                Click="ClearProductionForm_Click"/>
-                                                        <Button Content="🗑 Удалить"
-                                                                Style="{StaticResource SecondaryButton}"
-                                                                Margin="8,0,0,0"
-                                                                Height="32"
-                                                                MinWidth="96"
-                                                                Click="DeleteProductionRow_Click"/>
-                                                    </StackPanel>
-                                                </ScrollViewer>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Параметры и действия" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                                  VerticalScrollBarVisibility="Disabled"
+                                                                  CanContentScroll="False">
+                                                        <WrapPanel VerticalAlignment="Center">
+                                                            <CheckBox x:Name="ProductionAllowCustomElementsCheckBox"
+                                                                      Content="Свои элементы без проверки прихода"
+                                                                      Style="{StaticResource ProductionToolbarSwitch}"/>
+                                                            <CheckBox x:Name="ProductionHiddenWorksCheckBox"
+                                                                      Content="Нужен акт скрытых работ"
+                                                                      Style="{StaticResource ProductionToolbarSwitch}"/>
+                                                            <Button x:Name="OpenProductionHiddenWorkActButton"
+                                                                    Content="Акт"
+                                                                    IsEnabled="{Binding ElementName=ProductionHiddenWorksCheckBox, Path=IsChecked}"
+                                                                    Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                    MinWidth="86"
+                                                                    Click="OpenProductionHiddenWorkActButton_Click"/>
+                                                            <Button x:Name="ProductionSaveButton"
+                                                                    Content="➕ Добавить"
+                                                                    Click="SaveProductionForm_Click"
+                                                                    Style="{StaticResource ProductionToolbarPrimaryButton}"
+                                                                    MinWidth="132"/>
+                                                            <Button Content="Очистить"
+                                                                    Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                    MinWidth="110"
+                                                                    Click="ClearProductionForm_Click"/>
+                                                            <Button Content="🗑 Удалить"
+                                                                    Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                    Margin="0"
+                                                                    MinWidth="110"
+                                                                    Click="DeleteProductionRow_Click"/>
+                                                        </WrapPanel>
+                                                    </ScrollViewer>
+                                                </StackPanel>
+                                            </Border>
                                         </Grid>
                                         </Grid>
                                     </Grid>
@@ -2473,12 +2885,16 @@
                                                         <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                                             <TextBlock Text="Начало работ" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                                             <DatePicker x:Name="HiddenWorkActStartDatePicker"
+                                                                        Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                        SelectedDateFormat="Short"
                                                                         SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}"
                                                                         SelectedDateChanged="HiddenWorkActDate_SelectedDateChanged"/>
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="1" Margin="0,0,10,0">
                                                             <TextBlock Text="Окончание работ" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                                             <DatePicker x:Name="HiddenWorkActEndDatePicker"
+                                                                        Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                        SelectedDateFormat="Short"
                                                                         SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}"
                                                                         SelectedDateChanged="HiddenWorkActDate_SelectedDateChanged"/>
                                                         </StackPanel>
@@ -2710,14 +3126,6 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <ToggleButton x:Name="InspectionToolsPinToggle"
-                                                      Style="{StaticResource AutoHidePanelPinToggleStyle}"
-                                                      Margin="0,0,0,8"
-                                                      ToolTip="Закрепить панель осмотров"
-                                                      Checked="JournalToolsPinToggle_Checked"
-                                                      Unchecked="JournalToolsPinToggle_Unchecked"
-                                                      Tag="Inspection"/>
-
                                         <Grid Grid.Row="1">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
@@ -2728,78 +3136,126 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="120"/>
-                                                <ColumnDefinition Width="104"/>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="116"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Журнал" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="InspectionJournalNameBox"
-                                                          Tag="Например: журнал осмотра стропов"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=InspectionJournalNames}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Журнал" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="InspectionJournalNameBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: журнал осмотра стропов"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=InspectionJournalNames}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Осмотр" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="InspectionNameBox"
-                                                          Tag="Например: осмотр лесов"
-                                                          IsEditable="True"
-                                                          IsTextSearchEnabled="True"
-                                                          StaysOpenOnEdit="True"
-                                                          ItemsSource="{Binding ElementName=RootWindow, Path=InspectionNames}"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Осмотр" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="InspectionNameBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"
+                                                              Tag="Например: осмотр лесов"
+                                                              IsEditable="True"
+                                                              IsTextSearchEnabled="True"
+                                                              StaysOpenOnEdit="True"
+                                                              ItemsSource="{Binding ElementName=RootWindow, Path=InspectionNames}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                                <TextBlock Text="Напоминать с" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <DatePicker x:Name="InspectionReminderStartDatePicker"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Напоминать с" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <DatePicker x:Name="InspectionReminderStartDatePicker"
+                                                                Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                SelectedDateFormat="Short"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="3">
-                                                <TextBlock Text="Периодичность, дней" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="InspectionPeriodDaysTextBox"
-                                                         Tag="Например: 7"
-                                                         MaxLength="3"
-                                                         PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="3"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Периодичность, дней" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="InspectionPeriodDaysTextBox"
+                                                             Style="{StaticResource ProductionToolbarFieldTextBox}"
+                                                             Tag="Например: 7"
+                                                             MaxLength="3"
+                                                             PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="4"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Padding="8">
+                                                <ToggleButton x:Name="InspectionToolsPinToggle"
+                                                              Style="{StaticResource AutoHidePanelPinToggleStyle}"
+                                                              Margin="0"
+                                                              VerticalAlignment="Top"
+                                                              ToolTip="Закрепить панель осмотров"
+                                                              Checked="JournalToolsPinToggle_Checked"
+                                                              Unchecked="JournalToolsPinToggle_Unchecked"
+                                                              Tag="Inspection"/>
+                                            </Border>
                                         </Grid>
 
                                         <Grid Grid.Row="1">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="132"/>
+                                                <ColumnDefinition Width="220"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Последний осмотр" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <DatePicker x:Name="InspectionLastCompletedDatePicker"/>
-                                            </StackPanel>
-
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Комментарий" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="InspectionNotesTextBox"
-                                                         Tag="Например: осмотр выполнен, замечаний нет"/>
-                                            </StackPanel>
-
-                                            <ScrollViewer Grid.Column="2"
-                                                          HorizontalScrollBarVisibility="Auto"
-                                                          VerticalScrollBarVisibility="Disabled"
-                                                          CanContentScroll="False"
-                                                          VerticalAlignment="Bottom">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="114" Click="ApplyInspectionTemplate_Click">Шаблон ↓</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="164" Margin="10,0,0,0" Click="CreateInspectionFromTemplate_Click">Добавить по шаблону</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="148" Margin="10,0,0,0" Click="SaveInspectionTemplate_Click">Сохранить шаблон</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="118" Margin="10,0,0,0" Click="OpenInspectionReport_Click">Отчет</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="150" Margin="10,0,0,0" Click="MarkInspectionCompleted_Click">✅ Проведен</Button>
-                                                    <Button x:Name="InspectionSaveButton" Content="➕ Добавить" MinWidth="132" Margin="10,0,0,0" Click="SaveInspectionForm_Click"/>
-                                                    <Button Content="Очистить" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" MinWidth="110" Click="ClearInspectionForm_Click"/>
-                                                    <Button Content="🗑 Удалить" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" MinWidth="110" Click="DeleteInspectionRow_Click"/>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Последний осмотр" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <DatePicker x:Name="InspectionLastCompletedDatePicker"
+                                                                Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                SelectedDateFormat="Short"/>
                                                 </StackPanel>
-                                            </ScrollViewer>
+                                            </Border>
+
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Комментарий" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="InspectionNotesTextBox"
+                                                             Style="{StaticResource ProductionToolbarFieldTextBox}"
+                                                             Tag="Например: осмотр выполнен, замечаний нет"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                              VerticalScrollBarVisibility="Disabled"
+                                                              CanContentScroll="False"
+                                                              VerticalAlignment="Center">
+                                                    <WrapPanel VerticalAlignment="Center">
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="114" Click="ApplyInspectionTemplate_Click">Шаблон ↓</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="164" Click="CreateInspectionFromTemplate_Click">Добавить по шаблону</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="148" Click="SaveInspectionTemplate_Click">Сохранить шаблон</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="118" Click="OpenInspectionReport_Click">Отчет</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="150" Click="MarkInspectionCompleted_Click">✅ Проведен</Button>
+                                                        <Button x:Name="InspectionSaveButton" Content="➕ Добавить" MinWidth="132" Style="{StaticResource ProductionToolbarPrimaryButton}" Click="SaveInspectionForm_Click"/>
+                                                        <Button Content="Очистить" Style="{StaticResource ProductionToolbarSecondaryButton}" MinWidth="110" Click="ClearInspectionForm_Click"/>
+                                                        <Button Content="🗑 Удалить" Style="{StaticResource ProductionToolbarSecondaryButton}" Margin="0" MinWidth="110" Click="DeleteInspectionRow_Click"/>
+                                                    </WrapPanel>
+                                                </ScrollViewer>
+                                            </Border>
                                         </Grid>
                                         </Grid>
                                     </Grid>
@@ -2895,79 +3351,166 @@
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <Border Grid.Row="0"
+                                <Border x:Name="NotesToolsHoverStrip"
+                                        Grid.Row="0"
+                                        Style="{StaticResource AutoHidePanelHoverStripStyle}"
+                                        MouseEnter="JournalToolsHoverStrip_MouseEnter"
+                                        ToolTip="Наведите курсор, чтобы развернуть панель"
+                                        Tag="Notes">
+                                    <TextBlock Text="Панель заметок (наведите курсор, чтобы развернуть)"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                </Border>
+
+                                <Border x:Name="NotesToolsPanelBorder"
+                                        Grid.Row="1"
                                         Style="{StaticResource CardBorderStyle}"
-                                        Margin="0,0,0,12">
+                                        Margin="0,0,0,12"
+                                        Visibility="Collapsed"
+                                        MouseEnter="JournalToolsPanel_MouseEnter"
+                                        MouseLeave="JournalToolsPanel_MouseLeave"
+                                        Tag="Notes">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0"
+                                              Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Форма заметки"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            <ToggleButton x:Name="NotesToolsPinToggle"
+                                                          Grid.Column="1"
+                                                          Style="{StaticResource AutoHidePanelPinToggleStyle}"
+                                                          Margin="0"
+                                                          VerticalAlignment="Top"
+                                                          ToolTip="Закрепить панель заметок"
+                                                          Checked="JournalToolsPinToggle_Checked"
+                                                          Unchecked="JournalToolsPinToggle_Unchecked"
+                                                          Tag="Notes"/>
+                                        </Grid>
+
+                                        <Grid Grid.Row="1">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
 
                                         <Grid Grid.Row="0" Margin="0,0,0,10">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="220"/>
-                                                <ColumnDefinition Width="120"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="260"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="160"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Заголовок" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="NoteTitleBox" Tag="Например: Согласовать бетон на секцию А"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Заголовок" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="NoteTitleBox"
+                                                             Style="{StaticResource ProductionToolbarFieldTextBox}"
+                                                             Tag="Например: Согласовать бетон на секцию А"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Режим напоминания" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="NoteReminderModeBox"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Режим напоминания" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="NoteReminderModeBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Статус задачи" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <CheckBox x:Name="NoteDoneCheckBox" Content="Завершено"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="4"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Статус задачи" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <CheckBox x:Name="NoteDoneCheckBox"
+                                                              Content="Завершено"
+                                                              Style="{StaticResource TimesheetFlagCheckBox}"
+                                                              Margin="0"/>
+                                                </StackPanel>
+                                            </Border>
                                         </Grid>
 
                                         <Grid Grid.Row="1" Margin="0,0,0,10">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="168"/>
-                                                <ColumnDefinition Width="88"/>
-                                                <ColumnDefinition Width="88"/>
-                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="110"/>
+                                                <ColumnDefinition Width="170"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Дата старта" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <DatePicker x:Name="NoteReminderStartDatePicker"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Дата старта" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <DatePicker x:Name="NoteReminderStartDatePicker"
+                                                                Style="{StaticResource ArrivalFilterDatePicker}"
+                                                                SelectedDateFormat="Short"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                                <TextBlock Text="Время" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="NoteReminderTimeBox" Tag="09:00"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Время" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="NoteReminderTimeBox"
+                                                             Style="{StaticResource ProductionToolbarFieldTextBox}"
+                                                             Tag="09:00"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                                <TextBlock Text="Интервал" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="NoteReminderIntervalValueBox"
-                                                         Text="1"
-                                                         MaxLength="4"
-                                                         PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="2"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Интервал" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="NoteReminderIntervalValueBox"
+                                                             Style="{StaticResource ProductionToolbarFieldTextBox}"
+                                                             Text="1"
+                                                             MaxLength="4"
+                                                             PreviewTextInput="DigitsOnlyTextBox_PreviewTextInput"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <StackPanel Grid.Column="3" Margin="0,0,12,0">
-                                                <TextBlock Text="Ед. интервала" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <ComboBox x:Name="NoteReminderIntervalUnitBox"/>
-                                            </StackPanel>
+                                            <Border Grid.Column="3"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Ед. интервала" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <ComboBox x:Name="NoteReminderIntervalUnitBox"
+                                                              Style="{StaticResource ProductionToolbarFieldComboBox}"/>
+                                                </StackPanel>
+                                            </Border>
 
-                                            <TextBlock Grid.Column="4"
-                                                       VerticalAlignment="Bottom"
-                                                       TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       Text="Разово: одно напоминание. Периодически: после кнопки &quot;Отметить напоминание&quot; сдвигается на интервал. Постоянно: всегда активно с даты старта."/>
+                                            <Border Grid.Column="4"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <TextBlock VerticalAlignment="Center"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Text="Разово: одно напоминание. Периодически: после кнопки &quot;Отметить напоминание&quot; сдвигается на интервал. Постоянно: всегда активно с даты старта."/>
+                                            </Border>
                                         </Grid>
 
                                         <Grid Grid.Row="2">
@@ -2976,34 +3519,51 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                                <TextBlock Text="Текст заметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                                <TextBox x:Name="NoteBodyBox"
-                                                         AcceptsReturn="True"
-                                                         TextWrapping="Wrap"
-                                                         VerticalScrollBarVisibility="Auto"
-                                                         MinHeight="86"
-                                                         MaxHeight="150"
-                                                         Tag="Подробности, ссылки, TODO, комментарии..."/>
-                                            </StackPanel>
-
-                                            <ScrollViewer Grid.Column="1"
-                                                          HorizontalScrollBarVisibility="Auto"
-                                                          VerticalScrollBarVisibility="Disabled"
-                                                          CanContentScroll="False"
-                                                          VerticalAlignment="Bottom">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Button x:Name="SaveNoteButton" MinWidth="130" Click="SaveNote_Click">💾 Сохранить</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="110" Margin="10,0,0,0" Click="ClearNoteForm_Click">Очистить</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="188" Margin="10,0,0,0" Click="AcknowledgeNoteReminder_Click">🔔 Отметить напоминание</Button>
-                                                    <Button Style="{StaticResource SecondaryButton}" MinWidth="110" Margin="10,0,0,0" Click="DeleteNote_Click">🗑 Удалить</Button>
+                                            <Border Grid.Column="0"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}"
+                                                    Margin="0,0,12,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Текст заметки" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                                    <TextBox x:Name="NoteBodyBox"
+                                                             AcceptsReturn="True"
+                                                             TextWrapping="Wrap"
+                                                             VerticalScrollBarVisibility="Auto"
+                                                             MinHeight="120"
+                                                             MaxHeight="180"
+                                                             Tag="Подробности, ссылки, TODO, комментарии..."/>
                                                 </StackPanel>
-                                            </ScrollViewer>
+                                            </Border>
+
+                                            <Border Grid.Column="1"
+                                                    Style="{StaticResource ProductionToolbarSectionBorder}">
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                              VerticalScrollBarVisibility="Disabled"
+                                                              CanContentScroll="False"
+                                                              VerticalAlignment="Center">
+                                                    <WrapPanel VerticalAlignment="Center">
+                                                        <Button x:Name="SaveNoteButton"
+                                                                MinWidth="130"
+                                                                Style="{StaticResource ProductionToolbarPrimaryButton}"
+                                                                Click="SaveNote_Click">💾 Сохранить</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                MinWidth="110"
+                                                                Click="ClearNoteForm_Click">Очистить</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                MinWidth="188"
+                                                                Click="AcknowledgeNoteReminder_Click">🔔 Отметить напоминание</Button>
+                                                        <Button Style="{StaticResource ProductionToolbarSecondaryButton}"
+                                                                Margin="0"
+                                                                MinWidth="110"
+                                                                Click="DeleteNote_Click">🗑 Удалить</Button>
+                                                    </WrapPanel>
+                                                </ScrollViewer>
+                                            </Border>
+                                        </Grid>
                                         </Grid>
                                     </Grid>
                                 </Border>
 
-                                <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+                                <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}">
                                     <DataGrid x:Name="NotesGrid"
                                               AutoGenerateColumns="False"
                                               CanUserAddRows="False"

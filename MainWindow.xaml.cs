@@ -111,6 +111,7 @@ namespace ConstructionControl
         private bool isTimesheetToolsPinned;
         private bool isProductionToolsPinned;
         private bool isInspectionToolsPinned;
+        private bool isNotesToolsPinned;
         private Point treeDragStart;
         private readonly ObservableCollection<TimesheetRowViewModel> timesheetRows = new();
         private readonly ObservableCollection<string> timesheetBrigades = new();
@@ -20817,6 +20818,7 @@ namespace ConstructionControl
             "Timesheet" => isTimesheetToolsPinned,
             "Production" => isProductionToolsPinned,
             "Inspection" => isInspectionToolsPinned,
+            "Notes" => isNotesToolsPinned,
             _ => false
         };
 
@@ -20835,6 +20837,9 @@ namespace ConstructionControl
                     break;
                 case "Inspection":
                     isInspectionToolsPinned = value;
+                    break;
+                case "Notes":
+                    isNotesToolsPinned = value;
                     break;
             }
         }
@@ -20866,6 +20871,11 @@ namespace ConstructionControl
                     hoverStrip = InspectionToolsHoverStrip;
                     panelBorder = InspectionToolsPanelBorder;
                     pinToggle = InspectionToolsPinToggle;
+                    return true;
+                case "Notes":
+                    hoverStrip = NotesToolsHoverStrip;
+                    panelBorder = NotesToolsPanelBorder;
+                    pinToggle = NotesToolsPinToggle;
                     return true;
                 default:
                     hoverStrip = null;
@@ -20899,6 +20909,7 @@ namespace ConstructionControl
             UpdateJournalToolsPanelState("Timesheet", forceVisible: false);
             UpdateJournalToolsPanelState("Production", forceVisible: false);
             UpdateJournalToolsPanelState("Inspection", forceVisible: false);
+            UpdateJournalToolsPanelState("Notes", forceVisible: false);
         }
 
         private void JournalToolsPinToggle_Checked(object sender, RoutedEventArgs e)
@@ -21141,6 +21152,7 @@ namespace ConstructionControl
                 isTimesheetToolsPinned = false;
                 isProductionToolsPinned = false;
                 isInspectionToolsPinned = false;
+                isNotesToolsPinned = false;
                 UpdateAllJournalToolsPanelStates();
                 UpdateTreePanelState(forceVisible: false);
                 return;
@@ -21155,6 +21167,7 @@ namespace ConstructionControl
             isTimesheetToolsPinned = pinJournalPanels;
             isProductionToolsPinned = pinJournalPanels;
             isInspectionToolsPinned = pinJournalPanels;
+            isNotesToolsPinned = pinJournalPanels;
 
             UpdateTreePanelState(forceVisible: isTreePinned);
             UpdateAllJournalToolsPanelStates();

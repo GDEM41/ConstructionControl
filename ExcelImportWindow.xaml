@@ -2,8 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Импорт из Excel"
-        Height="550"
-        Width="1300"
+        Height="720"
+        Width="1380"
+        MinHeight="680"
+        MinWidth="1220"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource AppBgBrush}">
 
@@ -80,7 +82,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8"/>
+                            CornerRadius="12"/>
 
                             <ContentPresenter Grid.Column="0"
                   Margin="10,0,10,0"
@@ -150,7 +152,7 @@
                                 Background="{DynamicResource SurfaceBrush}"
                                 BorderBrush="{DynamicResource StrokeBrush}"
                                 BorderThickness="1"
-                                CornerRadius="6"
+                                CornerRadius="12"
                                 SnapsToDevicePixels="True"
                                 Padding="4"
                                 Effect="{DynamicResource ComboShadow}">
@@ -216,7 +218,7 @@
                         Background="{DynamicResource StrokeBrush}"
                         BorderBrush="{DynamicResource StrokeBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="12"
                         Padding="10,6">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -245,8 +247,9 @@
 
 
         <Style x:Key="PillButton" TargetType="Button">
-            <Setter Property="Padding" Value="14,6"/>
-            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
             <Setter Property="Background" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
@@ -257,7 +260,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd"
-                        CornerRadius="6"
+                        CornerRadius="12"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}">
@@ -284,7 +287,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd"
-                        CornerRadius="6"
+                        CornerRadius="12"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}">
@@ -304,8 +307,8 @@
             </Setter>
         </Style>
         <Style x:Key="SquareIconButton" TargetType="Button">
-            <Setter Property="Width" Value="32"/>
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
             <Setter Property="Background" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -315,7 +318,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd"
-                        CornerRadius="6"
+                        CornerRadius="10"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}">
@@ -335,13 +338,73 @@
             </Setter>
         </Style>
 
+        <Style x:Key="ImportSectionCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <Style x:Key="ImportPanelTitle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+
+        <Style x:Key="ImportSubtleText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="ImportSheetsListBox" TargetType="ListBox">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0,0,0,6"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Root"
+                                            Background="{DynamicResource SurfaceBrush}"
+                                            BorderBrush="{DynamicResource StrokeBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
 
     <Border Background="{DynamicResource SurfaceBrush}"
-            CornerRadius="10"
-            Padding="15"
-            Margin="10">
+            BorderBrush="{DynamicResource StrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="18"
+            Padding="18"
+            Margin="12">
 
         <Grid>
             <Grid.RowDefinitions>
@@ -351,58 +414,58 @@
             </Grid.RowDefinitions>
 
             <!-- ===== Заголовок ===== -->
-            <StackPanel Margin="0,0,0,10">
-                <TextBlock Text="Импорт из Excel"
-                           FontSize="18"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextBrush}"/>
-                <TextBlock x:Name="FilePathText"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           FontSize="12"
-                           TextWrapping="Wrap"/>
-            </StackPanel>
+            <Border Style="{StaticResource ImportSectionCard}"
+                    Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="Импорт из Excel"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextBrush}"/>
+                    <TextBlock x:Name="FilePathText"
+                               Margin="0,6,0,0"
+                               Style="{StaticResource ImportSubtleText}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Border>
 
             <!-- ===== Основная область ===== -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="260"/>
-                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="290"/>
+                    <ColumnDefinition Width="14"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Листы Excel -->
-                <Border Background="{DynamicResource SurfaceAltBrush}"
-                        BorderBrush="{DynamicResource StrokeBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="8">
+                <Border Style="{StaticResource ImportSectionCard}">
 
-                    <StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
                         <TextBlock Text="Листы Excel"
-                                   FontWeight="SemiBold"
-                                   Margin="0,0,0,6"/>
+                                   Style="{StaticResource ImportPanelTitle}"
+                                   Margin="0,0,0,8"/>
 
                         <ListBox x:Name="SheetsList"
-                                 Height="320"
-                                 BorderThickness="0"
-                                 Background="Transparent"
+                                 Grid.Row="1"
+                                 MinHeight="420"
+                                 Style="{StaticResource ImportSheetsListBox}"
                                  SelectionChanged="SheetsList_SelectionChanged"/>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- Разделитель -->
                 <GridSplitter Grid.Column="1"
-                              Width="6"
-                              Background="{DynamicResource StrokeBrush}"
+                              Width="10"
+                              Background="Transparent"
                               HorizontalAlignment="Stretch"/>
 
                 <!-- Предпросмотр -->
                 <Border Grid.Column="2"
-                        Background="{DynamicResource SurfaceAltBrush}"
-                        BorderBrush="{DynamicResource StrokeBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="8">
+                        Style="{StaticResource ImportSectionCard}">
 
                     <Grid>
                         <Grid.RowDefinitions>
@@ -412,11 +475,12 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Text="Предпросмотр листа"
-                                   FontWeight="SemiBold"
-                                   Margin="0,0,0,6"/>
+                                   Style="{StaticResource ImportPanelTitle}"
+                                   Margin="0,0,0,8"/>
 
                         <DataGrid x:Name="PreviewGrid"
                                   Grid.Row="1"
+                                  Margin="0,0,0,12"
                                   AutoGenerateColumns="True"
                                   SelectionUnit="Cell"
                                   SelectionMode="Extended"
@@ -430,9 +494,9 @@
 
                         <!-- Кнопки выбора -->
                         <StackPanel Grid.Row="2"
-                                    Margin="0,8,0,0"
+                                    Margin="0,0,0,0"
                                     HorizontalAlignment="Left">
-                            <WrapPanel>
+                            <WrapPanel Margin="0,0,0,8">
 
                                 <!-- Группа 1 -->
                                 <Button Content="🧾 Позиция" Tag="Position" Style="{StaticResource PillButton}" Margin="2" Click="SelectCell_Click"/>
@@ -453,7 +517,7 @@
 
                             </WrapPanel>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                            <WrapPanel VerticalAlignment="Center">
                                 <TextBlock Text="Сводная таблица:"
                                            FontWeight="SemiBold"
                                            VerticalAlignment="Center"
@@ -466,7 +530,8 @@
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
                                 <ComboBox x:Name="BlockSelector"
-                                       Width="80"
+                                          Style="{StaticResource ModernComboBox}"
+                                          Width="90"
                                           Margin="0,0,10,0"
                                           SelectionChanged="BlockSelector_SelectionChanged"/>
 
@@ -474,8 +539,8 @@
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
                                 <ListBox x:Name="FloorsRangeSelector"
-                                         Width="150"
-                                         Height="25"
+                                         Width="160"
+                                         Height="32"
                                          SelectionMode="Extended"
                                          DisplayMemberPath="Label"
                                          BorderBrush="{DynamicResource StrokeBrush}"
@@ -491,9 +556,8 @@
                                 <Button Content="📊 По отметкам"
                                         Tag="DemandRange"
                                         Style="{StaticResource PillButton}"
-                                        
                                         Click="SelectCell_Click"/>
-                            </StackPanel>
+                            </WrapPanel>
                         </StackPanel>
 
                     </Grid>
@@ -501,127 +565,79 @@
             </Grid>
 
             <!-- ===== Низ ===== -->
-            <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid Grid.Row="2" Margin="0,14,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="SelectedCellText"
-          Margin="4,0,0,0"
-           Foreground="{DynamicResource TextSecondaryBrush}"
-           FontSize="12"
-           Text="Ячейка не выбрана"/>
+                <Border Style="{StaticResource ImportSectionCard}"
+                        Margin="0,0,12,0"
+                        Padding="12,10">
+                    <TextBlock x:Name="SelectedCellText"
+                               Style="{StaticResource ImportSubtleText}"
+                               FontSize="12"
+                               Text="Ячейка не выбрана"/>
+                </Border>
 
 
 
 
                 <!-- ===== Нижняя панель: тип импорта + шаблоны ===== -->
-                <Grid Margin="12,10,12,10" HorizontalAlignment="Right">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-
-                        <StackPanel.Resources>
-                            <!-- Универсальные отступы между элементами -->
-                            <Style TargetType="FrameworkElement">
-                                <Setter Property="Margin" Value="8,0,0,0"/>
-                            </Style>
-                        </StackPanel.Resources>
-
-                        <!-- Типы импорта -->
-                        <!-- Тип импорта -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Border Style="{StaticResource ImportSectionCard}"
+                            Margin="0,0,12,0"
+                            Padding="12,10">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <StackPanel.Resources>
-                                <Style TargetType="RadioButton">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="RadioButton">
-                                                <ToggleButton x:Name="Tb"
-                              IsChecked="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}"
-                              Background="{DynamicResource StrokeBrush}"
-                              BorderBrush="{DynamicResource StrokeBrush}"
-                              BorderThickness="1"
-                              Padding="10,4"
-                              Cursor="Hand">
-                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </ToggleButton>
+                            <RadioButton x:Name="MainRadio"
+                                         Style="{StaticResource ModernRadio}"
+                                         Content="Основные"
+                                         Margin="0,0,8,0"
+                                         IsChecked="True"/>
 
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsChecked" Value="True">
-                                                        <Setter TargetName="Tb" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
-                                                        <Setter TargetName="Tb" Property="BorderBrush" Value="{DynamicResource PrimaryBrushPressed}"/>
-                                                        <Setter Property="Foreground" Value="{DynamicResource SurfaceBrush}"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
+                            <RadioButton x:Name="LowCostRadio"
+                                         Style="{StaticResource ModernRadio}"
+                                         Content="Малоценка"
+                                         Margin="0,0,8,0"/>
 
-                            </StackPanel.Resources>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <RadioButton x:Name="MainRadio"
-                 Style="{StaticResource ModernRadio}"
-                 Content="Основные"
-                 Margin="0,0,8,0"
-                 IsChecked="True"/>
-
-                                <RadioButton x:Name="LowCostRadio"
-                 Style="{StaticResource ModernRadio}"
-                 Content="Малоценка"
-                 Margin="0,0,8,0"/>
-
-                                <RadioButton x:Name="InternalRadio"
-                 Style="{StaticResource ModernRadio}"
-                 Content="Внутренние"
-                 Margin="0,0,8,0"/>
-                            </StackPanel>
-
+                            <RadioButton x:Name="InternalRadio"
+                                         Style="{StaticResource ModernRadio}"
+                                         Content="Внутренние"/>
                         </StackPanel>
+                    </Border>
 
+                    <Border Style="{StaticResource ImportSectionCard}"
+                            Margin="0,0,12,0"
+                            Padding="12,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Шаблон:"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
 
-                        <!-- Разделитель №1 -->
-                        <Rectangle Fill="{DynamicResource StrokeBrush}"
-                   Width="1"
-                   Height="22"
-                   Margin="12,0,12,0"/>
-                        
-                        <Rectangle Width="12"/>
+                            <ComboBox x:Name="TemplatesBox"
+                                      Style="{StaticResource ModernComboBox}"
+                                      Width="250"/>
 
-                        <!-- Шаблоны -->
-                        <TextBlock Text="Шаблон:"
-           VerticalAlignment="Center"
-           Margin="0,0,6,0"/>
+                            <Button Content="⟳" Style="{StaticResource SquareIconButton}" Click="RefreshTemplates_Click"/>
+                            <Button Content="✖" Style="{StaticResource SquareIconButton}" Click="DeleteTemplate_Click"/>
+                            <TextBlock x:Name="CurrentTemplateText"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
 
-
-                        <ComboBox x:Name="TemplatesBox"
-          Style="{StaticResource ModernComboBox}"
-          Width="200"/>
-
-
-
-                        <Button Content="⟳" Style="{StaticResource SquareIconButton}" Click="RefreshTemplates_Click"/>
-                        <Button Content="✖" Style="{StaticResource SquareIconButton}" Click="DeleteTemplate_Click"/>
-
-
-
-                        <!-- Отображение текущего шаблона -->
-                        <TextBlock x:Name="CurrentTemplateText"
-                   VerticalAlignment="Center"
-                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-
-                        <!-- Разделитель №2 -->
-                        <Rectangle Fill="{DynamicResource StrokeBrush}"
-                   Width="1"
-                   Height="22"
-                   Margin="12,0,12,0"/>
-
-                        <!-- Кнопки -->
-                        <Button Content="⚙ Применить " Style="{StaticResource PillButton}" Click="ApplyTemplate_Click"/>
-                        <Button Content="💾 Сохранить " Style="{StaticResource PillButton}" Click="SaveTemplate_Click"/>
-                        <Button Content="🚀 Импорт " Style="{StaticResource PrimaryButton}" Click="Import_Click"/>
-
-                    </StackPanel>
-                </Grid>
+                    <Border Style="{StaticResource ImportSectionCard}"
+                            Padding="12,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="⚙ Применить " Style="{StaticResource PillButton}" Margin="0" Click="ApplyTemplate_Click"/>
+                            <Button Content="💾 Сохранить " Style="{StaticResource PillButton}" Click="SaveTemplate_Click"/>
+                            <Button Content="🚀 Импорт " Style="{StaticResource PrimaryButton}" Click="Import_Click"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
 
 
