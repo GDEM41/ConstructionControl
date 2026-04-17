@@ -2,6 +2,7 @@
         x:Name="RootWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:input="clr-namespace:System.Windows.Input;assembly=PresentationCore"
         xmlns:local="clr-namespace:ConstructionControl"
         Title="МастерPRO"
         Icon="pack://application:,,,/installer/assets/MasterPRO.ico"
@@ -2662,7 +2663,13 @@
                                                        FontWeight="SemiBold"
                                                        Margin="0,0,0,10"/>
                                             <DocumentViewer x:Name="HiddenWorkActPreviewViewer"
-                                                            Grid.Row="1"/>
+                                                            Grid.Row="1">
+                                                <DocumentViewer.CommandBindings>
+                                                    <CommandBinding Command="{x:Static input:ApplicationCommands.Print}"
+                                                                    CanExecute="HiddenWorkActPreviewPrint_CanExecute"
+                                                                    Executed="HiddenWorkActPreviewPrint_Executed"/>
+                                                </DocumentViewer.CommandBindings>
+                                            </DocumentViewer>
                                         </Grid>
                                     </Border>
                                 </Grid>

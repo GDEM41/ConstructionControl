@@ -549,7 +549,7 @@ namespace ConstructionControl
                 get => sourcePrefix;
                 set
                 {
-                    var normalized = value?.Trim() ?? string.Empty;
+                    var normalized = value ?? string.Empty;
                     if (string.Equals(sourcePrefix, normalized, StringComparison.CurrentCulture))
                         return;
                     sourcePrefix = normalized;
@@ -562,7 +562,7 @@ namespace ConstructionControl
                 get => replacement;
                 set
                 {
-                    var normalized = value?.Trim() ?? string.Empty;
+                    var normalized = value ?? string.Empty;
                     if (string.Equals(replacement, normalized, StringComparison.CurrentCulture))
                         return;
                     replacement = normalized;
@@ -2337,6 +2337,7 @@ namespace ConstructionControl
             processingOverlayDelayTimer?.Stop();
             autoSaveTimer?.Stop();
             gridPreferenceSaveDebounceTimer?.Stop();
+            hiddenWorkActPreviewDebounceTimer?.Stop();
             HideReminderOverlayWindow();
             StopEstimateEmbeddedPreview();
             StopEstimateEmbeddedSecondaryPreview();
@@ -18458,7 +18459,7 @@ namespace ConstructionControl
             hiddenWorkPrefixCellFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(HiddenWorkTitleReplacementReferenceRow.SourcePrefix)));
             var hiddenWorkPrefixEditFactory = new FrameworkElementFactory(typeof(ComboBox));
             hiddenWorkPrefixEditFactory.SetValue(ComboBox.IsEditableProperty, true);
-            hiddenWorkPrefixEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, true);
+            hiddenWorkPrefixEditFactory.SetValue(ComboBox.IsTextSearchEnabledProperty, false);
             hiddenWorkPrefixEditFactory.SetValue(ComboBox.StaysOpenOnEditProperty, true);
             hiddenWorkPrefixEditFactory.SetValue(ComboBox.ItemsSourceProperty, hiddenWorkPrefixOptions);
             hiddenWorkPrefixEditFactory.SetBinding(ComboBox.TextProperty, new Binding(nameof(HiddenWorkTitleReplacementReferenceRow.SourcePrefix))
@@ -18597,6 +18598,15 @@ namespace ConstructionControl
 
             saveButton.Click += (_, _) =>
             {
+                otGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                otGrid.CommitEdit(DataGridEditingUnit.Row, true);
+                actionWorkGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                actionWorkGrid.CommitEdit(DataGridEditingUnit.Row, true);
+                hiddenWorkTitleGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                hiddenWorkTitleGrid.CommitEdit(DataGridEditingUnit.Row, true);
+                prGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                prGrid.CommitEdit(DataGridEditingUnit.Row, true);
+
                 var otMap = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
                 foreach (var row in otRows)
                 {
@@ -18667,6 +18677,7 @@ namespace ConstructionControl
                         .ToList(),
                     StringComparer.CurrentCultureIgnoreCase);
                 currentObject.HiddenWorkTitlePrefixReplacements = new Dictionary<string, string>(hiddenWorkTitleMap, StringComparer.CurrentCultureIgnoreCase);
+                ApplyHiddenWorkTitleReferenceChangesToExistingActs();
                 currentObject.ProductionDeviationsByType = productionMap.ToDictionary(
                     x => x.Key,
                     x => x.Value

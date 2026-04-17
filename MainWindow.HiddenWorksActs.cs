@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -6,10 +6,13 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
 
@@ -27,10 +30,13 @@ namespace ConstructionControl
         private bool isRefreshingHiddenWorkActs;
         private bool isUpdatingHiddenWorkActEditor;
         private bool hiddenWorkActPreviewRefreshQueued;
+        private bool hiddenWorkActPreviewRenderInProgress;
         private string lastHiddenWorkActPreviewKey = string.Empty;
         private int hiddenWorkActPreviewRenderVersion;
         private XpsDocument hiddenWorkActPreviewXpsDocument;
         private HiddenWorksActPreviewArtifact hiddenWorkActPreviewArtifact;
+        private DispatcherTimer hiddenWorkActPreviewDebounceTimer;
+        private static readonly TimeSpan HiddenWorkActPreviewDebounceInterval = TimeSpan.FromMilliseconds(350);
 
         private sealed class HiddenWorkActSourceSegment
         {
@@ -81,6 +87,7 @@ namespace ConstructionControl
                     continue;
 
                 act.Materials ??= new ObservableCollection<HiddenWorkActMaterialEntry>();
+                RepairHiddenWorkActTextFields(act);
                 var isNewAct = act.Id == Guid.Empty;
                 if (act.Id == Guid.Empty)
                     act.Id = Guid.NewGuid();
@@ -161,7 +168,7 @@ namespace ConstructionControl
 
             UpdateHiddenWorkActSummary();
             UpdateHiddenWorkActEditorState();
-            UpdateHiddenWorkActPreview();
+            UpdateHiddenWorkActPreview(immediate: true);
 
             if (saveAfterRefresh && currentObject != null)
                 SaveState(SaveTrigger.System);
@@ -344,6 +351,35 @@ namespace ConstructionControl
                 act.Materials = new ObservableCollection<HiddenWorkActMaterialEntry>(BuildSuggestedHiddenWorkMaterials(act, segment.Rows, segment.StartDate));
         }
 
+        private void ApplyHiddenWorkTitleReferenceChangesToExistingActs()
+        {
+            if (currentObject?.HiddenWorkActs == null)
+                return;
+
+            foreach (var act in currentObject.HiddenWorkActs.Where(x => x != null))
+            {
+                act.ActionName = RepairPotentialMojibakeText(act.ActionName);
+                act.WorkName = RepairPotentialMojibakeText(act.WorkName);
+                act.BlocksText = RepairPotentialMojibakeText(act.BlocksText);
+                act.MarksText = RepairPotentialMojibakeText(act.MarksText);
+
+                act.GroupKey = BuildHiddenWorkGroupKey(act.ActionName, act.WorkName, act.BlocksText, act.MarksText);
+                act.WorkTemplateKey = BuildHiddenWorkTemplateKey(act.ActionName, act.WorkName);
+
+                var rebuiltTitle = BuildHiddenWorkTitle(act.ActionName, act.WorkName, act.BlocksText, act.MarksText);
+                if (!act.IsFixed)
+                {
+                    act.WorkTitle = rebuiltTitle;
+                    continue;
+                }
+
+                var adjustedTitle = ApplyHiddenWorkTitlePrefixReplacement(act.WorkTitle);
+                act.WorkTitle = string.IsNullOrWhiteSpace(adjustedTitle)
+                    ? rebuiltTitle
+                    : LevelMarkHelper.PreventSingleLetterWrap(adjustedTitle);
+            }
+        }
+
         private void RewireHiddenWorkActSubscriptions()
         {
             foreach (var record in subscribedHiddenWorkActRecords)
@@ -389,10 +425,7 @@ namespace ConstructionControl
                 return;
 
             if (sender is HiddenWorkActRecord act && ReferenceEquals(act, selectedHiddenWorkAct))
-            {
                 UpdateHiddenWorkActEditorState();
-                UpdateHiddenWorkActPreview();
-            }
 
             UpdateHiddenWorkActSummary();
         }
@@ -422,7 +455,6 @@ namespace ConstructionControl
                 return;
 
             NotifyHiddenWorkActMaterialsChanged(sender);
-            UpdateHiddenWorkActPreview();
             PersistHiddenWorkActChanges();
         }
 
@@ -432,7 +464,6 @@ namespace ConstructionControl
                 return;
 
             NotifyHiddenWorkActMaterialsChanged(sender);
-            UpdateHiddenWorkActPreview();
             PersistHiddenWorkActChanges();
         }
 
@@ -496,8 +527,46 @@ namespace ConstructionControl
             }
         }
 
-        private void UpdateHiddenWorkActPreview()
+        private void UpdateHiddenWorkActPreview(bool immediate = false)
         {
+            EnsureHiddenWorkActPreviewDebounceTimer();
+
+            hiddenWorkActPreviewDebounceTimer.Stop();
+            if (!immediate)
+            {
+                hiddenWorkActPreviewDebounceTimer.Start();
+                return;
+            }
+
+            QueueHiddenWorkActPreviewRender();
+        }
+
+        private void EnsureHiddenWorkActPreviewDebounceTimer()
+        {
+            if (hiddenWorkActPreviewDebounceTimer != null)
+                return;
+
+            hiddenWorkActPreviewDebounceTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = HiddenWorkActPreviewDebounceInterval
+            };
+            hiddenWorkActPreviewDebounceTimer.Tick += HiddenWorkActPreviewDebounceTimer_Tick;
+        }
+
+        private void HiddenWorkActPreviewDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            hiddenWorkActPreviewDebounceTimer?.Stop();
+            QueueHiddenWorkActPreviewRender();
+        }
+
+        private void QueueHiddenWorkActPreviewRender()
+        {
+            if (hiddenWorkActPreviewRenderInProgress)
+            {
+                hiddenWorkActPreviewRefreshQueued = true;
+                return;
+            }
+
             if (hiddenWorkActPreviewRefreshQueued)
                 return;
 
@@ -507,27 +576,31 @@ namespace ConstructionControl
 
         private async void RenderHiddenWorkActPreview()
         {
+            if (hiddenWorkActPreviewRenderInProgress)
+                return;
+
             hiddenWorkActPreviewRefreshQueued = false;
-
-            if (HiddenWorkActPreviewViewer == null)
-                return;
-
-            var previewKey = BuildHiddenWorkActPreviewKey(selectedHiddenWorkAct);
-            if (string.Equals(previewKey, lastHiddenWorkActPreviewKey, StringComparison.Ordinal))
-                return;
-
-            var renderVersion = ++hiddenWorkActPreviewRenderVersion;
-
-            if (selectedHiddenWorkAct == null)
-            {
-                lastHiddenWorkActPreviewKey = previewKey;
-                ClearHiddenWorkActFixedPreview();
-                HiddenWorkActPreviewViewer.Document = HiddenWorksActDocumentBuilder.Build(Array.Empty<HiddenWorkActRecord>());
-                return;
-            }
+            hiddenWorkActPreviewRenderInProgress = true;
 
             try
             {
+                if (HiddenWorkActPreviewViewer == null)
+                    return;
+
+                var previewKey = BuildHiddenWorkActPreviewKey(selectedHiddenWorkAct);
+                if (string.Equals(previewKey, lastHiddenWorkActPreviewKey, StringComparison.Ordinal))
+                    return;
+
+                var renderVersion = ++hiddenWorkActPreviewRenderVersion;
+
+                if (selectedHiddenWorkAct == null)
+                {
+                    lastHiddenWorkActPreviewKey = previewKey;
+                    ClearHiddenWorkActFixedPreview();
+                    HiddenWorkActPreviewViewer.Document = BuildHiddenWorkActPreviewPlaceholderDocument("Выберите акт.");
+                    return;
+                }
+
                 var snapshot = CloneHiddenWorkAct(selectedHiddenWorkAct);
                 var previewArtifact = await HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(snapshot);
 
@@ -548,11 +621,20 @@ namespace ConstructionControl
                 lastHiddenWorkActPreviewKey = previewKey;
                 HiddenWorkActPreviewViewer.Document = newSequence;
             }
-            catch
+            catch (Exception ex)
             {
                 lastHiddenWorkActPreviewKey = string.Empty;
                 ClearHiddenWorkActFixedPreview();
-                HiddenWorkActPreviewViewer.Document = HiddenWorksActDocumentBuilder.BuildSingle(CloneHiddenWorkAct(selectedHiddenWorkAct));
+                HiddenWorkActPreviewViewer.Document = BuildHiddenWorkActPreviewPlaceholderDocument(
+                    string.IsNullOrWhiteSpace(ex.Message)
+                        ? "Не удалось построить предпросмотр акта."
+                        : ex.Message);
+            }
+            finally
+            {
+                hiddenWorkActPreviewRenderInProgress = false;
+                if (hiddenWorkActPreviewRefreshQueued)
+                    Dispatcher.BeginInvoke(new Action(RenderHiddenWorkActPreview), DispatcherPriority.Background);
             }
         }
 
@@ -573,6 +655,36 @@ namespace ConstructionControl
 
             hiddenWorkActPreviewArtifact?.Dispose();
             hiddenWorkActPreviewArtifact = null;
+        }
+
+        private FixedDocument BuildHiddenWorkActPreviewPlaceholderDocument(string message)
+        {
+            var pageSize = new Size(793.7, 1122.52);
+            var document = new FixedDocument();
+            document.DocumentPaginator.PageSize = pageSize;
+
+            var page = new FixedPage
+            {
+                Width = pageSize.Width,
+                Height = pageSize.Height
+            };
+
+            var textBlock = new TextBlock
+            {
+                Text = message ?? string.Empty,
+                Margin = new Thickness(48),
+                FontSize = 16,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = System.Windows.Media.Brushes.DimGray
+            };
+
+            page.Children.Add(textBlock);
+
+            var pageContent = new PageContent();
+            ((System.Windows.Markup.IAddChild)pageContent).AddChild(page);
+            document.Pages.Add(pageContent);
+
+            return document;
         }
 
         private static string BuildHiddenWorkActPreviewKey(HiddenWorkActRecord act)
@@ -600,8 +712,6 @@ namespace ConstructionControl
                 act.ProjectOrganizationSignerName,
                 act.StartDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
                 act.EndDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
-                act.IsFixed,
-                act.IsPrinted,
                 materials);
         }
 
@@ -882,6 +992,113 @@ namespace ConstructionControl
             return LevelMarkHelper.PreventSingleLetterWrap(title);
         }
 
+        private static void RepairHiddenWorkActTextFields(HiddenWorkActRecord act)
+        {
+            if (act == null)
+                return;
+
+            act.ActionName = RepairPotentialMojibakeText(act.ActionName);
+            act.WorkName = RepairPotentialMojibakeText(act.WorkName);
+            act.BlocksText = RepairPotentialMojibakeText(act.BlocksText);
+            act.MarksText = RepairPotentialMojibakeText(act.MarksText);
+            act.WorkTitle = RepairPotentialMojibakeText(act.WorkTitle);
+            act.FullObjectName = RepairPotentialMojibakeText(act.FullObjectName);
+            act.GeneralContractorInfo = RepairPotentialMojibakeText(act.GeneralContractorInfo);
+            act.SubcontractorInfo = RepairPotentialMojibakeText(act.SubcontractorInfo);
+            act.TechnicalSupervisorInfo = RepairPotentialMojibakeText(act.TechnicalSupervisorInfo);
+            act.ProjectOrganizationInfo = RepairPotentialMojibakeText(act.ProjectOrganizationInfo);
+            act.WorkExecutorInfo = RepairPotentialMojibakeText(act.WorkExecutorInfo);
+            act.ProjectDocumentation = RepairPotentialMojibakeText(act.ProjectDocumentation);
+            act.Deviations = RepairPotentialMojibakeText(act.Deviations);
+            act.ContractorSignerName = RepairPotentialMojibakeText(act.ContractorSignerName);
+            act.TechnicalSupervisorSignerName = RepairPotentialMojibakeText(act.TechnicalSupervisorSignerName);
+            act.ProjectOrganizationSignerName = RepairPotentialMojibakeText(act.ProjectOrganizationSignerName);
+
+            if (act.Materials == null)
+                return;
+
+            foreach (var material in act.Materials.Where(x => x != null))
+            {
+                material.MaterialName = RepairPotentialMojibakeText(material.MaterialName);
+                material.Passport = RepairPotentialMojibakeText(material.Passport);
+            }
+        }
+
+        private static string RepairPotentialMojibakeText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text ?? string.Empty;
+
+            var cp1251 = TryGetHiddenWorkActCp1251Encoding();
+            if (cp1251 == null)
+                return text;
+
+            var best = text;
+            var bestScore = ScorePotentialMojibakeText(text);
+            var current = text;
+
+            for (var iteration = 0; iteration < 3; iteration++)
+            {
+                current = Encoding.UTF8.GetString(cp1251.GetBytes(current));
+                var score = ScorePotentialMojibakeText(current);
+                if (score > bestScore)
+                {
+                    best = current;
+                    bestScore = score;
+                }
+            }
+
+            return best;
+        }
+
+        private static int ScorePotentialMojibakeText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return int.MinValue / 2;
+
+            var russianLetters = 0;
+            var weirdChars = 0;
+            var replacementChars = 0;
+
+            foreach (var ch in text)
+            {
+                if (ch == '\uFFFD')
+                {
+                    replacementChars++;
+                    continue;
+                }
+
+                if (ch <= 127 || char.IsWhiteSpace(ch))
+                    continue;
+
+                if ((ch >= 'А' && ch <= 'я') || ch == 'Ё' || ch == 'ё')
+                {
+                    russianLetters++;
+                    continue;
+                }
+
+                if ("№«»…–—“”„’‚".IndexOf(ch) >= 0)
+                    continue;
+
+                weirdChars++;
+            }
+
+            return (russianLetters * 10) - (weirdChars * 20) - (replacementChars * 50);
+        }
+
+        private static Encoding TryGetHiddenWorkActCp1251Encoding()
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(1251);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private string BuildHiddenWorkAxesText(string blocksText)
         {
             var blocks = LevelMarkHelper.ParseBlocks(blocksText);
@@ -1087,7 +1304,7 @@ namespace ConstructionControl
                 if (HiddenWorkActsGrid != null)
                     SelectGridItem(HiddenWorkActsGrid, act);
                 UpdateHiddenWorkActEditorState();
-                UpdateHiddenWorkActPreview();
+                UpdateHiddenWorkActPreview(immediate: true);
             }), DispatcherPriority.Background);
         }
 
@@ -1142,7 +1359,7 @@ namespace ConstructionControl
             RefreshHiddenWorkActState(saveAfterRefresh: true);
         }
 
-        private void PrintSelectedHiddenWorkAct_Click(object sender, RoutedEventArgs e)
+        private async void PrintSelectedHiddenWorkAct_Click(object sender, RoutedEventArgs e)
         {
             if (selectedHiddenWorkAct == null)
             {
@@ -1150,27 +1367,12 @@ namespace ConstructionControl
                 return;
             }
 
-            if (!PrintHiddenWorkActs(new[] { selectedHiddenWorkAct }, "Акт скрытых работ"))
+            if (!await PrintHiddenWorkActsAsync(new[] { selectedHiddenWorkAct }, useCurrentPreviewWhenPossible: true))
                 return;
-
-            selectedHiddenWorkAct.IsPrinted = true;
-            selectedHiddenWorkAct.IsFixed = true;
-            MarkHiddenWorkActStateDirty();
-            PersistHiddenWorkActChanges();
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                try
-                {
-                    RefreshHiddenWorkActState(saveAfterRefresh: true);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Не удалось обновить вкладку актов после печати.{Environment.NewLine}{ex.Message}", "Акты скрытых работ", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            }), DispatcherPriority.Background);
+            CommitPrintedHiddenWorkActs(new[] { selectedHiddenWorkAct });
         }
 
-        private void PrintPendingHiddenWorkActs_Click(object sender, RoutedEventArgs e)
+        private async void PrintPendingHiddenWorkActs_Click(object sender, RoutedEventArgs e)
         {
             EnsureHiddenWorkActStorage();
             if (!hiddenWorkActsInitialized || hiddenWorkActStateDirty)
@@ -1188,28 +1390,9 @@ namespace ConstructionControl
                 return;
             }
 
-            if (!PrintHiddenWorkActs(acts, "Акты скрытых работ"))
+            if (!await PrintHiddenWorkActsAsync(acts))
                 return;
-
-            foreach (var act in acts)
-            {
-                act.IsPrinted = true;
-                act.IsFixed = true;
-            }
-
-            MarkHiddenWorkActStateDirty();
-            PersistHiddenWorkActChanges();
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                try
-                {
-                    RefreshHiddenWorkActState(saveAfterRefresh: true);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Не удалось обновить вкладку актов после печати.{Environment.NewLine}{ex.Message}", "Акты скрытых работ", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            }), DispatcherPriority.Background);
+            CommitPrintedHiddenWorkActs(acts);
         }
 
         private void DeleteSelectedHiddenWorkAct_Click(object sender, RoutedEventArgs e)
@@ -1245,21 +1428,21 @@ namespace ConstructionControl
             RefreshHiddenWorkActState(saveAfterRefresh: true);
         }
 
-        private bool PrintHiddenWorkActs(IEnumerable<HiddenWorkActRecord> acts, string title)
+        private async Task<bool> PrintHiddenWorkActsAsync(IEnumerable<HiddenWorkActRecord> acts, bool useCurrentPreviewWhenPossible = false)
         {
             var items = (acts ?? Enumerable.Empty<HiddenWorkActRecord>()).Where(x => x != null).ToList();
             if (items.Count == 0)
                 return false;
 
+            var dialog = new PrintDialog();
+            if (dialog.ShowDialog() != true)
+                return false;
+
             try
             {
-                var snapshot = items.Select(CloneHiddenWorkAct).ToList();
-                var document = HiddenWorksActDocumentBuilder.Build(snapshot);
-                var dialog = new PrintDialog();
-                if (dialog.ShowDialog() != true)
-                    return false;
+                foreach (var act in items)
+                    await PrintHiddenWorkActDocumentAsync(act, dialog, useCurrentPreviewWhenPossible);
 
-                dialog.PrintDocument(((IDocumentPaginatorSource)document).DocumentPaginator, title);
                 return true;
             }
             catch (Exception ex)
@@ -1267,6 +1450,124 @@ namespace ConstructionControl
                 MessageBox.Show($"Не удалось распечатать акт.{Environment.NewLine}{ex.Message}", "Печать акта", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
+        }
+
+        private async Task PrintHiddenWorkActDocumentAsync(HiddenWorkActRecord act, PrintDialog dialog, bool useCurrentPreviewWhenPossible)
+        {
+            if (act == null)
+                throw new ArgumentNullException(nameof(act));
+
+            if (dialog == null)
+                throw new ArgumentNullException(nameof(dialog));
+
+            if (useCurrentPreviewWhenPossible
+                && TryGetCurrentHiddenWorkActPreviewPaginator(act, out var previewPaginator))
+            {
+                dialog.PrintDocument(previewPaginator, GetHiddenWorkActPrintTitle(act));
+                return;
+            }
+
+            var artifact = await HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(CloneHiddenWorkAct(act));
+            try
+            {
+                using var xpsDocument = new XpsDocument(artifact.XpsPath, FileAccess.Read);
+                var documentSequence = xpsDocument.GetFixedDocumentSequence();
+                dialog.PrintDocument(((IDocumentPaginatorSource)documentSequence).DocumentPaginator, GetHiddenWorkActPrintTitle(act));
+            }
+            finally
+            {
+                artifact.Dispose();
+            }
+        }
+
+        private bool TryGetCurrentHiddenWorkActPreviewPaginator(HiddenWorkActRecord act, out DocumentPaginator paginator)
+        {
+            paginator = null;
+
+            if (act == null
+                || HiddenWorkActPreviewViewer?.Document is not IDocumentPaginatorSource documentSource
+                || hiddenWorkActPreviewRenderInProgress
+                || !ReferenceEquals(act, selectedHiddenWorkAct))
+            {
+                return false;
+            }
+
+            var previewKey = BuildHiddenWorkActPreviewKey(act);
+            if (!string.Equals(previewKey, lastHiddenWorkActPreviewKey, StringComparison.Ordinal))
+                return false;
+
+            paginator = documentSource.DocumentPaginator;
+            return paginator != null;
+        }
+
+        private string GetHiddenWorkActPrintTitle(HiddenWorkActRecord act)
+        {
+            var title = Regex.Replace((act?.WorkTitle ?? string.Empty).Trim(), @"\s+", " ");
+            if (string.IsNullOrWhiteSpace(title))
+                title = "Акт скрытых работ";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = new string(title
+                .Select(ch => invalidChars.Contains(ch) ? '_' : ch)
+                .ToArray())
+                .Trim();
+
+            return string.IsNullOrWhiteSpace(sanitized) ? "Акт скрытых работ" : sanitized;
+        }
+
+        private void CommitPrintedHiddenWorkActs(IEnumerable<HiddenWorkActRecord> acts)
+        {
+            var printedActs = (acts ?? Enumerable.Empty<HiddenWorkActRecord>())
+                .Where(x => x != null)
+                .Distinct()
+                .ToList();
+            if (printedActs.Count == 0)
+                return;
+
+            foreach (var act in printedActs)
+            {
+                act.IsPrinted = true;
+                act.IsFixed = true;
+            }
+
+            MarkHiddenWorkActStateDirty();
+            PersistHiddenWorkActChanges();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    RefreshHiddenWorkActState(saveAfterRefresh: true);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Не удалось обновить вкладку актов после печати.{Environment.NewLine}{ex.Message}", "Акты скрытых работ", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }), DispatcherPriority.Background);
+        }
+
+        private void HiddenWorkActPreviewPrint_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = selectedHiddenWorkAct != null
+                && HiddenWorkActPreviewViewer?.Document is IDocumentPaginatorSource;
+            e.Handled = true;
+        }
+
+        private async void HiddenWorkActPreviewPrint_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (selectedHiddenWorkAct == null)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (!await PrintHiddenWorkActsAsync(new[] { selectedHiddenWorkAct }, useCurrentPreviewWhenPossible: true))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            CommitPrintedHiddenWorkActs(new[] { selectedHiddenWorkAct });
+            e.Handled = true;
         }
 
         private static HiddenWorkActRecord CloneHiddenWorkAct(HiddenWorkActRecord act)
@@ -1316,7 +1617,7 @@ namespace ConstructionControl
                 selectedHiddenWorkAct = null;
 
             UpdateHiddenWorkActEditorState();
-            UpdateHiddenWorkActPreview();
+            UpdateHiddenWorkActPreview(immediate: true);
         }
 
         private void HiddenWorkActFixedCheckBox_Click(object sender, RoutedEventArgs e)

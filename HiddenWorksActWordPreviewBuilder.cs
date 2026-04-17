@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -97,10 +98,10 @@ namespace ConstructionControl
             CleanupPreviewDirectory();
             Directory.CreateDirectory(PreviewDirectoryPath);
 
+            var artifactBaseName = BuildPreviewArtifactBaseName(act);
             var stamp = $"{DateTime.Now:yyyyMMddHHmmssfff}_{Guid.NewGuid():N}";
-            var previewDocxPath = Path.Combine(PreviewDirectoryPath, $"{stamp}.docx");
-            var previewXpsPath = Path.Combine(PreviewDirectoryPath, $"{stamp}.xps");
-
+            var previewDocxPath = Path.Combine(PreviewDirectoryPath, $"{artifactBaseName}_{stamp}.docx");
+            var previewXpsPath = Path.Combine(PreviewDirectoryPath, $"{artifactBaseName}_{stamp}.xps");
             File.Copy(ResolveTemplatePath(), previewDocxPath, true);
 
             dynamic word = null;
@@ -455,6 +456,26 @@ namespace ConstructionControl
             return " ";
         }
 
+
+        private static string BuildPreviewArtifactBaseName(HiddenWorkActRecord act)
+        {
+            var title = NormalizeInlineText(act?.WorkTitle);
+            if (string.IsNullOrWhiteSpace(title))
+                title = "Акт скрытых работ";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = new string(title
+                .Select(ch => invalidChars.Contains(ch) ? '_' : ch)
+                .ToArray());
+            sanitized = MultiWhitespaceRegex.Replace(sanitized, " ").Trim(' ', '_');
+
+            if (string.IsNullOrWhiteSpace(sanitized))
+                return "Акт скрытых работ";
+
+            return sanitized.Length <= 80
+                ? sanitized
+                : sanitized[..80].TrimEnd(' ', '_');
+        }
         private static string GetGenitiveMonthName(DateTime date)
         {
             var monthIndex = date.Month - 1;
