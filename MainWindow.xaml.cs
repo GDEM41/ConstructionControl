@@ -226,6 +226,10 @@ namespace ConstructionControl
         private readonly List<string> lastStorageIntegrityIssues = new();
         private readonly ObservableCollection<OperationLogEntry> operationLogEntries = new();
         private string lastSavedStateSnapshot = string.Empty;
+        private readonly object queuedStateSaveSync = new();
+        private Task queuedStateSaveTask = Task.CompletedTask;
+        private QueuedStateSaveRequest queuedStateSaveRequest;
+        private bool queuedStateSaveWorkerActive;
         private bool closeConfirmed;
         private FileStream projectLockStream;
         private string projectLockFilePath = string.Empty;
@@ -613,6 +617,14 @@ namespace ConstructionControl
             Manual,
             Auto,
             System
+        }
+
+        private sealed class QueuedStateSaveRequest
+        {
+            public string SaveFileName { get; init; } = string.Empty;
+            public string SnapshotJson { get; init; } = string.Empty;
+            public string StateJson { get; init; } = string.Empty;
+            public SaveTrigger Trigger { get; init; }
         }
 
         private const int GWL_STYLE = -16;
@@ -1561,14 +1573,40 @@ namespace ConstructionControl
                 projectLockStream.Position = 0;
                 return true;
             }
-            catch
+            catch (IOException)
             {
                 ReleaseProjectLock();
                 if (showMessageOnFailure)
                 {
                     MessageBox.Show(
-                        "Этот файл проекта уже открыт в другом экземпляре программы. Закройте другой экземпляр и попробуйте снова.",
+                        "Не удалось открыть файл блокировки проекта. Обычно это значит, что проект уже открыт в другом экземпляре программы или файл блокировки сейчас занят.",
                         "Файл занят",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                ReleaseProjectLock();
+                if (showMessageOnFailure)
+                {
+                    MessageBox.Show(
+                        $"Нет доступа к файлу проекта или его папке.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                        "Нет доступа",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                ReleaseProjectLock();
+                if (showMessageOnFailure)
+                {
+                    MessageBox.Show(
+                        $"Не удалось создать блокировку проекта.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                        "Ошибка блокировки",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                 }
@@ -2540,7 +2578,7 @@ namespace ConstructionControl
                 return;
 
             pendingGridPreferenceSave = false;
-            SaveState(SaveTrigger.System);
+            QueueNonBlockingStateSave(SaveTrigger.System);
         }
 
         private void ReminderRefreshDebounceTimer_Tick(object sender, EventArgs e)
@@ -4972,6 +5010,20 @@ namespace ConstructionControl
 
             try
             {
+                if (instance.Process != null && instance.Process.HasExited)
+                {
+                    ResetExternalSpreadsheetRuntimeState(isSecondary);
+                    return;
+                }
+            }
+            catch
+            {
+                ResetExternalSpreadsheetRuntimeState(isSecondary);
+                return;
+            }
+
+            try
+            {
                 if (!isSecondary && estimateDetached)
                     return;
                 if (isSecondary && estimateSecondaryDetached)
@@ -5047,6 +5099,46 @@ namespace ConstructionControl
             cache.Remove(filePath);
             if (ReferenceEquals(activeInstance, instance))
                 activeInstance = null;
+        }
+
+        private void ResetExternalSpreadsheetRuntimeState(bool isSecondary)
+        {
+            var cache = isSecondary ? externalSpreadsheetInstancesSecondary : externalSpreadsheetInstances;
+            var activeInstance = isSecondary ? activeExternalSpreadsheetInstanceSecondary : activeExternalSpreadsheetInstance;
+            var filePath = isSecondary ? estimateEmbeddedFilePathSecondary : estimateEmbeddedFilePath;
+            var process = isSecondary ? estimateSpreadsheetProcessSecondary : estimateSpreadsheetProcess;
+
+            if (!string.IsNullOrWhiteSpace(filePath))
+                cache.Remove(filePath);
+
+            if (activeInstance != null && !string.IsNullOrWhiteSpace(activeInstance.FilePath))
+                cache.Remove(activeInstance.FilePath);
+
+            try
+            {
+                process?.Dispose();
+            }
+            catch
+            {
+                // ignore dispose errors on externally closed spreadsheet process
+            }
+
+            if (isSecondary)
+            {
+                estimateSpreadsheetProcessSecondary = null;
+                estimateExcelWindowHandleSecondary = IntPtr.Zero;
+                estimateEmbeddedFilePathSecondary = string.Empty;
+                activeExternalSpreadsheetInstanceSecondary = null;
+                ResetEstimateEmbeddedLayoutCacheSecondary();
+            }
+            else
+            {
+                estimateSpreadsheetProcess = null;
+                estimateExcelWindowHandle = IntPtr.Zero;
+                estimateEmbeddedFilePath = string.Empty;
+                activeExternalSpreadsheetInstance = null;
+                ResetEstimateEmbeddedLayoutCache();
+            }
         }
 
         private void ReleaseStuckModifierKeys()
@@ -5192,6 +5284,12 @@ namespace ConstructionControl
             if (estimateExcelWindowHandle == IntPtr.Zero)
                 return;
 
+            if (useExternalSpreadsheetEditor && !IsEstimateSpreadsheetProcessAlive())
+            {
+                ResetExternalSpreadsheetRuntimeState(isSecondary: false);
+                return;
+            }
+
             if (estimateDetached)
                 return;
 
@@ -5293,6 +5391,12 @@ namespace ConstructionControl
             if (estimateExcelWindowHandleSecondary == IntPtr.Zero)
                 return;
 
+            if (!IsEstimateSpreadsheetProcessAliveSecondary())
+            {
+                ResetExternalSpreadsheetRuntimeState(isSecondary: true);
+                return;
+            }
+
             if (estimateSecondaryDetached)
                 return;
 
@@ -5359,7 +5463,6 @@ namespace ConstructionControl
                 // Ignore visibility errors while preparing the pseudo-embedded window.
             }
 
-            var ownerHandle = new WindowInteropHelper(this).Handle;
             var style = GetWindowLongPtr(windowHandle, GWL_STYLE).ToInt64();
             style &= ~(WS_CAPTION | WS_DLGFRAME | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_CHILD);
             style |= WS_POPUP;
@@ -5370,8 +5473,9 @@ namespace ConstructionControl
             exStyle |= WS_EX_TOOLWINDOW;
             SetWindowLongPtr(windowHandle, GWL_EXSTYLE, new IntPtr(exStyle));
 
-            if (ownerHandle != IntPtr.Zero)
-                SetWindowLongPtr(windowHandle, GWLP_HWNDPARENT, ownerHandle);
+            // Не связываем внешнее окно как owner главного окна:
+            // при ручном закрытии PDF/PlanMaker основное приложение не должно закрываться следом.
+            SetWindowLongPtr(windowHandle, GWLP_HWNDPARENT, IntPtr.Zero);
 
             SetWindowPos(
                 windowHandle,
@@ -16382,11 +16486,7 @@ namespace ConstructionControl
 
             try
             {
-                var snapshot = BuildCurrentStateSnapshotJson();
-                if (string.Equals(snapshot, lastSavedStateSnapshot, StringComparison.Ordinal))
-                    return;
-
-                SaveState(SaveTrigger.Auto);
+                QueueNonBlockingStateSave(SaveTrigger.Auto);
             }
             catch
             {
@@ -16396,21 +16496,178 @@ namespace ConstructionControl
 
         private void SaveState(SaveTrigger trigger = SaveTrigger.Manual)
         {
-            if (string.IsNullOrWhiteSpace(currentSaveFileName))
-                throw new InvalidOperationException("Не задан путь файла состояния.");
+            WaitForQueuedStateSaveCompletion();
 
-            if (!TryAcquireProjectLock(currentSaveFileName))
-                throw new InvalidOperationException("Файл проекта сейчас заблокирован другим экземпляром.");
+            if (!TryPrepareStateSaveRequest(trigger, out var request, skipIfUnchanged: false, showLockError: true))
+                throw new InvalidOperationException("Не удалось подготовить сохранение состояния.");
+
+            SaveStateJsonTransactional(request.StateJson, request.SaveFileName);
+            if (trigger == SaveTrigger.Auto)
+            {
+                try
+                {
+                    WriteAutoBackupSnapshot(request.StateJson, request.SaveFileName);
+                }
+                catch
+                {
+                    // Ошибка автобэкапа не должна ломать основное сохранение.
+                }
+            }
+            ApplySuccessfulStateSave(request);
+        }
+
+        private bool TryPrepareStateSaveRequest(SaveTrigger trigger, out QueuedStateSaveRequest request, bool skipIfUnchanged, bool showLockError)
+        {
+            request = null;
+
+            if (string.IsNullOrWhiteSpace(currentSaveFileName))
+            {
+                if (showLockError)
+                    throw new InvalidOperationException("Не задан путь файла состояния.");
+
+                return false;
+            }
+
+            if (!TryAcquireProjectLock(currentSaveFileName, showMessageOnFailure: showLockError))
+            {
+                if (!showLockError)
+                {
+                    SetLastOperationStatus("Сохранение пропущено: файл проекта сейчас недоступен.");
+                    UpdateStatusBar();
+                }
+
+                return false;
+            }
 
             MarkSummaryDataDirty();
             SaveGridColumnPreferencesForAll();
+
             var snapshotJson = BuildCurrentStateSnapshotJson();
-            var json = BuildCurrentStateJson();
-            SaveStateJsonTransactional(json, currentSaveFileName);
-            lastSavedStateSnapshot = snapshotJson;
+            if (skipIfUnchanged && string.Equals(snapshotJson, lastSavedStateSnapshot, StringComparison.Ordinal))
+                return false;
+
+            if (skipIfUnchanged)
+            {
+                lock (queuedStateSaveSync)
+                {
+                    if (queuedStateSaveRequest != null
+                        && string.Equals(snapshotJson, queuedStateSaveRequest.SnapshotJson, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            request = new QueuedStateSaveRequest
+            {
+                SaveFileName = currentSaveFileName,
+                SnapshotJson = snapshotJson,
+                StateJson = BuildCurrentStateJson(),
+                Trigger = trigger
+            };
+
+            return true;
+        }
+
+        private void QueueNonBlockingStateSave(SaveTrigger trigger)
+        {
+            if (!TryPrepareStateSaveRequest(trigger, out var request, skipIfUnchanged: true, showLockError: false))
+                return;
+
+            bool startWorker;
+            lock (queuedStateSaveSync)
+            {
+                queuedStateSaveRequest = request;
+                startWorker = !queuedStateSaveWorkerActive;
+                if (startWorker)
+                    queuedStateSaveWorkerActive = true;
+            }
+
+            SetLastOperationStatus(trigger == SaveTrigger.Auto
+                ? "Автосохранение поставлено в очередь"
+                : "Системные изменения поставлены в очередь сохранения");
+            UpdateStatusBar();
+
+            if (!startWorker)
+                return;
+
+            queuedStateSaveTask = Task.Run(ProcessQueuedStateSaveRequests);
+        }
+
+        private void ProcessQueuedStateSaveRequests()
+        {
+            while (true)
+            {
+                QueuedStateSaveRequest request;
+                lock (queuedStateSaveSync)
+                {
+                    request = queuedStateSaveRequest;
+                    queuedStateSaveRequest = null;
+                    if (request == null)
+                    {
+                        queuedStateSaveWorkerActive = false;
+                        return;
+                    }
+                }
+
+                try
+                {
+                    SaveStateJsonTransactional(request.StateJson, request.SaveFileName);
+                    if (request.Trigger == SaveTrigger.Auto)
+                    {
+                        try
+                        {
+                            WriteAutoBackupSnapshot(request.StateJson, request.SaveFileName);
+                        }
+                        catch
+                        {
+                            // Ошибка автобэкапа не должна ломать основное сохранение.
+                        }
+                    }
+
+                    lastSavedStateSnapshot = request.SnapshotJson;
+                    lastSuccessfulSaveLocalTime = DateTime.Now;
+                    var saveReason = request.Trigger switch
+                    {
+                        SaveTrigger.Auto => "Автосохранение выполнено",
+                        SaveTrigger.System => "Системные изменения сохранены",
+                        _ => "Данные сохранены"
+                    };
+                    lastOperationStatusText = saveReason;
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        AddOperationLogEntry(
+                            "Сохранение",
+                            request.Trigger == SaveTrigger.Auto ? "Авто" : "Система",
+                            saveReason);
+                        UpdateStatusBar();
+                    }), DispatcherPriority.Background);
+                }
+                catch (Exception ex)
+                {
+                    lastOperationStatusText = $"Не удалось сохранить изменения: {ex.Message}";
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        AddOperationLogEntry(
+                            "Сохранение",
+                            request.Trigger == SaveTrigger.Auto ? "Авто" : "Система",
+                            $"Ошибка сохранения: {ex.Message}");
+                        UpdateStatusBar();
+                    }), DispatcherPriority.Background);
+                }
+            }
+        }
+
+        private void ApplySuccessfulStateSave(QueuedStateSaveRequest request)
+        {
+            if (request == null)
+                return;
+
+            lastSavedStateSnapshot = request.SnapshotJson;
             lastSuccessfulSaveLocalTime = DateTime.Now;
 
-            var saveReason = trigger switch
+            var saveReason = request.Trigger switch
             {
                 SaveTrigger.Auto => "Автосохранение выполнено",
                 SaveTrigger.System => "Системные изменения сохранены",
@@ -16419,22 +16676,25 @@ namespace ConstructionControl
             SetLastOperationStatus(saveReason);
             AddOperationLogEntry(
                 "Сохранение",
-                trigger == SaveTrigger.Auto ? "Авто" : trigger == SaveTrigger.System ? "Система" : "Ручное",
+                request.Trigger == SaveTrigger.Auto ? "Авто" : request.Trigger == SaveTrigger.System ? "Система" : "Ручное",
                 saveReason);
-
-            if (trigger == SaveTrigger.Auto)
-            {
-                try
-                {
-                    WriteAutoBackupSnapshot(json);
-                }
-                catch
-                {
-                    // Ошибка автобэкапа не должна ломать основное сохранение.
-                }
-            }
-
             UpdateStatusBar();
+        }
+
+        private void WaitForQueuedStateSaveCompletion()
+        {
+            Task pendingTask;
+            lock (queuedStateSaveSync)
+                pendingTask = queuedStateSaveTask;
+
+            try
+            {
+                pendingTask?.GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Ошибки фонового сохранения уже отражаются в статусе и журнале операций.
+            }
         }
 
         private void SaveStateJsonTransactional(string json, string targetPath)
@@ -16677,9 +16937,10 @@ namespace ConstructionControl
             AppStateMigration.Apply(state);
         }
 
-        private void WriteAutoBackupSnapshot(string json)
+        private void WriteAutoBackupSnapshot(string json, string saveFileName = null)
         {
-            var backupDir = GetAutoBackupDirectory(currentSaveFileName);
+            var effectiveSaveFileName = string.IsNullOrWhiteSpace(saveFileName) ? currentSaveFileName : saveFileName;
+            var backupDir = GetAutoBackupDirectory(effectiveSaveFileName);
             var backupFile = System.IO.Path.Combine(backupDir, $"autosave_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.json");
             File.WriteAllText(backupFile, json);
             TrimAutoBackups(backupDir, MaxAutoBackupFiles);
@@ -17220,20 +17481,75 @@ namespace ConstructionControl
             }
         }
 
+        private bool TryReadAppStateFromFile(string path, out AppState state, out string error)
+        {
+            state = null;
+            error = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                error = "Не задан путь к файлу состояния.";
+                return false;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                if (!TryDeserializeAppState(json, out state, out var parseError))
+                {
+                    error = string.IsNullOrWhiteSpace(parseError)
+                        ? "Файл состояния имеет неверный формат."
+                        : parseError;
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         private void LoadState()
         {
             if (!File.Exists(currentSaveFileName))
                 return;
 
-            var json = File.ReadAllText(currentSaveFileName);
-            if (!TryDeserializeAppState(json, out var state, out var error))
+            var loadedFromAutoBackup = false;
+            if (!TryReadAppStateFromFile(currentSaveFileName, out var state, out var loadError))
             {
-                MessageBox.Show(
-                    $"Не удалось загрузить сохранённые данные. Файл состояния повреждён или имеет неверный формат.{Environment.NewLine}{Environment.NewLine}{error}",
-                    "Ошибка загрузки",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
+                var latestBackup = GetLatestAutoBackupFile(currentSaveFileName);
+                var backupError = string.Empty;
+                if (!string.IsNullOrWhiteSpace(latestBackup)
+                    && File.Exists(latestBackup)
+                    && TryReadAppStateFromFile(latestBackup, out state, out backupError))
+                {
+                    loadedFromAutoBackup = true;
+                    MessageBox.Show(
+                        $"Основной файл проекта не удалось загрузить.{Environment.NewLine}{Environment.NewLine}{loadError}{Environment.NewLine}{Environment.NewLine}Загружено последнее автосохранение: {System.IO.Path.GetFileName(latestBackup)}.",
+                        "Восстановление запуска",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                else
+                {
+                    var backupSuffix = string.IsNullOrWhiteSpace(latestBackup)
+                        ? string.Empty
+                        : $"{Environment.NewLine}{Environment.NewLine}Автосохранение тоже не удалось прочитать: {backupError}";
+
+                    MessageBox.Show(
+                        $"Не удалось загрузить сохранённые данные.{Environment.NewLine}{Environment.NewLine}{loadError}{backupSuffix}",
+                        "Ошибка загрузки",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    currentObject = null;
+                    journal = new();
+                    filteredJournal = new();
+                    lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
+                    return;
+                }
             }
 
             currentObject = state.CurrentObject;
@@ -17252,7 +17568,7 @@ namespace ConstructionControl
             noteRows.Clear();
             tabOpenDiagnostics.Clear();
             UpdateTabOpenDiagnosticsText();
-            lastSavedStateSnapshot = BuildCurrentStateSnapshotJson();
+            lastSavedStateSnapshot = loadedFromAutoBackup ? string.Empty : BuildCurrentStateSnapshotJson();
             MigrateDemandLevelsAndProductionJournal();
             // === ВОССТАНОВЛЕНИЕ АРХИВА ИЗ СТАРЫХ ДАННЫХ ===
             if (currentObject != null)
@@ -17366,6 +17682,9 @@ namespace ConstructionControl
                 pendingGridPreferenceSave = false;
                 gridPreferenceSaveDebounceTimer?.Stop();
             }
+
+            WaitForQueuedStateSaveCompletion();
+
             if (!HasUnsavedChanges())
                 return;
 
@@ -18948,52 +19267,93 @@ namespace ConstructionControl
             if (storageEntries.Count == 0)
                 return 0;
 
-            var storageRoot = GetProjectStorageRoot(createIfMissing: true);
+            var storageRoot = GetProjectStorageRoot(createIfMissing: false);
             if (string.IsNullOrWhiteSpace(storageRoot))
                 return 0;
 
             var fullRoot = System.IO.Path.GetFullPath(storageRoot);
-            if (Directory.Exists(fullRoot))
-            {
-                foreach (var directory in Directory.EnumerateDirectories(fullRoot))
-                    Directory.Delete(directory, recursive: true);
-                foreach (var file in Directory.EnumerateFiles(fullRoot))
-                    File.Delete(file);
-            }
-            else
-            {
-                Directory.CreateDirectory(fullRoot);
-            }
+            var parentDirectory = System.IO.Path.GetDirectoryName(fullRoot);
+            if (string.IsNullOrWhiteSpace(parentDirectory))
+                throw new InvalidOperationException("Не удалось определить каталог хранилища проекта.");
+
+            Directory.CreateDirectory(parentDirectory);
+
+            var tempRoot = System.IO.Path.Combine(parentDirectory, $"{System.IO.Path.GetFileName(fullRoot)}.restore_{Guid.NewGuid():N}");
+            var backupRoot = System.IO.Path.Combine(parentDirectory, $"{System.IO.Path.GetFileName(fullRoot)}.backup_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempRoot);
 
             var restored = 0;
-            foreach (var entry in storageEntries)
+            var tempRootPrefix = tempRoot.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                ? tempRoot
+                : tempRoot + System.IO.Path.DirectorySeparatorChar;
+
+            try
             {
-                var relative = entry.FullName.Substring("storage/".Length).TrimStart('/', '\\');
-                if (string.IsNullOrWhiteSpace(relative))
-                    continue;
+                foreach (var entry in storageEntries)
+                {
+                    var relative = entry.FullName.Substring("storage/".Length).TrimStart('/', '\\');
+                    if (string.IsNullOrWhiteSpace(relative))
+                        continue;
 
-                var normalizedRelative = relative.Replace('/', System.IO.Path.DirectorySeparatorChar);
-                var targetPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(fullRoot, normalizedRelative));
-                var fullRootPrefix = fullRoot.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-                    ? fullRoot
-                    : fullRoot + System.IO.Path.DirectorySeparatorChar;
+                    var normalizedRelative = relative.Replace('/', System.IO.Path.DirectorySeparatorChar);
+                    var targetPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(tempRoot, normalizedRelative));
 
-                if (!targetPath.StartsWith(fullRootPrefix, StringComparison.OrdinalIgnoreCase))
-                    continue;
+                    if (!targetPath.StartsWith(tempRootPrefix, StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-                var targetDirectory = System.IO.Path.GetDirectoryName(targetPath);
-                if (!string.IsNullOrWhiteSpace(targetDirectory))
-                    Directory.CreateDirectory(targetDirectory);
+                    var targetDirectory = System.IO.Path.GetDirectoryName(targetPath);
+                    if (!string.IsNullOrWhiteSpace(targetDirectory))
+                        Directory.CreateDirectory(targetDirectory);
 
-                using var input = entry.Open();
-                using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                input.CopyTo(output);
-                restored++;
+                    using var input = entry.Open();
+                    using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    input.CopyTo(output);
+                    restored++;
+                }
+
+                if (Directory.Exists(fullRoot))
+                    Directory.Move(fullRoot, backupRoot);
+
+                try
+                {
+                    Directory.Move(tempRoot, fullRoot);
+                }
+                catch
+                {
+                    if (Directory.Exists(backupRoot) && !Directory.Exists(fullRoot))
+                        Directory.Move(backupRoot, fullRoot);
+
+                    throw;
+                }
+
+                ValidateImportedStorageManifest(archive, fullRoot);
+
+                try
+                {
+                    if (Directory.Exists(backupRoot))
+                        Directory.Delete(backupRoot, recursive: true);
+                }
+                catch
+                {
+                    // Не прерываем успешное восстановление из-за неубранной резервной папки.
+                }
+
+                return restored;
             }
+            catch
+            {
+                try
+                {
+                    if (Directory.Exists(tempRoot))
+                        Directory.Delete(tempRoot, recursive: true);
+                }
+                catch
+                {
+                    // ignore cleanup failures
+                }
 
-            ValidateImportedStorageManifest(archive, fullRoot);
-
-            return restored;
+                throw;
+            }
         }
 
         private void ValidateImportedStorageManifest(ZipArchive archive, string storageRoot)
@@ -25073,6 +25433,12 @@ namespace ConstructionControl
             if (pdfEditorWindowHandle == IntPtr.Zero)
                 return;
 
+            if (!IsPdfEditorProcessAlive())
+            {
+                ResetPdfExternalRuntimeState();
+                return;
+            }
+
             if (!IsVisible
                 || WindowState == WindowState.Minimized
                 || !ReferenceEquals(MainTabs?.SelectedItem, PdfTab)
@@ -25127,6 +25493,12 @@ namespace ConstructionControl
             if (pdfEditorWindowHandle == IntPtr.Zero)
                 return;
 
+            if (!IsPdfEditorProcessAlive())
+            {
+                ResetPdfExternalRuntimeState();
+                return;
+            }
+
             try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
         }
 
@@ -25154,6 +25526,23 @@ namespace ConstructionControl
                 }
             }
 
+            pdfEditorWindowHandle = IntPtr.Zero;
+            pdfEmbeddedFilePath = string.Empty;
+            ResetPdfEmbeddedLayoutCache();
+        }
+
+        private void ResetPdfExternalRuntimeState()
+        {
+            try
+            {
+                pdfEditorProcess?.Dispose();
+            }
+            catch
+            {
+                // ignore dispose errors on externally closed pdf process
+            }
+
+            pdfEditorProcess = null;
             pdfEditorWindowHandle = IntPtr.Zero;
             pdfEmbeddedFilePath = string.Empty;
             ResetPdfEmbeddedLayoutCache();

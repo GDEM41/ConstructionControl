@@ -890,10 +890,37 @@ namespace ConstructionControl
             foreach (var row in validRows.Where(x => x.IsAutoSplitEnabled))
                 row.ApplyAutomaticSplit();
 
-            ResultRules = validRows
-                .Select(x => new { x.MaterialName, Rule = x.GetRule() })
+            var ruleRows = validRows
+                .Select(x => new { MaterialName = x.MaterialName, Rule = x.GetRule() })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Rule))
-                .ToDictionary(x => x.MaterialName, x => x.Rule);
+                .ToList();
+
+            var duplicateRuleMaterials = ruleRows
+                .GroupBy(x => x.MaterialName, System.StringComparer.CurrentCultureIgnoreCase)
+                .Where(x => x.Count() > 1)
+                .Select(x => x.Key)
+                .OrderBy(x => x, System.StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (duplicateRuleMaterials.Count > 0)
+            {
+                var preview = string.Join(Environment.NewLine, duplicateRuleMaterials.Take(8));
+                var suffix = duplicateRuleMaterials.Count > 8
+                    ? $"{Environment.NewLine}... и еще {duplicateRuleMaterials.Count - 8}"
+                    : string.Empty;
+
+                MessageBox.Show(
+                    $"Найдены дубли материалов в правилах разбиения.{Environment.NewLine}{Environment.NewLine}{preview}{suffix}{Environment.NewLine}{Environment.NewLine}Уберите дубли и сохраните снова.",
+                    "Дубли материалов",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            ResultRules = ruleRows.ToDictionary(
+                x => x.MaterialName,
+                x => x.Rule,
+                System.StringComparer.CurrentCultureIgnoreCase);
             ResultAutoSplitMaterials = validRows
                 .Where(x => x.IsAutoSplitEnabled)
                 .Select(x => x.MaterialName)

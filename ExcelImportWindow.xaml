@@ -208,6 +208,130 @@
             </Setter>
         </Style>
 
+        <Style x:Key="EditableModernComboBox"
+               TargetType="ComboBox"
+               BasedOn="{StaticResource ModernComboBox}">
+            <Setter Property="IsEditable" Value="True"/>
+            <Setter Property="IsTextSearchEnabled" Value="False"/>
+            <Setter Property="StaysOpenOnEdit" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border x:Name="Bd"
+                                    Grid.ColumnSpan="2"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="12"/>
+
+                            <ContentPresenter x:Name="ContentSite"
+                                              Grid.Column="0"
+                                              Margin="10,0,10,0"
+                                              VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              RecognizesAccessKey="True"/>
+
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Grid.Column="0"
+                                     Margin="10,0,4,0"
+                                     VerticalContentAlignment="Center"
+                                     HorizontalContentAlignment="Left"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Foreground="{TemplateBinding Foreground}"
+                                     Visibility="Hidden"/>
+
+                            <ToggleButton x:Name="PART_ToggleButton"
+                                          Grid.Column="1"
+                                          Width="32"
+                                          Height="32"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          Focusable="False"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Center"
+                                          Cursor="Hand"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ArrowBg"
+                                                CornerRadius="6"
+                                                Padding="6"
+                                                Background="Transparent">
+                                            <Path x:Name="ArrowIcon"
+                                                  Width="12"
+                                                  Height="8"
+                                                  Fill="{DynamicResource TextSecondaryBrush}"
+                                                  Data="M 0 0 L 12 0 L 6 8 Z"/>
+                                        </Border>
+
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="{DynamicResource TextBrush}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="{DynamicResource StrokeBrush}"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="{DynamicResource TextBrush}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ArrowBg" Property="Background" Value="{DynamicResource StrokeBrush}"/>
+                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="{DynamicResource TextBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   PopupAnimation="Fade">
+                                <Border Margin="0,4,0,0"
+                                        Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource StrokeBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12"
+                                        SnapsToDevicePixels="True"
+                                        Padding="4"
+                                        Effect="{DynamicResource ComboShadow}">
+                                    <ScrollViewer CanContentScroll="True"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
 
         <Style x:Key="ModernRadio" TargetType="RadioButton">
             <Setter Property="Cursor" Value="Hand"/>
@@ -535,26 +659,15 @@
                                           Margin="0,0,10,0"
                                           SelectionChanged="BlockSelector_SelectionChanged"/>
 
-                                                                <TextBlock Text="Отметки в таблице"
+                                <TextBlock Text="Отметка"
                                            VerticalAlignment="Center"
                                            Margin="0,0,6,0"/>
-                                <ListBox x:Name="FloorsRangeSelector"
-                                         Width="160"
-                                         Height="32"
-                                         SelectionMode="Extended"
-                                         DisplayMemberPath="Label"
-                                         BorderBrush="{DynamicResource StrokeBrush}"
-                                         BorderThickness="1"
-                                         Background="{DynamicResource SurfaceBrush}"
-                                         Margin="0,0,10,0">
-                                    <ListBox.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel/>
-                                        </ItemsPanelTemplate>
-                                    </ListBox.ItemsPanel>
-                                </ListBox>
-                                <Button Content="📊 По отметкам"
-                                        Tag="DemandRange"
+                                <ComboBox x:Name="MarkSelector"
+                                          Style="{StaticResource EditableModernComboBox}"
+                                          Width="150"
+                                          Margin="0,0,10,0"/>
+                                <Button Content="📊 Потребность"
+                                        Tag="DemandColumn"
                                         Style="{StaticResource PillButton}"
                                         Click="SelectCell_Click"/>
                             </WrapPanel>

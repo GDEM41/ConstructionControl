@@ -67,7 +67,7 @@ namespace ConstructionControl
                 return;
 
             LoadPreview(sheetName);
-            PopulateFloors();
+            PopulateMarks();
         }
         private void LoadPreview(string sheetName)
         {
@@ -127,28 +127,38 @@ namespace ConstructionControl
             BlockSelector.ItemsSource = blocks;
             if (blocks.Count > 0)
                 BlockSelector.SelectedIndex = 0;
-            PopulateFloors();
+            PopulateMarks();
         }
 
-        private void PopulateFloors()
+        private void PopulateMarks()
         {
-            if (_currentObject == null)
+            if (MarkSelector == null)
                 return;
 
             var marks = GetMarksForSelectedSheet();
-            PopulateFloorsRangeSelector(marks);
-        }
+            var currentSelection = GetSelectedMark();
 
-        private void PopulateFloorsRangeSelector(List<string> marks)
-        {
-            var options = marks
-                .Select(mark => new FloorOption(mark, mark))
-                .ToList();
+            MarkSelector.ItemsSource = marks;
 
-            FloorsRangeSelector.ItemsSource = options;
-            FloorsRangeSelector.SelectedItems.Clear();
-            foreach (var option in options)
-                FloorsRangeSelector.SelectedItems.Add(option);
+            if (!string.IsNullOrWhiteSpace(currentSelection)
+                && marks.Any(x => string.Equals(x, currentSelection, System.StringComparison.CurrentCultureIgnoreCase)))
+            {
+                var matchedMark = marks.First(x => string.Equals(x, currentSelection, System.StringComparison.CurrentCultureIgnoreCase));
+                MarkSelector.SelectedItem = matchedMark;
+                MarkSelector.Text = matchedMark;
+                return;
+            }
+
+            if (marks.Count > 0)
+            {
+                MarkSelector.SelectedIndex = 0;
+                MarkSelector.Text = marks[0];
+            }
+            else
+            {
+                MarkSelector.SelectedIndex = -1;
+                MarkSelector.Text = currentSelection;
+            }
         }
 
         private string ToExcelColumn(int columnNumber)
@@ -404,7 +414,7 @@ namespace ConstructionControl
 
         private void BlockSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            PopulateFloors();
+            PopulateMarks();
         }
 
 
@@ -483,9 +493,6 @@ namespace ConstructionControl
                     _passportRow = row;
                     MessageBox.Show($"📄 Паспорт: строка {row} → вправо");
                     break;
-                case "DemandRange":
-                    ApplyDemandRange();
-                    break;
                 case "DemandColumn":
                     ApplyDemandColumn();
                     break;
@@ -511,13 +518,12 @@ namespace ConstructionControl
                 return;
             }
 
-            var selectedMarks = GetSelectedFloorsForRange();
-            if (selectedMarks.Count != 1)
+            var mark = GetSelectedMark();
+            if (string.IsNullOrWhiteSpace(mark))
             {
-                MessageBox.Show("Выберите одну отметку для заполнения.");
+                MessageBox.Show("Выберите отметку для заполнения.");
                 return;
             }
-            string mark = selectedMarks[0];
 
 
             if (SheetsList.SelectedItem == null)
@@ -528,7 +534,7 @@ namespace ConstructionControl
 
             if (PreviewGrid.SelectedCells.Count == 0)
             {
-                MessageBox.Show("Сначала выберите верхнюю ячейку столбца.");
+                MessageBox.Show("Сначала выберите верхнюю ячейку столбца с потребностью.");
                 return;
             }
 
@@ -590,130 +596,7 @@ namespace ConstructionControl
 
             DemandUpdated = true;
             EnsureSummaryMarks(group, new[] { mark });
-            MessageBox.Show($"Кол-во по отметке {mark} для блока {block} импортировано.");
-        }
-
-        private void ApplyDemandRange()
-        {
-            if (_currentObject == null)
-            {
-                MessageBox.Show("Сначала выберите объект.");
-                return;
-            }
-
-            if (_materialColumn == null)
-            {
-                MessageBox.Show("Сначала укажите колонку «Наименование».");
-                return;
-            }
-
-            if (BlockSelector.SelectedItem is not int block)
-            {
-                MessageBox.Show("Выберите блок для заполнения.");
-                return;
-            }
-
-            if (SheetsList.SelectedItem == null)
-            {
-                MessageBox.Show("Выберите лист Excel.");
-                return;
-            }
-
-            var selectedMarks = GetSelectedFloorsForRange();
-            if (selectedMarks.Count == 0)
-            {
-                MessageBox.Show("Выберите отметки в таблице.");
-                return;
-            }
-
-            var selectedCells = PreviewGrid.SelectedCells
-                .Where(c => c.Column != null)
-                .OrderBy(c => c.Column.DisplayIndex)
-                .ToList();
-
-            if (selectedCells.Count == 0)
-            {
-                MessageBox.Show("Выберите диапазон значений для этажей.");
-                return;
-            }
-
-            int firstRow = PreviewGrid.Items.IndexOf(selectedCells[0].Item);
-            if (selectedCells.Any(c => PreviewGrid.Items.IndexOf(c.Item) != firstRow))
-            {
-                MessageBox.Show("Выберите значения в одной строке (один материал).");
-                return;
-            }
-
-            if (selectedCells.Count != selectedMarks.Count)
-            {
-                MessageBox.Show($"Выберите {selectedMarks.Count} ячеек по отметкам. Сейчас выбрано: {selectedCells.Count}.");
-                return;
-            }
-
-            var selectedColumns = selectedCells
-                  .Select(cell => cell.Column.DisplayIndex + 1)
-                  .ToList();
-
-            string group = SheetsList.SelectedItem.ToString();
-
-               int startRow = firstRow + 1;
-               using var wb = new XLWorkbook(_filePath);
-               var ws = wb.Worksheet(group);
-               var range = ws.RangeUsed();
-               if (range == null)
-                return;
-
-
-            int lastRow = range.RowCount();
-            int importedRows = 0;
-
-            for (int r = startRow; r <= lastRow; r++)
-            {
-                string material = ws.Cell(r, _materialColumn.Value).GetValue<string>().Trim();
-                if (string.IsNullOrWhiteSpace(material))
-                    break;
-
-                string unit = _unitColumn != null
-                ? ws.Cell(r, _unitColumn.Value).GetValue<string>()
-                : "шт";
-
-                string demandKey = $"{group}::{material}";
-
-                if (!_currentObject.Demand.TryGetValue(demandKey, out var demand))
-                {
-                    demand = new MaterialDemand
-                    {
-                        Unit = unit,
-                        Levels = new Dictionary<int, Dictionary<string, double>>(),
-                        Floors = new Dictionary<int, Dictionary<int, double>>()
-                    };
-                    _currentObject.Demand[demandKey] = demand;
-                }
-
-                if (string.IsNullOrWhiteSpace(demand.Unit))
-                    demand.Unit = unit;
-                demand.Levels ??= new Dictionary<int, Dictionary<string, double>>();
-
-                if (!demand.Levels.ContainsKey(block))
-                    demand.Levels[block] = new Dictionary<string, double>();
-
-                for (int i = 0; i < selectedColumns.Count; i++)
-                {
-                    string cellText = ws.Cell(r, selectedColumns[i]).GetValue<string>();
-                    if (!double.TryParse(cellText, out var value))
-                        value = 0;
-
-                    demand.Levels[block][selectedMarks[i]] = value;
-                }
-
-                EnsureMaterialGroup(group, material);
-                importedRows++;
-            }
-            
-            DemandUpdated = true;
-            EnsureSummaryMarks(group, selectedMarks);
-
-            MessageBox.Show($"Значения по отметкам для блока {block} обновлены. Строк обработано: {importedRows}.");
+            MessageBox.Show($"Потребность по отметке {mark} для блока {block} импортирована.");
         }
 
         private List<string> GetMarksForSelectedSheet()
@@ -760,37 +643,14 @@ namespace ConstructionControl
             _currentObject.SummaryMarksByGroup[group] = existing;
         }
 
-        private List<string> GetSelectedFloorsForRange()
+        private string GetSelectedMark()
         {
-            if (FloorsRangeSelector.Items.Count == 0)
-                return new List<string>();
+            var typedValue = MarkSelector?.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(typedValue))
+                return typedValue;
 
-            var selected = FloorsRangeSelector.SelectedItems
-                .Cast<FloorOption>()
-                .Select(option => option.Value)
-                .ToHashSet();
-
-            if (selected.Count == 0)
-                return new List<string>();
-
-            return FloorsRangeSelector.Items
-                .Cast<FloorOption>()
-                .Where(option => selected.Contains(option.Value))
-                .Select(option => option.Value)
-                .ToList();
+            return MarkSelector?.SelectedItem?.ToString()?.Trim() ?? string.Empty;
         }
-
-        private sealed class FloorOption
-        {
-            public FloorOption(string value, string label)
-            {
-                Value = value;
-                Label = label;
-            }
-
-            public string Value { get; }
-            public string Label { get; }
-        } 
 
         private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
         {

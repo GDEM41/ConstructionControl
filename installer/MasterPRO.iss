@@ -1,7 +1,7 @@
-#define MyAppName "МастерPRO"
+﻿#define MyAppName "MasterPRO"
 #define MyAppExeName "ConstructionControl.exe"
 #define MyAppVersion "1.0.0.0"
-#define MyPublisher "МастерPRO"
+#define MyPublisher "MasterPRO"
 #define SoftMakerPackageDir "SoftMaker.Office.Professional.v2024.1230.1206"
 #define PdfPackageDir "PDF-XChange.PRO.v10.8.4.409"
 
@@ -254,6 +254,11 @@ begin
   DependencyInstallPage := CreateOutputProgressPage(
     'Установка дополнительных программ',
     'Подождите, пока будут установлены выбранные компоненты.');
+
+  WizardForm.WelcomeLabel1.Visible := False;
+  WizardForm.WelcomeLabel2.Visible := False;
+  WizardForm.FinishedHeadingLabel.Visible := False;
+  WizardForm.FinishedLabel.Visible := False;
 
   SoftMakerTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить SoftMaker Office Professional (Portable)');
   PdfTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить PDF-XChange PRO');

@@ -31,12 +31,14 @@ namespace ConstructionControl
         private bool isUpdatingHiddenWorkActEditor;
         private bool hiddenWorkActPreviewRefreshQueued;
         private bool hiddenWorkActPreviewRenderInProgress;
+        private bool hiddenWorkActPreviewBuildInProgress;
         private string lastHiddenWorkActPreviewKey = string.Empty;
         private int hiddenWorkActPreviewRenderVersion;
         private XpsDocument hiddenWorkActPreviewXpsDocument;
         private HiddenWorksActPreviewArtifact hiddenWorkActPreviewArtifact;
         private DispatcherTimer hiddenWorkActPreviewDebounceTimer;
         private static readonly TimeSpan HiddenWorkActPreviewDebounceInterval = TimeSpan.FromMilliseconds(350);
+        private static readonly TimeSpan HiddenWorkActPreviewBuildTimeout = TimeSpan.FromSeconds(18);
 
         private sealed class HiddenWorkActSourceSegment
         {
@@ -561,7 +563,7 @@ namespace ConstructionControl
 
         private void QueueHiddenWorkActPreviewRender()
         {
-            if (hiddenWorkActPreviewRenderInProgress)
+            if (hiddenWorkActPreviewRenderInProgress || hiddenWorkActPreviewBuildInProgress)
             {
                 hiddenWorkActPreviewRefreshQueued = true;
                 return;
@@ -602,7 +604,17 @@ namespace ConstructionControl
                 }
 
                 var snapshot = CloneHiddenWorkAct(selectedHiddenWorkAct);
-                var previewArtifact = await HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(snapshot);
+                hiddenWorkActPreviewBuildInProgress = true;
+                var previewTask = HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(snapshot);
+                var completedTask = await Task.WhenAny(previewTask, Task.Delay(HiddenWorkActPreviewBuildTimeout));
+                if (!ReferenceEquals(completedTask, previewTask))
+                {
+                    ObserveLateHiddenWorkActPreviewBuild(previewTask);
+                    throw new TimeoutException("Предпросмотр акта обновляется слишком долго. Попробуйте снова через несколько секунд.");
+                }
+
+                hiddenWorkActPreviewBuildInProgress = false;
+                var previewArtifact = await previewTask;
 
                 if (renderVersion != hiddenWorkActPreviewRenderVersion
                     || !string.Equals(previewKey, BuildHiddenWorkActPreviewKey(selectedHiddenWorkAct), StringComparison.Ordinal))
@@ -633,9 +645,47 @@ namespace ConstructionControl
             finally
             {
                 hiddenWorkActPreviewRenderInProgress = false;
-                if (hiddenWorkActPreviewRefreshQueued)
+                if (hiddenWorkActPreviewRefreshQueued && !hiddenWorkActPreviewBuildInProgress)
                     Dispatcher.BeginInvoke(new Action(RenderHiddenWorkActPreview), DispatcherPriority.Background);
             }
+        }
+
+        private void ObserveLateHiddenWorkActPreviewBuild(Task<HiddenWorksActPreviewArtifact> previewTask)
+        {
+            if (previewTask == null)
+                return;
+
+            ObserveLateHiddenWorkActPreviewArtifact(previewTask, () =>
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    hiddenWorkActPreviewBuildInProgress = false;
+                    hiddenWorkActPreviewRefreshQueued = true;
+                    if (!hiddenWorkActPreviewRenderInProgress)
+                        Dispatcher.BeginInvoke(new Action(RenderHiddenWorkActPreview), DispatcherPriority.Background);
+                }), DispatcherPriority.Background);
+            });
+        }
+
+        private static void ObserveLateHiddenWorkActPreviewArtifact(Task<HiddenWorksActPreviewArtifact> previewTask, Action onCompleted = null)
+        {
+            if (previewTask == null)
+                return;
+
+            _ = previewTask.ContinueWith(task =>
+            {
+                try
+                {
+                    if (task.Status == TaskStatus.RanToCompletion)
+                        task.Result.Dispose();
+                    _ = task.Exception;
+                }
+                catch
+                {
+                    // Ignore late preview completion errors.
+                }
+                onCompleted?.Invoke();
+            }, TaskScheduler.Default);
         }
 
         private void ClearHiddenWorkActFixedPreview()
@@ -1467,7 +1517,15 @@ namespace ConstructionControl
                 return;
             }
 
-            var artifact = await HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(CloneHiddenWorkAct(act));
+            var buildTask = HiddenWorksActWordPreviewBuilder.BuildPreviewAsync(CloneHiddenWorkAct(act));
+            var completedTask = await Task.WhenAny(buildTask, Task.Delay(HiddenWorkActPreviewBuildTimeout));
+            if (!ReferenceEquals(completedTask, buildTask))
+            {
+                ObserveLateHiddenWorkActPreviewArtifact(buildTask);
+                throw new TimeoutException("Word слишком долго формирует акт для печати. Попробуйте снова.");
+            }
+
+            var artifact = await buildTask;
             try
             {
                 using var xpsDocument = new XpsDocument(artifact.XpsPath, FileAccess.Read);
@@ -1487,6 +1545,7 @@ namespace ConstructionControl
             if (act == null
                 || HiddenWorkActPreviewViewer?.Document is not IDocumentPaginatorSource documentSource
                 || hiddenWorkActPreviewRenderInProgress
+                || hiddenWorkActPreviewBuildInProgress
                 || !ReferenceEquals(act, selectedHiddenWorkAct))
             {
                 return false;
