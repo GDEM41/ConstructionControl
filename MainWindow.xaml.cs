@@ -1092,9 +1092,54 @@ namespace ConstructionControl
 
                 var docAccepted = IsDocumentAccepted(day);
                 if (docAccepted == true)
-                    return GetApplicationThemeBrush("WarningSoftBrush", "#78350F");
+                    return GetApplicationThemeBrush("SuccessSoftBrush", "#064E3B");
 
                 return GetApplicationThemeBrush("DangerSoftBrush", "#7F1D1D");
+            }
+
+            public string GetDayStatusMarkerText(int day)
+            {
+                if (!IsNonHourCode(day))
+                    return string.Empty;
+
+                return IsDocumentAccepted(day) == true ? "✓" : "!";
+            }
+
+            public Brush GetDayStatusMarkerForeground(int day)
+            {
+                if (!IsNonHourCode(day))
+                    return GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8");
+
+                return IsDocumentAccepted(day) == true
+                    ? GetApplicationThemeBrush("SuccessTextBrush", "#D1FAE5")
+                    : GetApplicationThemeBrush("DangerTextBrush", "#FECACA");
+            }
+
+            public string GetDayToolTipText(int day)
+            {
+                var parts = new List<string>();
+                var value = GetDayValue(day)?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    parts.Add(IsNonHourCode(day)
+                        ? $"Код: {value}"
+                        : $"Часы: {value}");
+                }
+
+                if (IsNonHourCode(day))
+                {
+                    parts.Add(IsDocumentAccepted(day) == true
+                        ? "Документ закрытия: подтвержден."
+                        : "Документ закрытия: отсутствует.");
+                }
+
+                var comment = GetDayComment(day)?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(comment))
+                    parts.Add($"Комментарий: {comment}");
+
+                return parts.Count == 0
+                    ? string.Empty
+                    : string.Join(Environment.NewLine, parts);
             }
 
 
@@ -9476,7 +9521,7 @@ namespace ConstructionControl
                 var style = new Style(typeof(DataGridCell));
                 if (isWeekend)
                     style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, GetApplicationThemeBrush("RowHoverBrush", "#1E3A5F")));
-                style.Setters.Add(new Setter(DataGridCell.ToolTipProperty, new Binding { Converter = new TimesheetDayCommentToolTipConverter(day) }));
+                style.Setters.Add(new Setter(DataGridCell.ToolTipProperty, new Binding { Converter = new TimesheetDayCellToolTipConverter(day) }));
                 column.CellStyle = style;
                 TimesheetGrid.Columns.Add(column);
             }
@@ -9574,6 +9619,18 @@ namespace ConstructionControl
             editor.SetBinding(TextBox.FontWeightProperty, new Binding { Converter = new TimesheetDayFontWeightConverter(day) });
             grid.AppendChild(editor);
 
+            var statusMarker = new FrameworkElementFactory(typeof(TextBlock));
+            statusMarker.SetBinding(TextBlock.TextProperty, new Binding { Converter = new TimesheetDayStatusTextConverter(day) });
+            statusMarker.SetBinding(TextBlock.ForegroundProperty, new Binding { Converter = new TimesheetDayStatusForegroundConverter(day) });
+            statusMarker.SetBinding(TextBlock.VisibilityProperty, new Binding { Converter = new TimesheetDayStatusVisibilityConverter(day) });
+            statusMarker.SetBinding(TextBlock.ToolTipProperty, new Binding { Converter = new TimesheetDayCellToolTipConverter(day) });
+            statusMarker.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+            statusMarker.SetValue(TextBlock.FontSizeProperty, 11.0);
+            statusMarker.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+            statusMarker.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Bottom);
+            statusMarker.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 2, -1));
+            grid.AppendChild(statusMarker);
+
             var marker = new FrameworkElementFactory(typeof(TextBlock));
             marker.SetValue(TextBlock.TextProperty, "*");
             marker.SetValue(TextBlock.ForegroundProperty, GetApplicationThemeBrush("WarningBrush", "#FBBF24"));
@@ -9608,9 +9665,12 @@ namespace ConstructionControl
                 if (value is not TimesheetRowViewModel row)
                     return GetApplicationThemeBrush("TextBrush", "#E5E7EB");
 
-                return row.IsNonHourCode(day)
-                    ? GetApplicationThemeBrush("DangerTextBrush", "#FECACA")
-                    : GetApplicationThemeBrush("TextBrush", "#E5E7EB");
+                if (!row.IsNonHourCode(day))
+                    return GetApplicationThemeBrush("TextBrush", "#E5E7EB");
+
+                return row.IsDocumentAccepted(day) == true
+                    ? GetApplicationThemeBrush("SuccessTextBrush", "#D1FAE5")
+                    : GetApplicationThemeBrush("DangerTextBrush", "#FECACA");
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -9659,6 +9719,60 @@ namespace ConstructionControl
 
                 return $"Комментарий: {comment}";
             }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayCellToolTipConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayCellToolTipConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row
+                    ? (object?)row.GetDayToolTipText(day)
+                    : null;
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayStatusTextConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayStatusTextConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row ? row.GetDayStatusMarkerText(day) : string.Empty;
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayStatusForegroundConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayStatusForegroundConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row
+                    ? row.GetDayStatusMarkerForeground(day)
+                    : GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8");
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+                => Binding.DoNothing;
+        }
+
+        private sealed class TimesheetDayStatusVisibilityConverter : IValueConverter
+        {
+            private readonly int day;
+            public TimesheetDayStatusVisibilityConverter(int day) => this.day = day;
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+                => value is TimesheetRowViewModel row && row.IsNonHourCode(day)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
                 => Binding.DoNothing;
@@ -16735,6 +16849,191 @@ namespace ConstructionControl
             public string Passport { get; set; }
         }
 
+        private List<ArrivalMatrixColumn> BuildArrivalMatrixColumns(IEnumerable<JournalRecord> data)
+        {
+            return data
+                .Where(x => x != null)
+                .GroupBy(x => new
+                {
+                    Date = x.Date.Date,
+                    Ttn = (x.Ttn ?? string.Empty).Trim(),
+                    Supplier = (x.Supplier ?? string.Empty).Trim(),
+                    Passport = (x.Passport ?? string.Empty).Trim()
+                })
+                .Select(x => new ArrivalMatrixColumn
+                {
+                    Date = x.Key.Date,
+                    Ttn = x.Key.Ttn,
+                    Supplier = x.Key.Supplier,
+                    Passport = x.Key.Passport
+                })
+                .OrderBy(x => x.Date)
+                .ThenBy(x => x.Ttn, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private List<string> BuildArrivalMatrixMaterials(IEnumerable<JournalRecord> data)
+        {
+            return data
+                .Select(x => (x.MaterialName ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private Dictionary<string, string> BuildArrivalMatrixUnitByMaterial(IEnumerable<JournalRecord> data)
+        {
+            return data
+                .GroupBy(x => (x.MaterialName ?? string.Empty).Trim(), StringComparer.CurrentCultureIgnoreCase)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.Select(y => y.Unit ?? string.Empty).FirstOrDefault() ?? string.Empty,
+                    StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        private static double GetArrivalMatrixQuantity(IEnumerable<JournalRecord> data, string material, ArrivalMatrixColumn column)
+        {
+            return data
+                .Where(x => string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase)
+                    && x.Date.Date == column.Date
+                    && string.Equals((x.Ttn ?? string.Empty).Trim(), column.Ttn, StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals((x.Supplier ?? string.Empty).Trim(), column.Supplier, StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals((x.Passport ?? string.Empty).Trim(), column.Passport, StringComparison.CurrentCultureIgnoreCase))
+                .Sum(x => x.Quantity);
+        }
+
+        private string GetArrivalMatrixTotalCaption()
+        {
+            var hasDateFilter = ArrivalDateFrom?.SelectedDate != null || ArrivalDateTo?.SelectedDate != null;
+            return hasDateFilter ? "Итого за период" : "Итого за всё время";
+        }
+
+        private string CreateArrivalMatrixWorksheetName(IXLWorkbook workbook, string groupName)
+        {
+            var baseName = string.IsNullOrWhiteSpace(groupName) ? "Матрица" : groupName.Trim();
+            foreach (var invalid in new[] { '[', ']', '*', '?', '/', '\\', ':' })
+                baseName = baseName.Replace(invalid, '_');
+
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = "Матрица";
+
+            var candidate = baseName.Length <= 31 ? baseName : baseName[..31];
+            var suffix = 2;
+            while (workbook.Worksheets.Any(ws => string.Equals(ws.Name, candidate, StringComparison.CurrentCultureIgnoreCase)))
+            {
+                var suffixText = $"_{suffix++}";
+                var allowedLength = Math.Max(1, 31 - suffixText.Length);
+                candidate = $"{baseName[..Math.Min(baseName.Length, allowedLength)]}{suffixText}";
+            }
+
+            return candidate;
+        }
+
+        private void PopulateArrivalMatrixWorksheet(IXLWorksheet ws, List<JournalRecord> data)
+        {
+            if (ws == null)
+                return;
+
+            if (data == null || data.Count == 0)
+            {
+                ws.Cell(1, 1).Value = "Нет данных по выбранным фильтрам.";
+                ws.Columns().AdjustToContents();
+                return;
+            }
+
+            var columns = BuildArrivalMatrixColumns(data);
+            var materials = BuildArrivalMatrixMaterials(data);
+            var unitByMaterial = BuildArrivalMatrixUnitByMaterial(data);
+            var totalCaption = GetArrivalMatrixTotalCaption();
+            var totalColumn = columns.Count + 3;
+
+            ws.Cell(1, 1).Value = "Наименование";
+            ws.Cell(1, 2).Value = "Ед.";
+            ws.Range(1, 1, 4, 1).Merge();
+            ws.Range(1, 2, 4, 2).Merge();
+            ws.Cell(1, totalColumn).Value = totalCaption;
+            ws.Range(1, totalColumn, 4, totalColumn).Merge();
+
+            ws.Range(1, 1, 4, 2).Style.Font.Bold = true;
+            ws.Range(1, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF2F7");
+            ws.Range(1, totalColumn, 4, totalColumn).Style.Font.Bold = true;
+            ws.Range(1, totalColumn, 4, totalColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#DCEBFF");
+            ws.Range(1, 1, 4, totalColumn).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Range(1, 1, 4, totalColumn).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(1, 1, 4, totalColumn).Style.Alignment.WrapText = true;
+
+            for (var i = 0; i < columns.Count; i++)
+            {
+                var col = columns[i];
+                var excelCol = i + 3;
+                ws.Cell(1, excelCol).Value = col.Date.ToString("dd.MM.yyyy");
+                ws.Cell(2, excelCol).Value = string.IsNullOrWhiteSpace(col.Ttn) ? "—" : col.Ttn;
+                ws.Cell(3, excelCol).Value = string.IsNullOrWhiteSpace(col.Supplier) ? "—" : col.Supplier;
+                ws.Cell(4, excelCol).Value = string.IsNullOrWhiteSpace(col.Passport) ? "—" : col.Passport;
+            }
+
+            ws.Range(1, 3, 4, columns.Count + 2).Style.Font.Bold = true;
+            ws.Range(1, 3, 4, columns.Count + 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF4FF");
+            ws.Range(1, 3, 4, columns.Count + 2).Style.Alignment.WrapText = true;
+            ws.Range(1, 3, 4, columns.Count + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Range(1, 3, 4, columns.Count + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+            for (var materialIndex = 0; materialIndex < materials.Count; materialIndex++)
+            {
+                var material = materials[materialIndex];
+                var row = materialIndex + 5;
+                ws.Cell(row, 1).Value = material;
+                ws.Cell(row, 2).Value = unitByMaterial.TryGetValue(material, out var unit) ? unit : string.Empty;
+
+                double rowTotal = 0;
+                for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                {
+                    var quantity = GetArrivalMatrixQuantity(data, material, columns[columnIndex]);
+                    rowTotal += quantity;
+                    if (Math.Abs(quantity) > 0.0001)
+                        ws.Cell(row, columnIndex + 3).Value = quantity;
+                }
+
+                if (Math.Abs(rowTotal) > 0.0001)
+                    ws.Cell(row, totalColumn).Value = rowTotal;
+            }
+
+            var totalRow = materials.Count + 5;
+            var grandTotal = data.Sum(x => x.Quantity);
+            ws.Cell(totalRow, 1).Value = "Итого";
+            ws.Cell(totalRow, 1).Style.Font.Bold = true;
+
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+            {
+                var col = columns[columnIndex];
+                var columnTotal = data
+                    .Where(x => x.Date.Date == col.Date
+                        && string.Equals((x.Ttn ?? string.Empty).Trim(), col.Ttn, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals((x.Supplier ?? string.Empty).Trim(), col.Supplier, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals((x.Passport ?? string.Empty).Trim(), col.Passport, StringComparison.CurrentCultureIgnoreCase))
+                    .Sum(x => x.Quantity);
+
+                if (Math.Abs(columnTotal) > 0.0001)
+                    ws.Cell(totalRow, columnIndex + 3).Value = columnTotal;
+            }
+
+            if (Math.Abs(grandTotal) > 0.0001)
+                ws.Cell(totalRow, totalColumn).Value = grandTotal;
+
+            ws.Range(totalRow, 1, totalRow, totalColumn).Style.Font.Bold = true;
+            ws.Range(totalRow, 1, totalRow, totalColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF6");
+            ws.Range(1, 1, totalRow, totalColumn).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(1, 1, totalRow, totalColumn).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(5, 3, totalRow, totalColumn).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(5, totalColumn, totalRow, totalColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#F5F9FF");
+
+            ws.Rows(1, 4).Height = 28;
+            ws.SheetView.FreezeRows(4);
+            ws.SheetView.FreezeColumns(2);
+            ws.Columns().AdjustToContents();
+        }
+
         private bool IsArrivalTabActive()
             => MainTabs?.SelectedItem is TabItem item
                && string.Equals(item.Header?.ToString(), "Приход", StringComparison.CurrentCulture);
@@ -16782,37 +17081,17 @@ namespace ConstructionControl
                 return;
             }
 
-            var columns = data
-                .GroupBy(x => new
-                {
-                    Date = x.Date.Date,
-                    Ttn = (x.Ttn ?? string.Empty).Trim(),
-                    Supplier = (x.Supplier ?? string.Empty).Trim(),
-                    Passport = (x.Passport ?? string.Empty).Trim()
-                })
-                .Select(x => new ArrivalMatrixColumn
-                {
-                    Date = x.Key.Date,
-                    Ttn = x.Key.Ttn,
-                    Supplier = x.Key.Supplier,
-                    Passport = x.Key.Passport
-                })
-                .OrderBy(x => x.Date)
-                .ThenBy(x => x.Ttn, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-
-            var materials = data
-                .Select(x => x.MaterialName?.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-
+            var columns = BuildArrivalMatrixColumns(data);
+            var materials = BuildArrivalMatrixMaterials(data);
+            var totalCaption = GetArrivalMatrixTotalCaption();
+            var totalColumnIndex = columns.Count + 2;
+            var totalRowIndex = materials.Count + 4;
             var materialColumnWidth = Math.Max(280, Math.Min(420, materials.Max(x => (x?.Length ?? 0) * 9 + 50)));
             ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(materialColumnWidth) });
             ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
             foreach (var _ in columns)
                 ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+            ArrivalMatrixHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) });
 
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(72) });
@@ -16820,9 +17099,11 @@ namespace ConstructionControl
             ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(78) });
             foreach (var _ in materials)
                 ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });
+            ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(38) });
 
             AddArrivalMatrixCell(0, 0, string.Empty, "SurfaceBrush", rowSpan: 2);
             AddArrivalMatrixCell(2, 0, "Наименование", "SurfaceAltBrush", rowSpan: 2, fontWeight: FontWeights.SemiBold, fontSize: 18, textAlignment: TextAlignment.Center);
+            AddArrivalMatrixCell(0, totalColumnIndex, totalCaption, "SurfaceAltBrush", rowSpan: 4, fontWeight: FontWeights.SemiBold, fontSize: 16, textAlignment: TextAlignment.Center, padding: new Thickness(8, 4, 8, 4));
 
             AddArrivalMatrixSideLabel(0, "Дата");
             AddArrivalMatrixSideLabel(1, "ТТН");
@@ -16849,20 +17130,38 @@ namespace ConstructionControl
                 AddArrivalMatrixCell(rowIndex, 0, material, rowBackground, textAlignment: TextAlignment.Left, padding: new Thickness(10, 6, 10, 6));
                 AddArrivalMatrixCell(rowIndex, 1, string.Empty, "RowHoverBrush");
 
+                double rowTotal = 0;
+
                 for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
                 {
                     var column = columns[columnIndex];
-                    var quantity = data
-                        .Where(x => string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase)
-                                 && x.Date.Date == column.Date
-                                 && string.Equals((x.Ttn ?? string.Empty).Trim(), column.Ttn, StringComparison.CurrentCultureIgnoreCase)
-                                 && string.Equals((x.Supplier ?? string.Empty).Trim(), column.Supplier, StringComparison.CurrentCultureIgnoreCase)
-                                 && string.Equals((x.Passport ?? string.Empty).Trim(), column.Passport, StringComparison.CurrentCultureIgnoreCase))
-                        .Sum(x => x.Quantity);
+                    var quantity = GetArrivalMatrixQuantity(data, material, column);
+                    rowTotal += quantity;
 
                     AddArrivalMatrixCell(rowIndex, columnIndex + 2, quantity > 0 ? FormatNumber(quantity) : string.Empty, rowBackground);
                 }
+
+                AddArrivalMatrixCell(rowIndex, totalColumnIndex, Math.Abs(rowTotal) > 0.0001 ? FormatNumber(rowTotal) : string.Empty, rowBackground, fontWeight: FontWeights.SemiBold);
             }
+
+            AddArrivalMatrixCell(totalRowIndex, 0, "Итого", "SurfaceAltBrush", fontWeight: FontWeights.SemiBold, textAlignment: TextAlignment.Left, padding: new Thickness(10, 6, 10, 6));
+            AddArrivalMatrixCell(totalRowIndex, 1, string.Empty, "SurfaceAltBrush");
+
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+            {
+                var column = columns[columnIndex];
+                var columnTotal = data
+                    .Where(x => x.Date.Date == column.Date
+                        && string.Equals((x.Ttn ?? string.Empty).Trim(), column.Ttn, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals((x.Supplier ?? string.Empty).Trim(), column.Supplier, StringComparison.CurrentCultureIgnoreCase)
+                        && string.Equals((x.Passport ?? string.Empty).Trim(), column.Passport, StringComparison.CurrentCultureIgnoreCase))
+                    .Sum(x => x.Quantity);
+
+                AddArrivalMatrixCell(totalRowIndex, columnIndex + 2, Math.Abs(columnTotal) > 0.0001 ? FormatNumber(columnTotal) : string.Empty, "SurfaceAltBrush", fontWeight: FontWeights.SemiBold);
+            }
+
+            var grandTotal = data.Sum(x => x.Quantity);
+            AddArrivalMatrixCell(totalRowIndex, totalColumnIndex, Math.Abs(grandTotal) > 0.0001 ? FormatNumber(grandTotal) : string.Empty, "SurfaceAltBrush", fontWeight: FontWeights.SemiBold);
         }
 
         private void AddArrivalMatrixSideLabel(int row, string text)
@@ -20453,19 +20752,44 @@ namespace ConstructionControl
             state.SavedAtUtc = DateTime.UtcNow;
             var stateJson = JsonSerializer.Serialize(state);
             var exportedStorageFiles = 0;
+            var includesEstimates = HasProjectTransferSection(selectedSections.Value, ProjectTransferSection.Estimates);
+            var shouldRestoreVisibleEstimatePreview = includesEstimates && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab);
 
-            using (var stream = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            try
             {
-                var stateEntry = archive.CreateEntry("state.json", CompressionLevel.Optimal);
-                using (var entryStream = stateEntry.Open())
-                using (var writer = new StreamWriter(entryStream))
+                using (var stream = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
                 {
-                    writer.Write(stateJson);
-                }
+                    var stateEntry = archive.CreateEntry("state.json", CompressionLevel.Optimal);
+                    using (var entryStream = stateEntry.Open())
+                    using (var writer = new StreamWriter(entryStream))
+                    {
+                        writer.Write(stateJson);
+                    }
 
-                WriteTextEntry(archive, BackupSectionManifestEntryName, JsonSerializer.Serialize(BuildBackupPackageManifest(selectedSections.Value)));
-                exportedStorageFiles = ExportProjectStorageToArchive(archive, state, selectedSections.Value);
+                    WriteTextEntry(archive, BackupSectionManifestEntryName, JsonSerializer.Serialize(BuildBackupPackageManifest(selectedSections.Value)));
+                    exportedStorageFiles = ExportProjectStorageToArchive(archive, state, selectedSections.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось выполнить экспорт.{Environment.NewLine}{ex.Message}{Environment.NewLine}{Environment.NewLine}Если у вас открыты сметы или PDF во внешних программах, закройте их и повторите попытку.",
+                    "Ошибка экспорта",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+            finally
+            {
+                if (shouldRestoreVisibleEstimatePreview)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        UpdateEstimateSelectionInfo(forceRefresh: true);
+                        UpdateEstimateSecondaryPreview();
+                    }), DispatcherPriority.Background);
+                }
             }
 
             AppendChangeLog("Экспорт", $"Экспортированы разделы: {FormatProjectTransferSections(selectedSections.Value)}.");
@@ -20577,7 +20901,7 @@ namespace ConstructionControl
                     continue;
 
                 var entry = archive.CreateEntry($"storage/{relativePath}", CompressionLevel.Optimal);
-                using var input = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var input = OpenStorageFileForExport(sourceFile);
                 using var output = entry.Open();
                 input.CopyTo(output);
                 exported++;
@@ -20602,6 +20926,110 @@ namespace ConstructionControl
             }
 
             return exported;
+        }
+
+        private static FileStream OpenStorageFileForExportCore(string sourceFile)
+            => new(sourceFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        private FileStream OpenStorageFileForExport(string sourceFile)
+        {
+            if (string.IsNullOrWhiteSpace(sourceFile))
+                throw new ArgumentException("Не указан исходный файл для экспорта.", nameof(sourceFile));
+
+            try
+            {
+                return OpenStorageFileForExportCore(sourceFile);
+            }
+            catch (IOException) when (TryReleaseStorageFileLockForExport(sourceFile))
+            {
+                return OpenStorageFileForExportCore(sourceFile);
+            }
+            catch (UnauthorizedAccessException) when (TryReleaseStorageFileLockForExport(sourceFile))
+            {
+                return OpenStorageFileForExportCore(sourceFile);
+            }
+        }
+
+        private bool TryReleaseStorageFileLockForExport(string sourceFile)
+        {
+            var normalizedPath = NormalizeDocumentPathKey(sourceFile);
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+                return false;
+
+            var releasedPrimary = TryReleaseEstimateFileLockForExport(normalizedPath, isSecondary: false);
+            var releasedSecondary = TryReleaseEstimateFileLockForExport(normalizedPath, isSecondary: true);
+            return releasedPrimary || releasedSecondary;
+        }
+
+        private bool TryReleaseEstimateFileLockForExport(string normalizedPath, bool isSecondary)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+                return false;
+
+            if (useExternalSpreadsheetEditor)
+            {
+                if (isSecondary)
+                {
+                    var activePath = NormalizeDocumentPathKey(estimateEmbeddedFilePathSecondary);
+                    if (string.Equals(activePath, normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        CloseExternalSpreadsheetInstance(externalSpreadsheetInstancesSecondary, activePath, ref activeExternalSpreadsheetInstanceSecondary);
+                        estimateSpreadsheetProcessSecondary = null;
+                        estimateExcelWindowHandleSecondary = IntPtr.Zero;
+                        estimateEmbeddedFilePathSecondary = string.Empty;
+                        if (EstimateExcelHostSecondary != null)
+                            EstimateExcelHostSecondary.Visibility = Visibility.Collapsed;
+                        ResetEstimateEmbeddedLayoutCacheSecondary();
+                        return true;
+                    }
+
+                    if (externalSpreadsheetInstancesSecondary.ContainsKey(normalizedPath))
+                    {
+                        CloseExternalSpreadsheetInstance(externalSpreadsheetInstancesSecondary, normalizedPath, ref activeExternalSpreadsheetInstanceSecondary);
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                var primaryPath = NormalizeDocumentPathKey(estimateEmbeddedFilePath);
+                if (string.Equals(primaryPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    SaveEstimatePreviewState();
+                    CloseExternalSpreadsheetInstance(externalSpreadsheetInstances, primaryPath, ref activeExternalSpreadsheetInstance);
+                    estimateSpreadsheetProcess = null;
+                    estimateExcelWindowHandle = IntPtr.Zero;
+                    estimateEmbeddedFilePath = string.Empty;
+                    if (EstimateExcelHost != null)
+                        EstimateExcelHost.Visibility = Visibility.Collapsed;
+                    ResetEstimateEmbeddedLayoutCache();
+                    return true;
+                }
+
+                if (externalSpreadsheetInstances.ContainsKey(normalizedPath))
+                {
+                    CloseExternalSpreadsheetInstance(externalSpreadsheetInstances, normalizedPath, ref activeExternalSpreadsheetInstance);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (isSecondary)
+            {
+                if (!string.Equals(NormalizeDocumentPathKey(estimateEmbeddedFilePathSecondary), normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+
+                CloseEstimateWorkbookSecondary(saveChanges: true);
+                return true;
+            }
+
+            if (!string.Equals(NormalizeDocumentPathKey(estimateEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+                return false;
+
+            SaveEstimatePreviewState();
+            CloseEstimateWorkbook(saveChanges: true);
+            return true;
         }
 
         private bool TryLoadBackupState(string backupPath, out AppState? state, out int restoredStorageFiles, out string errorMessage)
@@ -25519,6 +25947,8 @@ namespace ConstructionControl
                 Text = text,
                 Margin = new Thickness(6, 4, 6, 4),
                 VerticalAlignment = VerticalAlignment.Center,
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
+                TextAlignment = align,
                 TextWrapping = noWrap ? TextWrapping.NoWrap : TextWrapping.Wrap,
                 TextTrimming = TextTrimming.None
             };
@@ -25558,6 +25988,8 @@ namespace ConstructionControl
                 Padding = new Thickness(2),
                 BorderThickness = new Thickness(0),
                 Background = Brushes.Transparent,
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
+                CaretBrush = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 FontWeight = FontWeights.SemiBold,
                 Tag = $"{group}|{levelIndex}"
@@ -25608,6 +26040,8 @@ namespace ConstructionControl
                 Margin = new Thickness(2, 1, 2, 1),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
+                CaretBrush = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 MinWidth = 22,
                 FontSize = 11,
                 IsReadOnly = !editableTop || isLocked,
@@ -26835,13 +27269,87 @@ namespace ConstructionControl
             }
         }
 
+        private static int GetSafeProcessId(Process? process)
+        {
+            if (process == null)
+                return 0;
+
+            try
+            {
+                return process.Id;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static Process? TryGetProcessFromWindowHandle(IntPtr windowHandle)
+        {
+            if (windowHandle == IntPtr.Zero)
+                return null;
+
+            try
+            {
+                GetWindowThreadProcessId(windowHandle, out var processId);
+                return processId == 0 ? null : Process.GetProcessById((int)processId);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void CloseExternalProcessGracefully(Process? process)
+        {
+            if (process == null)
+                return;
+
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.CloseMainWindow();
+                    if (!process.WaitForExit(1500))
+                    {
+                        process.Kill(entireProcessTree: true);
+                        process.WaitForExit(3000);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore shutdown errors.
+            }
+            finally
+            {
+                try
+                {
+                    process.Dispose();
+                }
+                catch
+                {
+                    // Ignore dispose errors.
+                }
+            }
+        }
+
         private bool EnsurePdfExternalProcess()
         {
-            if (!useExternalPdfEditor || string.IsNullOrWhiteSpace(preferredPdfEditorPath) || !File.Exists(preferredPdfEditorPath))
+            if (!useExternalPdfEditor
+                || string.IsNullOrWhiteSpace(preferredPdfEditorPath)
+                || !File.Exists(preferredPdfEditorPath))
                 return false;
 
-            if (IsPdfEditorProcessAlive() && pdfEditorWindowHandle != IntPtr.Zero)
-                return true;
+            if (IsPdfEditorProcessAlive())
+            {
+                if (pdfEditorWindowHandle == IntPtr.Zero)
+                    pdfEditorWindowHandle = WaitForMainWindowHandle(pdfEditorProcess, timeoutMs: 5000);
+                if (pdfEditorWindowHandle != IntPtr.Zero)
+                    return true;
+            }
+
+            ClosePdfExternalProcess();
 
             Process process;
             try
@@ -26911,12 +27419,13 @@ namespace ConstructionControl
             AttachPdfExternalWindowToHost();
             try
             {
-                Process.Start(new ProcessStartInfo
+                var openRequest = Process.Start(new ProcessStartInfo
                 {
                     FileName = preferredPdfEditorPath,
                     Arguments = $"\"{filePath}\"",
                     UseShellExecute = false
                 });
+                openRequest?.Dispose();
             }
             catch
             {
@@ -27035,27 +27544,27 @@ namespace ConstructionControl
 
         private void ClosePdfExternalProcess()
         {
-            if (pdfEditorProcess != null)
+            var trackedProcessId = GetSafeProcessId(pdfEditorProcess);
+            var windowProcess = TryGetProcessFromWindowHandle(pdfEditorWindowHandle);
+            var windowProcessId = GetSafeProcessId(windowProcess);
+
+            if (windowProcessId != 0 && windowProcessId == trackedProcessId)
             {
                 try
                 {
-                    if (!pdfEditorProcess.HasExited)
-                    {
-                        pdfEditorProcess.CloseMainWindow();
-                        if (!pdfEditorProcess.WaitForExit(1500))
-                            pdfEditorProcess.Kill();
-                    }
+                    windowProcess?.Dispose();
                 }
                 catch
                 {
-                    // Ignore shutdown errors.
+                    // Ignore dispose errors.
                 }
-                finally
-                {
-                    pdfEditorProcess.Dispose();
-                    pdfEditorProcess = null;
-                }
+
+                windowProcess = null;
             }
+
+            CloseExternalProcessGracefully(windowProcess);
+            CloseExternalProcessGracefully(pdfEditorProcess);
+            pdfEditorProcess = null;
 
             pdfEditorWindowHandle = IntPtr.Zero;
             pdfEmbeddedFilePath = string.Empty;
@@ -27152,97 +27661,36 @@ namespace ConstructionControl
 
         private void ExportArrivalMatrix(IXLWorkbook wb)
         {
-            var ws = wb.Worksheets.Add("Матрица");
             var data = filteredJournal
                 .Where(x => !string.IsNullOrWhiteSpace(x.MaterialName))
                 .ToList();
 
             if (data.Count == 0)
             {
+                var ws = wb.Worksheets.Add("Матрица");
                 ws.Cell(1, 1).Value = "Нет данных по выбранным фильтрам.";
                 ws.Columns().AdjustToContents();
                 return;
             }
 
-            var columns = data
-                .GroupBy(x => new
-                {
-                    Date = x.Date.Date,
-                    Ttn = (x.Ttn ?? string.Empty).Trim(),
-                    Supplier = (x.Supplier ?? string.Empty).Trim(),
-                    Passport = (x.Passport ?? string.Empty).Trim()
-                })
-                .Select(x => x.Key)
-                .OrderBy(x => x.Date)
-                .ThenBy(x => x.Ttn, StringComparer.CurrentCultureIgnoreCase)
+            var groups = data
+                .GroupBy(
+                    x => string.IsNullOrWhiteSpace(x.MaterialGroup) ? "Без типа" : x.MaterialGroup.Trim(),
+                    StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
-            var materials = data
-                .Select(x => (x.MaterialName ?? string.Empty).Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-
-            var unitByMaterial = data
-                .GroupBy(x => (x.MaterialName ?? string.Empty).Trim(), StringComparer.CurrentCultureIgnoreCase)
-                .ToDictionary(
-                    x => x.Key,
-                    x => x.Select(y => y.Unit ?? string.Empty).FirstOrDefault() ?? string.Empty,
-                    StringComparer.CurrentCultureIgnoreCase);
-
-            ws.Cell(1, 1).Value = "Наименование";
-            ws.Cell(1, 2).Value = "Ед.";
-            ws.Range(1, 1, 1, 2).Style.Font.Bold = true;
-            ws.Range(1, 1, 1, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF2F7");
-
-            for (var i = 0; i < columns.Count; i++)
+            foreach (var group in groups)
             {
-                var col = columns[i];
-                var excelCol = i + 3;
-                ws.Cell(1, excelCol).Value = $"{col.Date:dd.MM.yyyy}\n{(string.IsNullOrWhiteSpace(col.Ttn) ? "—" : col.Ttn)}";
-                ws.Cell(2, excelCol).Value = string.IsNullOrWhiteSpace(col.Supplier) ? "—" : col.Supplier;
-                ws.Cell(3, excelCol).Value = string.IsNullOrWhiteSpace(col.Passport) ? "—" : col.Passport;
-                ws.Cell(1, excelCol).Style.Alignment.WrapText = true;
-                ws.Cell(2, excelCol).Style.Alignment.WrapText = true;
-                ws.Cell(3, excelCol).Style.Alignment.WrapText = true;
+                var ws = wb.Worksheets.Add(CreateArrivalMatrixWorksheetName(wb, group.Key));
+                PopulateArrivalMatrixWorksheet(
+                    ws,
+                    group
+                        .OrderBy(x => x.Date)
+                        .ThenBy(x => x.Ttn ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                        .ThenBy(x => x.MaterialName ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList());
             }
-
-            ws.Range(1, 3, 3, columns.Count + 2).Style.Font.Bold = true;
-            ws.Range(1, 3, 3, columns.Count + 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF4FF");
-
-            for (var materialIndex = 0; materialIndex < materials.Count; materialIndex++)
-            {
-                var material = materials[materialIndex];
-                var row = materialIndex + 4;
-                ws.Cell(row, 1).Value = material;
-                ws.Cell(row, 2).Value = unitByMaterial.TryGetValue(material, out var unit) ? unit : string.Empty;
-
-                for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
-                {
-                    var col = columns[columnIndex];
-                    var quantity = data
-                        .Where(x => string.Equals((x.MaterialName ?? string.Empty).Trim(), material, StringComparison.CurrentCultureIgnoreCase)
-                            && x.Date.Date == col.Date
-                            && string.Equals((x.Ttn ?? string.Empty).Trim(), col.Ttn, StringComparison.CurrentCultureIgnoreCase)
-                            && string.Equals((x.Supplier ?? string.Empty).Trim(), col.Supplier, StringComparison.CurrentCultureIgnoreCase)
-                            && string.Equals((x.Passport ?? string.Empty).Trim(), col.Passport, StringComparison.CurrentCultureIgnoreCase))
-                        .Sum(x => x.Quantity);
-
-                    if (Math.Abs(quantity) > 0.0001)
-                        ws.Cell(row, columnIndex + 3).Value = quantity;
-                }
-            }
-
-            var totalRows = materials.Count + 3;
-            var totalCols = columns.Count + 2;
-            ws.Range(1, 1, totalRows, totalCols).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            ws.Range(1, 1, totalRows, totalCols).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-            ws.Columns().AdjustToContents();
-            ws.Rows(1, 3).Height = 28;
-            ws.SheetView.FreezeRows(3);
-            ws.SheetView.FreezeColumns(2);
-            ws.Range(1, 1, 3, totalCols).SetAutoFilter();
         }
 
 

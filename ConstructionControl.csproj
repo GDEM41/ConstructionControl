@@ -11,6 +11,7 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tools\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -69,26 +70,31 @@
     <Compile Remove="build_*\**\*.cs" />
     <Compile Remove="build_obj\**\*.cs" />
     <Compile Remove="build_check\**\*.cs" />
+    <Compile Remove="tools\**\*.cs" />
     <Compile Remove="Updater\**\*.cs" />
     <Compile Remove="ConstructionControl.LogicTests\**\*.cs" />
     <EmbeddedResource Remove="build_*\**" />
     <EmbeddedResource Remove="build_obj\**" />
     <EmbeddedResource Remove="build_check\**" />
+    <EmbeddedResource Remove="tools\**" />
     <EmbeddedResource Remove="Updater\**" />
     <EmbeddedResource Remove="ConstructionControl.LogicTests\**" />
     <None Remove="build_*\**" />
     <None Remove="build_obj\**" />
     <None Remove="build_check\**" />
+    <None Remove="tools\**" />
     <None Remove="Updater\**" />
     <None Remove="ConstructionControl.LogicTests\**" />
     <Page Remove="build_*\**\*.xaml" />
     <Page Remove="build_obj\**\*.xaml" />
     <Page Remove="build_check\**\*.xaml" />
+    <Page Remove="tools\**\*.xaml" />
     <Page Remove="Updater\**\*.xaml" />
     <Page Remove="ConstructionControl.LogicTests\**\*.xaml" />
     <Resource Remove="build_*\**" />
     <Resource Remove="build_obj\**" />
     <Resource Remove="build_check\**" />
+    <Resource Remove="tools\**" />
     <Resource Remove="Updater\**" />
     <Resource Remove="ConstructionControl.LogicTests\**" />
   </ItemGroup>

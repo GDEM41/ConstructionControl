@@ -1,9 +1,16 @@
 ﻿#define MyAppName "MasterPRO"
 #define MyAppExeName "ConstructionControl.exe"
-#define MyAppVersion "1.0.0.0"
 #define MyPublisher "MasterPRO"
 #define SoftMakerPackageDir "SoftMaker.Office.Professional.v2024.1230.1206"
 #define PdfPackageDir "PDF-XChange.PRO.v10.8.4.409"
+
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.1.0"
+#endif
+
+#ifndef MyAppSourceDir
+  #define MyAppSourceDir "..\bin\Release\net10.0-windows"
+#endif
 
 [Setup]
 AppId={{2B6C2E46-0D7A-4B08-9B1E-12E0D6F74CF1}
@@ -32,11 +39,11 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; Flags: unchecked
-Name: "installsoftmaker"; Description: "Установить SoftMaker Office Professional (Portable)"; Flags: unchecked
-Name: "installpdfxchange"; Description: "Установить PDF-XChange PRO"; Flags: unchecked
+Name: "installsoftmaker"; Description: "Установить SoftMaker Office Professional (Portable, рекомендуется для быстрой работы со сметами)"; Flags: unchecked
+Name: "installpdfxchange"; Description: "Установить PDF-XChange PRO (рекомендуется для быстрого просмотра и редактирования PDF)"; Flags: unchecked
 
 [Files]
-Source: "..\bin\Release\net10.0-windows\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#MyAppSourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "packages\{#SoftMakerPackageDir}\*"; DestDir: "{app}\Dependencies\{#SoftMakerPackageDir}"; Flags: recursesubdirs createallsubdirs ignoreversion; Tasks: installsoftmaker
 Source: "packages\{#PdfPackageDir}\*"; DestDir: "{tmp}\{#PdfPackageDir}"; Flags: recursesubdirs createallsubdirs deleteafterinstall ignoreversion; Tasks: installpdfxchange
 
@@ -156,6 +163,21 @@ begin
   DependencySummary := DependencySummary + Line;
 end;
 
+function FindTaskIndexByText(const NamePart: string): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to WizardForm.TasksList.Items.Count - 1 do
+  begin
+    if Pos(Uppercase(NamePart), Uppercase(WizardForm.TasksList.Items[I])) > 0 then
+    begin
+      Result := I;
+      Exit;
+    end;
+  end;
+end;
+
 procedure MarkDependencyProgress(const Title, Status: string; Position, Total: Integer);
 begin
   DependencyInstallPage.SetText(Title, Status);
@@ -259,9 +281,13 @@ begin
   WizardForm.WelcomeLabel2.Visible := False;
   WizardForm.FinishedHeadingLabel.Visible := False;
   WizardForm.FinishedLabel.Visible := False;
+  WizardForm.WelcomeLabel1.Caption := '';
+  WizardForm.WelcomeLabel2.Caption := '';
+  WizardForm.FinishedHeadingLabel.Caption := '';
+  WizardForm.FinishedLabel.Caption := '';
 
-  SoftMakerTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить SoftMaker Office Professional (Portable)');
-  PdfTaskIndex := WizardForm.TasksList.Items.IndexOf('Установить PDF-XChange PRO');
+  SoftMakerTaskIndex := FindTaskIndexByText('SoftMaker Office Professional');
+  PdfTaskIndex := FindTaskIndexByText('PDF-XChange PRO');
 
   if SoftMakerTaskIndex >= 0 then
     WizardForm.TasksList.Checked[SoftMakerTaskIndex] := not IsSoftMakerInstalled;
