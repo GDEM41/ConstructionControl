@@ -48,16 +48,17 @@ namespace ConstructionControl
         private bool arrivalPanelVisible = false;
         private readonly Dictionary<string, double> columnWidths = new();
 
-        private readonly List<string> colorPalette = new()
-{
-    "#EAF2FF", "#EEF4FF", "#F5F7FA", "#F9FAFB", "#E6F0FF",
-    "#F0F6FF", "#E8F1FF", "#EDF3FF", "#F3F7FF", "#EAF4FF"
-};
+        private List<string> colorPalette = new()
+        {
+            "#172554", "#1E293B", "#1F2937", "#0F172A", "#16324F",
+            "#102A43", "#1E3A5F", "#273449", "#132F4C", "#1A2233"
+        };
 
         private readonly Dictionary<string, Brush> colorMap = new();
         private int colorIndex = 0;
         private DateTime? lastSuccessfulSaveLocalTime;
         private string lastOperationStatusText = "Готово";
+        private bool isDarkThemeActive = true;
 
         private Brush GetColor(string group)
         {
@@ -271,6 +272,44 @@ namespace ConstructionControl
         private bool suppressArrivalTemplateSelectionChange;
         private static readonly Regex DigitsInputRegex = new(@"^\d+$", RegexOptions.Compiled);
         private const string ActiveTabModeKey = "__active_tab";
+        private const string BackupSectionManifestEntryName = "backup_manifest.json";
+        private const ProjectTransferSection AllProjectTransferSections =
+            ProjectTransferSection.ObjectSettings
+            | ProjectTransferSection.MaterialsAndSummary
+            | ProjectTransferSection.Arrival
+            | ProjectTransferSection.Ot
+            | ProjectTransferSection.Timesheet
+            | ProjectTransferSection.Production
+            | ProjectTransferSection.HiddenWorkActs
+            | ProjectTransferSection.Inspection
+            | ProjectTransferSection.Notes
+            | ProjectTransferSection.Pdf
+            | ProjectTransferSection.Estimates;
+        private const ProjectTransferSection DefaultClearTransferSections =
+            ProjectTransferSection.MaterialsAndSummary
+            | ProjectTransferSection.Arrival
+            | ProjectTransferSection.Ot
+            | ProjectTransferSection.Timesheet
+            | ProjectTransferSection.Production
+            | ProjectTransferSection.HiddenWorkActs
+            | ProjectTransferSection.Inspection
+            | ProjectTransferSection.Notes
+            | ProjectTransferSection.Pdf
+            | ProjectTransferSection.Estimates;
+        private static readonly ProjectTransferSection[] ProjectTransferSectionOrder =
+        {
+            ProjectTransferSection.ObjectSettings,
+            ProjectTransferSection.MaterialsAndSummary,
+            ProjectTransferSection.Arrival,
+            ProjectTransferSection.Ot,
+            ProjectTransferSection.Timesheet,
+            ProjectTransferSection.Production,
+            ProjectTransferSection.HiddenWorkActs,
+            ProjectTransferSection.Inspection,
+            ProjectTransferSection.Notes,
+            ProjectTransferSection.Pdf,
+            ProjectTransferSection.Estimates
+        };
 
         private const string GridPrefArrival = "tab_arrival_legacy_grid";
         private const string GridPrefOt = "tab_ot_grid";
@@ -298,10 +337,17 @@ namespace ConstructionControl
             ["RowHoverBrush"] = "#EEF4FF",
             ["SuccessBrush"] = "#10B981",
             ["SuccessSoftBrush"] = "#D1FAE5",
+            ["SuccessTextBrush"] = "#065F46",
             ["WarningBrush"] = "#F59E0B",
             ["WarningSoftBrush"] = "#FEF3C7",
+            ["WarningTextBrush"] = "#92400E",
             ["DangerBrush"] = "#EF4444",
             ["DangerSoftBrush"] = "#FEE2E2",
+            ["DangerTextBrush"] = "#991B1B",
+            ["ScrollTrackBrush"] = "#E7EDF5",
+            ["ScrollThumbBrush"] = "#B6C2D2",
+            ["ScrollThumbHoverBrush"] = "#94A3B8",
+            ["ScrollThumbPressedBrush"] = "#64748B",
             ["OverlayBrush"] = "#66000000",
             ["OverlayStrongBrush"] = "#88000000"
         };
@@ -321,17 +367,82 @@ namespace ConstructionControl
             ["PrimaryBrush"] = "#60A5FA",
             ["PrimaryBrushHover"] = "#3B82F6",
             ["PrimaryBrushPressed"] = "#2563EB",
-            ["SelectedBrush"] = "#1D4ED8",
+            ["SelectedBrush"] = "#1E3A8A",
             ["RowHoverBrush"] = "#1E3A5F",
             ["SuccessBrush"] = "#34D399",
             ["SuccessSoftBrush"] = "#064E3B",
+            ["SuccessTextBrush"] = "#D1FAE5",
             ["WarningBrush"] = "#FBBF24",
             ["WarningSoftBrush"] = "#78350F",
+            ["WarningTextBrush"] = "#FDE68A",
             ["DangerBrush"] = "#F87171",
             ["DangerSoftBrush"] = "#7F1D1D",
+            ["DangerTextBrush"] = "#FECACA",
+            ["ScrollTrackBrush"] = "#0F172A",
+            ["ScrollThumbBrush"] = "#334155",
+            ["ScrollThumbHoverBrush"] = "#475569",
+            ["ScrollThumbPressedBrush"] = "#64748B",
             ["OverlayBrush"] = "#AA000000",
             ["OverlayStrongBrush"] = "#CC000000"
         };
+        private static readonly IReadOnlyList<string> LightSummaryGroupPalette = new[]
+        {
+            "#EAF2FF", "#EEF4FF", "#F5F7FA", "#F9FAFB", "#E6F0FF",
+            "#F0F6FF", "#E8F1FF", "#EDF3FF", "#F3F7FF", "#EAF4FF"
+        };
+        private static readonly IReadOnlyList<string> DarkSummaryGroupPalette = new[]
+        {
+            "#172554", "#1E293B", "#1F2937", "#0F172A", "#16324F",
+            "#102A43", "#1E3A5F", "#273449", "#132F4C", "#1A2233"
+        };
+
+        private static Brush GetApplicationThemeBrush(string key, string fallbackHex)
+        {
+            if (Application.Current?.Resources.Contains(key) == true
+                && Application.Current.Resources[key] is Brush themedBrush)
+                return themedBrush;
+
+            try
+            {
+                return new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallbackHex));
+            }
+            catch
+            {
+                return Brushes.Transparent;
+            }
+        }
+
+        private static void UpdateBrushColor(ResourceDictionary resources, string key, string colorValue)
+        {
+            if (resources == null || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(colorValue))
+                return;
+
+            Color color;
+            try
+            {
+                color = (Color)ColorConverter.ConvertFromString(colorValue);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (resources[key] is SolidColorBrush brush)
+            {
+                if (!brush.IsFrozen)
+                {
+                    brush.Color = color;
+                    return;
+                }
+
+                var clone = brush.CloneCurrentValue();
+                clone.Color = color;
+                resources[key] = clone;
+                return;
+            }
+
+            resources[key] = new SolidColorBrush(color);
+        }
 
         private sealed class SummaryMatrixCacheEntry
         {
@@ -357,6 +468,14 @@ namespace ConstructionControl
             public string FilePath { get; set; } = string.Empty;
             public Process Process { get; set; }
             public IntPtr Handle { get; set; }
+        }
+
+        private sealed class BackupPackageInfo
+        {
+            public string SourcePath { get; set; } = string.Empty;
+            public AppState State { get; set; }
+            public ProjectTransferSection IncludedSections { get; set; } = AllProjectTransferSections;
+            public bool HasStorageEntries { get; set; }
         }
 
         private sealed class ColumnManagerRow : INotifyPropertyChanged
@@ -649,8 +768,12 @@ namespace ConstructionControl
         private const uint SWP_NOOWNERZORDER = 0x0200;
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 5;
+        private const int SW_MAXIMIZE = 3;
         private const int EmbeddedExcelTopTrim = 0;
         private const uint WM_CANCELMODE = 0x001F;
+        private const uint WM_SYSCOMMAND = 0x0112;
+        private const uint WM_MDIMAXIMIZE = 0x0225;
+        private const uint SC_MAXIMIZE = 0xF030;
         private const byte VK_SHIFT = 0x10;
         private const byte VK_CONTROL = 0x11;
         private const byte VK_MENU = 0x12;
@@ -702,12 +825,18 @@ namespace ConstructionControl
         [DllImport("user32.dll")]
         private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
         [DllImport("gdi32.dll", SetLastError = true)]
         private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
@@ -717,6 +846,9 @@ namespace ConstructionControl
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -960,9 +1092,9 @@ namespace ConstructionControl
 
                 var docAccepted = IsDocumentAccepted(day);
                 if (docAccepted == true)
-                    return new SolidColorBrush(Color.FromRgb(254, 240, 138));
+                    return GetApplicationThemeBrush("WarningSoftBrush", "#78350F");
 
-                return new SolidColorBrush(Color.FromRgb(254, 226, 226));
+                return GetApplicationThemeBrush("DangerSoftBrush", "#7F1D1D");
             }
 
 
@@ -1890,9 +2022,7 @@ namespace ConstructionControl
             {
                 HideActiveExternalSpreadsheetInstance(isSecondary: false);
                 ApplyExternalSpreadsheetInstance(cached, isSecondary: false);
-                EstimateExcelHost.Visibility = Visibility.Collapsed;
-                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
-                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                AttachEstimateExternalWindowToPrimaryHost();
                 ScheduleEstimateEmbeddedLayout();
                 return;
             }
@@ -1962,11 +2092,7 @@ namespace ConstructionControl
                 // Ignore early visibility errors before the window is positioned.
             }
 
-            ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
-            ResetEstimateEmbeddedLayoutCache();
-            EstimateExcelHost.Visibility = Visibility.Collapsed;
-            EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
-            EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+            AttachEstimateExternalWindowToPrimaryHost();
             ScheduleEstimateEmbeddedLayout();
         }
 
@@ -1980,6 +2106,7 @@ namespace ConstructionControl
             {
                 HideActiveExternalSpreadsheetInstance(isSecondary: true);
                 ApplyExternalSpreadsheetInstance(cached, isSecondary: true);
+                AttachEstimateExternalWindowToSecondaryHost();
                 ScheduleEstimateEmbeddedLayoutSecondary();
                 return;
             }
@@ -2049,8 +2176,7 @@ namespace ConstructionControl
                 // Ignore early visibility errors.
             }
 
-            ConfigureFloatingEstimateWindow(estimateExcelWindowHandleSecondary);
-            ResetEstimateEmbeddedLayoutCacheSecondary();
+            AttachEstimateExternalWindowToSecondaryHost();
             ScheduleEstimateEmbeddedLayoutSecondary();
         }
 
@@ -2326,6 +2452,100 @@ namespace ConstructionControl
             return handle;
         }
 
+        private void AttachEstimateExternalWindowToPrimaryHost()
+        {
+            if (estimateExcelWindowHandle == IntPtr.Zero || estimateDetached)
+                return;
+
+            ConfigureEmbeddedWindow(estimateExcelWindowHandle, EnsureEstimatePreviewHostHandle());
+            ResetEstimateEmbeddedLayoutCache();
+            EstimateExcelHost.Visibility = Visibility.Visible;
+            EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
+            EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+        }
+
+        private IntPtr EnsureEstimateSecondaryPreviewHostHandle()
+        {
+            if (EstimateExcelHostSecondary == null || EstimatePreviewContainerSecondary == null || EstimatePreviewPlaceholderSecondary == null)
+                throw new InvalidOperationException("Область второго предпросмотра сметы не готова.");
+
+            EstimatePreviewContainerSecondary.Visibility = Visibility.Visible;
+            EstimateExcelHostSecondary.Visibility = Visibility.Visible;
+            EstimatePreviewPlaceholderSecondary.Visibility = Visibility.Collapsed;
+
+            EstimatePreviewContainerSecondary.UpdateLayout();
+            EstimateExcelHostSecondary.UpdateLayout();
+
+            var handle = EstimateExcelHostSecondary.HostHandle;
+            if (handle != IntPtr.Zero)
+                return handle;
+
+            Dispatcher.Invoke(() =>
+            {
+                EstimatePreviewContainerSecondary.UpdateLayout();
+                EstimateExcelHostSecondary.UpdateLayout();
+            }, DispatcherPriority.Loaded);
+
+            handle = EstimateExcelHostSecondary.HostHandle;
+            if (handle == IntPtr.Zero)
+                throw new InvalidOperationException("Не удалось подготовить вторую встроенную область для сметы.");
+
+            return handle;
+        }
+
+        private void AttachEstimateExternalWindowToSecondaryHost()
+        {
+            if (estimateExcelWindowHandleSecondary == IntPtr.Zero || estimateSecondaryDetached)
+                return;
+
+            ConfigureEmbeddedWindow(estimateExcelWindowHandleSecondary, EnsureEstimateSecondaryPreviewHostHandle());
+            ResetEstimateEmbeddedLayoutCacheSecondary();
+            EstimateExcelHostSecondary.Visibility = Visibility.Visible;
+            EstimatePreviewPlaceholderSecondary.Visibility = Visibility.Collapsed;
+        }
+
+        private IntPtr EnsurePdfPreviewHostHandle()
+        {
+            if (PdfExternalHost == null || PdfPreviewContainer == null || PdfPreviewBrowser == null || PdfPreviewPlaceholder == null)
+                throw new InvalidOperationException("Область предпросмотра PDF не готова.");
+
+            PdfPreviewContainer.Visibility = Visibility.Visible;
+            PdfExternalHost.Visibility = Visibility.Visible;
+            PdfPreviewBrowser.Visibility = Visibility.Collapsed;
+            PdfPreviewPlaceholder.Visibility = Visibility.Collapsed;
+
+            PdfPreviewContainer.UpdateLayout();
+            PdfExternalHost.UpdateLayout();
+
+            var handle = PdfExternalHost.HostHandle;
+            if (handle != IntPtr.Zero)
+                return handle;
+
+            Dispatcher.Invoke(() =>
+            {
+                PdfPreviewContainer.UpdateLayout();
+                PdfExternalHost.UpdateLayout();
+            }, DispatcherPriority.Loaded);
+
+            handle = PdfExternalHost.HostHandle;
+            if (handle == IntPtr.Zero)
+                throw new InvalidOperationException("Не удалось подготовить встроенную область для PDF.");
+
+            return handle;
+        }
+
+        private void AttachPdfExternalWindowToHost()
+        {
+            if (pdfEditorWindowHandle == IntPtr.Zero)
+                return;
+
+            ConfigureEmbeddedWindow(pdfEditorWindowHandle, EnsurePdfPreviewHostHandle());
+            ResetPdfEmbeddedLayoutCache();
+            PdfExternalHost.Visibility = Visibility.Visible;
+            PdfPreviewBrowser.Visibility = Visibility.Collapsed;
+            PdfPreviewPlaceholder.Visibility = Visibility.Collapsed;
+        }
+
         private void MainWindow_StateChanged(object sender, EventArgs e)
         {
             if (WindowState == WindowState.Minimized)
@@ -2333,6 +2553,7 @@ namespace ConstructionControl
                 reminderOverlayWindow?.Hide();
                 HideEstimateEmbeddedPreview();
                 HideEstimateEmbeddedSecondaryPreview();
+                HidePdfEmbeddedPreview();
                 return;
             }
 
@@ -2340,8 +2561,15 @@ namespace ConstructionControl
 
             if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
             {
+                UpdateEstimateSelectionInfo(forceRefresh: true);
                 ScheduleEstimateEmbeddedLayout();
                 ScheduleEstimateEmbeddedLayoutSecondary();
+            }
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, PdfTab))
+            {
+                UpdatePdfSelectionInfo(forceRefresh: true);
+                SchedulePdfEmbeddedLayout();
             }
         }
 
@@ -2351,17 +2579,23 @@ namespace ConstructionControl
 
             if (ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
             {
+                UpdateEstimateSelectionInfo(forceRefresh: true);
                 ScheduleEstimateEmbeddedLayout();
                 ScheduleEstimateEmbeddedLayoutSecondary();
+            }
+
+            if (ReferenceEquals(MainTabs?.SelectedItem, PdfTab))
+            {
+                UpdatePdfSelectionInfo(forceRefresh: true);
+                SchedulePdfEmbeddedLayout();
             }
         }
 
         private void MainWindow_Deactivated(object sender, EventArgs e)
         {
-            if (useExternalSpreadsheetEditor && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
-                HideEstimateEmbeddedPreview();
-            if (useExternalSpreadsheetEditor && ReferenceEquals(MainTabs?.SelectedItem, EstimateTab))
-                HideEstimateEmbeddedSecondaryPreview();
+            // External preview windows behave like detached top-level windows.
+            // Hiding them on every app deactivation closes the preview as soon as
+            // the user clicks inside the embedded editor/viewer.
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -3622,8 +3856,24 @@ namespace ConstructionControl
             if (MainTabs == null || tab == null)
                 return;
 
+            PreparePreviewWindowsForTabSwitch(tab);
             MainTabs.SelectedItem = tab;
             UpdateTabButtons();
+        }
+
+        private void PreparePreviewWindowsForTabSwitch(TabItem targetTab)
+        {
+            if (targetTab == null)
+                return;
+
+            if (!ReferenceEquals(targetTab, EstimateTab))
+            {
+                HideEstimateEmbeddedPreview();
+                HideEstimateEmbeddedSecondaryPreview();
+            }
+
+            if (!ReferenceEquals(targetTab, PdfTab))
+                HidePdfEmbeddedPreview();
         }
 
         private void SummaryTabButton_Click(object sender, RoutedEventArgs e) => SelectMainTab(SummaryTab);
@@ -3653,17 +3903,17 @@ namespace ConstructionControl
             sourceElement.ContextMenu.IsOpen = true;
         }
 
-        private void UpdatePdfSelectionInfo()
+        private void UpdatePdfSelectionInfo(bool forceRefresh = false)
         {
             if (selectedPdfNode != null && !selectedPdfNode.IsFolder)
                 activePdfTab = selectedPdfNode;
             var active = activePdfTab ?? selectedPdfNode;
             UpdateDocumentSelectionInfo(active, PdfSelectedNameText, PdfSelectedPathText, PdfSelectedTypeText);
-            UpdatePdfPreview(active);
+            UpdatePdfPreview(active, forceRefresh);
             UpdatePdfSecondaryPreview();
         }
 
-        private void UpdatePdfPreview(DocumentTreeNode node)
+        private void UpdatePdfPreview(DocumentTreeNode node, bool forceRefresh = false)
         {
             if (PdfPreviewContainer == null || PdfPreviewPlaceholder == null || PdfPreviewStatusText == null)
                 return;
@@ -3671,7 +3921,8 @@ namespace ConstructionControl
             if (!useExternalPdfEditor)
             {
                 var activePath = NormalizeDocumentPathKey(ResolveDocumentPath(node));
-                if (node == null
+                if (forceRefresh
+                    || node == null
                     || !string.Equals(pdfPreviewCurrentPath, activePath, StringComparison.CurrentCultureIgnoreCase))
                 {
                     UpdateDocumentPreview(node, PdfInfoPanel, PdfPreviewContainer, PdfPreviewBrowser, PdfPreviewPlaceholder, PdfPreviewStatusText);
@@ -3722,8 +3973,13 @@ namespace ConstructionControl
             PdfPreviewPlaceholder.Visibility = Visibility.Collapsed;
 
             var normalizedPath = NormalizeDocumentPathKey(resolvedPath);
-            if (string.Equals(pdfPreviewCurrentPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase))
+            if (!forceRefresh
+                && pdfEditorWindowHandle != IntPtr.Zero
+                && IsPdfEditorProcessAlive()
+                && string.Equals(pdfPreviewCurrentPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase)
+                && string.Equals(NormalizeDocumentPathKey(pdfEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase))
             {
+                AttachPdfExternalWindowToHost();
                 SchedulePdfEmbeddedLayout();
                 return;
             }
@@ -3732,17 +3988,18 @@ namespace ConstructionControl
             OpenPdfInExternalEditor(resolvedPath);
         }
 
-        private void UpdateEstimateSelectionInfo()
+        private void UpdateEstimateSelectionInfo(bool forceRefresh = false)
         {
             if (activeEstimateTab == null && openEstimateTabs.Count > 0)
                 activeEstimateTab = openEstimateTabs[0];
             var active = activeEstimateTab ?? selectedEstimateNode;
             UpdateDocumentSelectionInfo(active, EstimateSelectedNameText, EstimateSelectedPathText, EstimateSelectedTypeText);
             var activePath = NormalizeDocumentPathKey(ResolveDocumentPath(active));
-            if (active == null
+            if (forceRefresh
+                || active == null
                 || !string.Equals(estimatePreviewCurrentPath, activePath, StringComparison.CurrentCultureIgnoreCase))
             {
-                UpdateEstimatePreview(active);
+                UpdateEstimatePreview(active, forceRefresh);
                 estimatePreviewCurrentPath = activePath;
             }
             UpdateEstimateSecondaryPreview();
@@ -3807,6 +4064,59 @@ namespace ConstructionControl
             {
                 return path.Trim();
             }
+        }
+
+        private bool IsSameDocumentNode(DocumentTreeNode left, DocumentTreeNode right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null)
+                return false;
+
+            var leftPath = NormalizeDocumentPathKey(ResolveDocumentPath(left));
+            var rightPath = NormalizeDocumentPathKey(ResolveDocumentPath(right));
+            if (!string.IsNullOrWhiteSpace(leftPath) && !string.IsNullOrWhiteSpace(rightPath))
+                return string.Equals(leftPath, rightPath, StringComparison.CurrentCultureIgnoreCase);
+
+            return string.Equals(left.Name ?? string.Empty, right.Name ?? string.Empty, StringComparison.CurrentCultureIgnoreCase)
+                && left.IsFolder == right.IsFolder;
+        }
+
+        private bool ShouldForceRefreshPdfPreview(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return false;
+
+            var normalizedPath = NormalizeDocumentPathKey(ResolveDocumentPath(node));
+            if (!useExternalPdfEditor)
+                return !string.Equals(pdfPreviewCurrentPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase);
+
+            return pdfEditorWindowHandle == IntPtr.Zero
+                || !IsPdfEditorProcessAlive()
+                || !string.Equals(NormalizeDocumentPathKey(pdfEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private bool ShouldForceRefreshEstimatePreview(DocumentTreeNode node)
+        {
+            if (node == null || node.IsFolder)
+                return false;
+
+            var resolvedPath = ResolveDocumentPath(node);
+            var normalizedPath = NormalizeDocumentPathKey(resolvedPath);
+            var extension = System.IO.Path.GetExtension(resolvedPath)?.ToLowerInvariant() ?? string.Empty;
+            if (!IsEstimateExcelExtension(extension))
+                return !string.Equals(estimatePreviewCurrentPath, normalizedPath, StringComparison.CurrentCultureIgnoreCase);
+
+            if (useExternalSpreadsheetEditor)
+            {
+                return estimateExcelWindowHandle == IntPtr.Zero
+                    || !IsEstimateSpreadsheetProcessAlive()
+                    || !string.Equals(NormalizeDocumentPathKey(estimateEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase);
+            }
+
+            return estimateExcelWindowHandle == IntPtr.Zero
+                || estimateExcelWorkbook == null
+                || !string.Equals(NormalizeDocumentPathKey(estimateEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase);
         }
 
         private void PdfTabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -4314,7 +4624,7 @@ namespace ConstructionControl
             }
             else
             {
-                ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
+                AttachEstimateExternalWindowToPrimaryHost();
                 ScheduleEstimateEmbeddedLayout();
             }
         }
@@ -4337,7 +4647,7 @@ namespace ConstructionControl
             }
             else
             {
-                ConfigureFloatingEstimateWindow(estimateExcelWindowHandle);
+                AttachEstimateExternalWindowToPrimaryHost();
                 ScheduleEstimateEmbeddedLayout();
             }
         }
@@ -4361,7 +4671,7 @@ namespace ConstructionControl
             typeText.Text = node.IsFolder ? "Папка" : "Файл";
         }
 
-        private void UpdateEstimatePreview(DocumentTreeNode node)
+        private void UpdateEstimatePreview(DocumentTreeNode node, bool forceRefresh = false)
         {
             if (EstimateInfoPanel == null || EstimatePreviewContainer == null || EstimatePreviewBrowser == null || EstimatePreviewPlaceholder == null || EstimatePreviewStatusText == null)
                 return;
@@ -4409,18 +4719,15 @@ namespace ConstructionControl
                 return;
             }
 
-            if (useExternalSpreadsheetEditor
+            if (!forceRefresh
+                && useExternalSpreadsheetEditor
                 && estimateExcelWindowHandle != IntPtr.Zero
                 && IsEstimateSpreadsheetProcessAlive()
-                && string.Equals(estimateEmbeddedFilePath, resolvedPath, StringComparison.CurrentCultureIgnoreCase))
+                && string.Equals(NormalizeDocumentPathKey(estimateEmbeddedFilePath), NormalizeDocumentPathKey(resolvedPath), StringComparison.CurrentCultureIgnoreCase))
             {
                 EstimateInfoPanel.Visibility = Visibility.Collapsed;
                 EstimatePreviewContainer.Visibility = Visibility.Visible;
-                if (EstimateExcelHost != null)
-                    EstimateExcelHost.Visibility = Visibility.Collapsed;
-
-                EstimatePreviewBrowser.Visibility = Visibility.Collapsed;
-                EstimatePreviewPlaceholder.Visibility = Visibility.Collapsed;
+                AttachEstimateExternalWindowToPrimaryHost();
                 ScheduleEstimateEmbeddedLayout();
                 return;
             }
@@ -4910,6 +5217,13 @@ namespace ConstructionControl
 
             if (useExternalSpreadsheetEditor && estimateExcelWindowHandle != IntPtr.Zero)
             {
+                if (!IsEstimateSpreadsheetProcessAlive())
+                {
+                    ResetExternalSpreadsheetRuntimeState(isSecondary: false);
+                    return;
+                }
+
+                ResetEmbeddedEstimateInputState();
                 if (EstimateExcelHost != null)
                     EstimateExcelHost.Visibility = Visibility.Collapsed;
 
@@ -4929,6 +5243,15 @@ namespace ConstructionControl
         {
             if (useExternalSpreadsheetEditor && estimateExcelWindowHandleSecondary != IntPtr.Zero)
             {
+                if (!IsEstimateSpreadsheetProcessAliveSecondary())
+                {
+                    ResetExternalSpreadsheetRuntimeState(isSecondary: true);
+                    return;
+                }
+
+                ResetEmbeddedEstimateInputState(isSecondary: true);
+                if (EstimateExcelHostSecondary != null)
+                    EstimateExcelHostSecondary.Visibility = Visibility.Collapsed;
                 try
                 {
                     if (!estimateSecondaryDetached)
@@ -4961,11 +5284,14 @@ namespace ConstructionControl
                 activeExternalSpreadsheetInstance = instance;
             }
 
-            ConfigureFloatingEstimateWindow(instance.Handle);
             if (isSecondary)
-                ResetEstimateEmbeddedLayoutCacheSecondary();
+            {
+                AttachEstimateExternalWindowToSecondaryHost();
+            }
             else
-                ResetEstimateEmbeddedLayoutCache();
+            {
+                AttachEstimateExternalWindowToPrimaryHost();
+            }
         }
 
         private bool TryGetExternalSpreadsheetInstance(Dictionary<string, ExternalSpreadsheetInstance> cache, string filePath, out ExternalSpreadsheetInstance instance)
@@ -5129,6 +5455,8 @@ namespace ConstructionControl
                 estimateExcelWindowHandleSecondary = IntPtr.Zero;
                 estimateEmbeddedFilePathSecondary = string.Empty;
                 activeExternalSpreadsheetInstanceSecondary = null;
+                if (EstimateExcelHostSecondary != null)
+                    EstimateExcelHostSecondary.Visibility = Visibility.Collapsed;
                 ResetEstimateEmbeddedLayoutCacheSecondary();
             }
             else
@@ -5137,6 +5465,8 @@ namespace ConstructionControl
                 estimateExcelWindowHandle = IntPtr.Zero;
                 estimateEmbeddedFilePath = string.Empty;
                 activeExternalSpreadsheetInstance = null;
+                if (EstimateExcelHost != null)
+                    EstimateExcelHost.Visibility = Visibility.Collapsed;
                 ResetEstimateEmbeddedLayoutCache();
             }
         }
@@ -5174,18 +5504,19 @@ namespace ConstructionControl
             keybd_event(key, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
         }
 
-        private void ResetEmbeddedEstimateInputState()
+        private void ResetEmbeddedEstimateInputState(bool isSecondary = false)
         {
             try { ReleaseCapture(); } catch { }
 
-            if (estimateExcelWindowHandle != IntPtr.Zero)
+            var targetHandle = isSecondary ? estimateExcelWindowHandleSecondary : estimateExcelWindowHandle;
+            if (targetHandle != IntPtr.Zero)
             {
-                try { SendMessage(estimateExcelWindowHandle, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); } catch { }
+                try { SendMessage(targetHandle, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); } catch { }
             }
 
             try
             {
-                if (estimateExcelApplication != null)
+                if (!isSecondary && estimateExcelApplication != null)
                 {
                     dynamic excelApp = estimateExcelApplication;
                     try { excelApp.CutCopyMode = false; } catch { }
@@ -5195,6 +5526,18 @@ namespace ConstructionControl
             catch
             {
                 // Ignore compatibility issues for non-Excel editors.
+            }
+
+            try { PressAndReleaseKey(VK_ESCAPE); } catch { }
+        }
+
+        private void ResetPdfEmbeddedInputState()
+        {
+            try { ReleaseCapture(); } catch { }
+
+            if (pdfEditorWindowHandle != IntPtr.Zero)
+            {
+                try { SendMessage(pdfEditorWindowHandle, WM_CANCELMODE, IntPtr.Zero, IntPtr.Zero); } catch { }
             }
 
             try { PressAndReleaseKey(VK_ESCAPE); } catch { }
@@ -5220,6 +5563,118 @@ namespace ConstructionControl
         private void EstimateExcelHost_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
             ActivateEmbeddedEstimateWindow();
+        }
+
+        private static string GetNativeWindowClassName(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero)
+                return string.Empty;
+
+            var className = new StringBuilder(128);
+            return GetClassName(handle, className, className.Capacity) > 0
+                ? className.ToString()
+                : string.Empty;
+        }
+
+        private static List<IntPtr> EnumerateNativeChildWindows(IntPtr parentHandle)
+        {
+            var handles = new List<IntPtr>();
+            if (parentHandle == IntPtr.Zero)
+                return handles;
+
+            try
+            {
+                EnumChildWindows(parentHandle, (hWnd, _) =>
+                {
+                    handles.Add(hWnd);
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch
+            {
+                // Ignore child enumeration errors for external hosted windows.
+            }
+
+            return handles;
+        }
+
+        private static bool TryGetNativeHostClientSize(IntPtr hostHandle, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (hostHandle == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                if (!GetClientRect(hostHandle, out var rect))
+                    return false;
+
+                width = Math.Max(0, rect.Right - rect.Left);
+                height = Math.Max(0, rect.Bottom - rect.Top);
+                return width > 0 && height > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryGetNativeWindowSize(IntPtr windowHandle, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (windowHandle == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                if (!GetWindowRect(windowHandle, out var rect))
+                    return false;
+
+                width = Math.Max(0, rect.Right - rect.Left);
+                height = Math.Max(0, rect.Bottom - rect.Top);
+                return width > 0 && height > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool NativeWindowSizeMatches(IntPtr windowHandle, int expectedWidth, int expectedHeight)
+            => TryGetNativeWindowSize(windowHandle, out var actualWidth, out var actualHeight)
+               && actualWidth == expectedWidth
+               && actualHeight == expectedHeight;
+
+        private static void MaximizeEmbeddedSpreadsheetDocument(IntPtr frameHandle)
+        {
+            if (frameHandle == IntPtr.Zero)
+                return;
+
+            try
+            {
+                var descendants = EnumerateNativeChildWindows(frameHandle);
+                var mdiClientHandle = descendants.FirstOrDefault(hWnd =>
+                    string.Equals(GetNativeWindowClassName(hWnd), "SMMDICLIENT", StringComparison.Ordinal));
+                var documentHandle = descendants.FirstOrDefault(hWnd =>
+                    string.Equals(GetNativeWindowClassName(hWnd), "SP", StringComparison.Ordinal));
+
+                if (documentHandle == IntPtr.Zero)
+                    return;
+
+                try { ShowWindow(documentHandle, SW_MAXIMIZE); } catch { }
+                try { SendMessage(documentHandle, WM_SYSCOMMAND, new IntPtr((int)SC_MAXIMIZE), IntPtr.Zero); } catch { }
+
+                if (mdiClientHandle != IntPtr.Zero)
+                {
+                    try { SendMessage(mdiClientHandle, WM_MDIMAXIMIZE, documentHandle, IntPtr.Zero); } catch { }
+                }
+            }
+            catch
+            {
+                // Ignore maximize errors for embedded spreadsheet documents.
+            }
         }
 
         private void EstimateExcelHost_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -5297,6 +5752,10 @@ namespace ConstructionControl
             int height;
             int x;
             int y;
+            var useHostedExternalWindow = useExternalSpreadsheetEditor
+                && !estimateDetached
+                && EstimateExcelHost != null
+                && EstimateExcelHost.HostHandle != IntPtr.Zero;
 
             if (useExternalSpreadsheetEditor)
             {
@@ -5320,10 +5779,25 @@ namespace ConstructionControl
                     return;
                 }
 
-                EstimatePreviewContainer.UpdateLayout();
-                var screenBounds = GetScreenBounds(EstimatePreviewContainer);
-                width = screenBounds.Width;
-                height = screenBounds.Height;
+                if (useHostedExternalWindow)
+                {
+                    EstimatePreviewContainer.UpdateLayout();
+                    EstimateExcelHost.UpdateLayout();
+                    if (!TryGetNativeHostClientSize(EstimateExcelHost.HostHandle, out width, out height))
+                        return;
+                    x = 0;
+                    y = 0;
+                }
+                else
+                {
+                    EstimatePreviewContainer.UpdateLayout();
+                    var screenBounds = GetScreenBounds(EstimatePreviewContainer);
+                    width = screenBounds.Width;
+                    height = screenBounds.Height;
+                    x = screenBounds.X;
+                    y = screenBounds.Y;
+                }
+
                 if (width <= 0 || height <= 0)
                 {
                     try
@@ -5337,17 +5811,14 @@ namespace ConstructionControl
 
                     return;
                 }
-
-                x = screenBounds.X;
-                y = screenBounds.Y;
             }
             else
             {
                 if (EstimateExcelHost == null || EstimateExcelHost.HostHandle == IntPtr.Zero)
                     return;
 
-                width = Math.Max(0, (int)Math.Round(EstimateExcelHost.ActualWidth));
-                var hostHeight = Math.Max(0, (int)Math.Round(EstimateExcelHost.ActualHeight));
+                if (!TryGetNativeHostClientSize(EstimateExcelHost.HostHandle, out width, out var hostHeight))
+                    return;
                 var topTrim = hostHeight > 120 ? EmbeddedExcelTopTrim : 0;
                 height = Math.Max(0, hostHeight + topTrim);
                 x = 0;
@@ -5369,7 +5840,7 @@ namespace ConstructionControl
             estimateEmbeddedWindowHeight = height;
 
             var flags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
-            if (useExternalSpreadsheetEditor)
+            if (useExternalSpreadsheetEditor && !useHostedExternalWindow)
                 flags |= SWP_NOACTIVATE;
             if (force)
                 flags |= SWP_FRAMECHANGED;
@@ -5381,6 +5852,9 @@ namespace ConstructionControl
                 width,
                 height,
                 flags);
+
+            if (useExternalSpreadsheetEditor)
+                MaximizeEmbeddedSpreadsheetDocument(estimateExcelWindowHandle);
 
             if (!useExternalSpreadsheetEditor)
                 ShowWindow(estimateExcelWindowHandle, SW_SHOW);
@@ -5418,12 +5892,21 @@ namespace ConstructionControl
                 return;
             }
 
+            if (EstimateExcelHostSecondary == null || EstimateExcelHostSecondary.HostHandle == IntPtr.Zero)
+                return;
+
             EstimatePreviewContainerSecondary.UpdateLayout();
-            var screenBounds = GetScreenBounds(EstimatePreviewContainerSecondary);
-            width = screenBounds.Width;
-            height = screenBounds.Height;
-            x = screenBounds.X;
-            y = screenBounds.Y;
+            EstimateExcelHostSecondary.UpdateLayout();
+            if (!TryGetNativeHostClientSize(EstimateExcelHostSecondary.HostHandle, out width, out height))
+                return;
+            x = 0;
+            y = 0;
+
+            if (width <= 0 || height <= 0)
+            {
+                try { ShowWindow(estimateExcelWindowHandleSecondary, SW_HIDE); } catch { }
+                return;
+            }
 
             if (!force
                 && x == estimateEmbeddedWindowXSecondary
@@ -5446,6 +5929,7 @@ namespace ConstructionControl
                 height,
                 SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 
+            MaximizeEmbeddedSpreadsheetDocument(estimateExcelWindowHandleSecondary);
             try { ShowWindow(estimateExcelWindowHandleSecondary, SW_SHOW); } catch { }
         }
 
@@ -5453,6 +5937,8 @@ namespace ConstructionControl
         {
             if (windowHandle == IntPtr.Zero)
                 return;
+
+            try { SetParent(windowHandle, IntPtr.Zero); } catch { }
 
             try
             {
@@ -5491,6 +5977,8 @@ namespace ConstructionControl
         {
             if (windowHandle == IntPtr.Zero)
                 return;
+
+            try { SetParent(windowHandle, IntPtr.Zero); } catch { }
 
             var style = GetWindowLongPtr(windowHandle, GWL_STYLE).ToInt64();
             style &= ~WS_CHILD;
@@ -5544,6 +6032,7 @@ namespace ConstructionControl
 
             var exStyle = GetWindowLongPtr(windowHandle, GWL_EXSTYLE).ToInt64();
             exStyle &= ~WS_EX_APPWINDOW;
+            exStyle &= ~WS_EX_TOOLWINDOW;
             SetWindowLongPtr(windowHandle, GWL_EXSTYLE, new IntPtr(exStyle));
         }
 
@@ -6843,6 +7332,14 @@ namespace ConstructionControl
         {
             pdfTreeDragStart = e.GetPosition(null);
             pdfDragNode = GetDocumentNodeFromOriginalSource(e.OriginalSource);
+            var clickedNode = pdfDragNode;
+            if (clickedNode != null
+                && !clickedNode.IsFolder
+                && IsSameDocumentNode(clickedNode, activePdfTab ?? selectedPdfNode)
+                && ShouldForceRefreshPdfPreview(clickedNode))
+            {
+                Dispatcher.BeginInvoke(new Action(() => OpenPdfTab(clickedNode)), DispatcherPriority.Input);
+            }
         }
 
         private void PdfTreeView_MouseMove(object sender, MouseEventArgs e)
@@ -6873,6 +7370,14 @@ namespace ConstructionControl
         {
             estimateTreeDragStart = e.GetPosition(null);
             estimateDragNode = GetDocumentNodeFromOriginalSource(e.OriginalSource);
+            var clickedNode = estimateDragNode;
+            if (clickedNode != null
+                && !clickedNode.IsFolder
+                && IsSameDocumentNode(clickedNode, activeEstimateTab ?? selectedEstimateNode)
+                && ShouldForceRefreshEstimatePreview(clickedNode))
+            {
+                Dispatcher.BeginInvoke(new Action(() => OpenEstimateTab(clickedNode)), DispatcherPriority.Input);
+            }
         }
 
         private void EstimateTreeView_MouseMove(object sender, MouseEventArgs e)
@@ -6986,6 +7491,7 @@ namespace ConstructionControl
             }
             else
             {
+                UpdateEstimateSelectionInfo(forceRefresh: true);
                 ScheduleEstimateEmbeddedLayout();
                 ScheduleEstimateEmbeddedLayoutSecondary();
             }
@@ -6996,7 +7502,7 @@ namespace ConstructionControl
             }
             else
             {
-                UpdatePdfSelectionInfo();
+                UpdatePdfSelectionInfo(forceRefresh: true);
                 SchedulePdfEmbeddedLayout();
             }
 
@@ -8969,7 +9475,7 @@ namespace ConstructionControl
                 };
                 var style = new Style(typeof(DataGridCell));
                 if (isWeekend)
-                    style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(230, 238, 252))));
+                    style.Setters.Add(new Setter(DataGridCell.BackgroundProperty, GetApplicationThemeBrush("RowHoverBrush", "#1E3A5F")));
                 style.Setters.Add(new Setter(DataGridCell.ToolTipProperty, new Binding { Converter = new TimesheetDayCommentToolTipConverter(day) }));
                 column.CellStyle = style;
                 TimesheetGrid.Columns.Add(column);
@@ -8996,7 +9502,7 @@ namespace ConstructionControl
             var checkBoxFactory = new FrameworkElementFactory(typeof(CheckBox));
             checkBoxFactory.SetValue(CheckBox.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             checkBoxFactory.SetValue(CheckBox.VerticalAlignmentProperty, VerticalAlignment.Center);
-            checkBoxFactory.SetValue(CheckBox.ForegroundProperty, new SolidColorBrush(Color.FromRgb(146, 64, 14)));
+            checkBoxFactory.SetValue(CheckBox.ForegroundProperty, GetApplicationThemeBrush("WarningTextBrush", "#FDE68A"));
             checkBoxFactory.SetValue(FrameworkElement.TagProperty, day);
             checkBoxFactory.SetBinding(ToggleButton.IsCheckedProperty, new Binding($"PresenceChecked[{day}]")
             {
@@ -9016,7 +9522,7 @@ namespace ConstructionControl
                 {
                     Setters =
                     {
-                        new Setter(DataGridCell.BackgroundProperty, new SolidColorBrush(Color.FromRgb(254, 249, 195)))
+                        new Setter(DataGridCell.BackgroundProperty, GetApplicationThemeBrush("WarningSoftBrush", "#78350F"))
                     }
                 }
             };
@@ -9070,7 +9576,7 @@ namespace ConstructionControl
 
             var marker = new FrameworkElementFactory(typeof(TextBlock));
             marker.SetValue(TextBlock.TextProperty, "*");
-            marker.SetValue(TextBlock.ForegroundProperty, Brushes.DarkOrange);
+            marker.SetValue(TextBlock.ForegroundProperty, GetApplicationThemeBrush("WarningBrush", "#FBBF24"));
             marker.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
             marker.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right);
             marker.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Top);
@@ -9100,11 +9606,11 @@ namespace ConstructionControl
             public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
             {
                 if (value is not TimesheetRowViewModel row)
-                    return Brushes.Black;
+                    return GetApplicationThemeBrush("TextBrush", "#E5E7EB");
 
                 return row.IsNonHourCode(day)
-                    ? new SolidColorBrush(Color.FromRgb(127, 29, 29))
-                    : Brushes.Black;
+                    ? GetApplicationThemeBrush("DangerTextBrush", "#FECACA")
+                    : GetApplicationThemeBrush("TextBrush", "#E5E7EB");
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -9254,7 +9760,7 @@ namespace ConstructionControl
                 return;
 
             e.Row.FontWeight = row.IsBrigadier ? FontWeights.Bold : FontWeights.Normal;
-            e.Row.BorderBrush = Brushes.Black;
+            e.Row.BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B");
             e.Row.BorderThickness = new Thickness(0, row.IsCrewStart ? 2 : 0, 0, row.IsCrewEnd ? 2 : 0);
         }
 
@@ -9405,7 +9911,7 @@ namespace ConstructionControl
                 Text = "Если в табеле выбраны строки, операция применяется только к ним. Иначе ко всем строкам текущего фильтра.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 10, 0, 0),
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139))
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8")
             };
             Grid.SetRow(hint, 2);
             root.Children.Add(hint);
@@ -9562,11 +10068,11 @@ namespace ConstructionControl
 
             Border CreateLegendChip(string caption, string resourceKey)
             {
-                var background = TryFindResource(resourceKey) as Brush ?? Brushes.White;
+                var background = TryFindResource(resourceKey) as Brush ?? GetApplicationThemeBrush("SurfaceBrush", "#111827");
                 return new Border
                 {
                     Background = background,
-                    BorderBrush = TryFindResource("StrokeBrush") as Brush ?? Brushes.LightGray,
+                    BorderBrush = TryFindResource("StrokeBrush") as Brush ?? GetApplicationThemeBrush("StrokeBrush", "#334155"),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(8, 4, 8, 4),
@@ -11989,7 +12495,7 @@ namespace ConstructionControl
             {
                 Text = "Количество и единица задаются отдельно для каждого элемента. Можно вписывать свои названия вручную.",
                 Margin = new Thickness(0, 0, 0, 12),
-                Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105))
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8")
             };
             Grid.SetRow(hint, 0);
             root.Children.Add(hint);
@@ -16245,7 +16751,7 @@ namespace ConstructionControl
             {
                 Text = text,
                 Margin = new Thickness(12),
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8"),
                 TextWrapping = TextWrapping.Wrap
             });
         }
@@ -16271,7 +16777,7 @@ namespace ConstructionControl
                 {
                     Text = "Нет данных по выбранным фильтрам.",
                     Margin = new Thickness(12),
-                    Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139))
+                    Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8")
                 });
                 return;
             }
@@ -16315,8 +16821,8 @@ namespace ConstructionControl
             foreach (var _ in materials)
                 ArrivalMatrixHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });
 
-            AddArrivalMatrixCell(0, 0, string.Empty, "#FFFFFF", rowSpan: 2);
-            AddArrivalMatrixCell(2, 0, "Наименование", "#F9FAFB", rowSpan: 2, fontWeight: FontWeights.SemiBold, fontSize: 18, textAlignment: TextAlignment.Center);
+            AddArrivalMatrixCell(0, 0, string.Empty, "SurfaceBrush", rowSpan: 2);
+            AddArrivalMatrixCell(2, 0, "Наименование", "SurfaceAltBrush", rowSpan: 2, fontWeight: FontWeights.SemiBold, fontSize: 18, textAlignment: TextAlignment.Center);
 
             AddArrivalMatrixSideLabel(0, "Дата");
             AddArrivalMatrixSideLabel(1, "ТТН");
@@ -16338,10 +16844,10 @@ namespace ConstructionControl
             {
                 var material = materials[materialIndex];
                 var rowIndex = materialIndex + 4;
-                var rowBackground = materialIndex % 2 == 0 ? "#FFFFFF" : "#F9FAFB";
+                var rowBackground = materialIndex % 2 == 0 ? "SurfaceBrush" : "SurfaceAltBrush";
 
                 AddArrivalMatrixCell(rowIndex, 0, material, rowBackground, textAlignment: TextAlignment.Left, padding: new Thickness(10, 6, 10, 6));
-                AddArrivalMatrixCell(rowIndex, 1, string.Empty, "#EEF4FF");
+                AddArrivalMatrixCell(rowIndex, 1, string.Empty, "RowHoverBrush");
 
                 for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
                 {
@@ -16361,7 +16867,7 @@ namespace ConstructionControl
 
         private void AddArrivalMatrixSideLabel(int row, string text)
         {
-            var border = CreateArrivalMatrixBorder("#EEF4FF");
+            var border = CreateArrivalMatrixBorder("RowHoverBrush");
             Grid.SetRow(border, row);
             Grid.SetColumn(border, 1);
 
@@ -16369,7 +16875,7 @@ namespace ConstructionControl
             {
                 Text = text,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 LayoutTransform = new RotateTransform(90),
@@ -16381,7 +16887,7 @@ namespace ConstructionControl
 
         private void AddArrivalMatrixHeaderCell(int row, int column, string text)
         {
-            var border = CreateArrivalMatrixBorder("#FFFFFF");
+            var border = CreateArrivalMatrixBorder("SurfaceBrush");
             Grid.SetRow(border, row);
             Grid.SetColumn(border, column);
 
@@ -16390,7 +16896,7 @@ namespace ConstructionControl
                 Text = text,
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 LayoutTransform = new RotateTransform(90),
@@ -16402,7 +16908,7 @@ namespace ConstructionControl
 
         private void AddArrivalMatrixPassportCell(int row, int column, string text)
         {
-            var border = CreateArrivalMatrixBorder("#FFFFFF");
+            var border = CreateArrivalMatrixBorder("SurfaceBrush");
             Grid.SetRow(border, row);
             Grid.SetColumn(border, column);
 
@@ -16413,7 +16919,7 @@ namespace ConstructionControl
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(4)
@@ -16436,7 +16942,7 @@ namespace ConstructionControl
                 FontSize = fontSize,
                 TextAlignment = textAlignment,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB"),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = textAlignment == TextAlignment.Left ? HorizontalAlignment.Left : HorizontalAlignment.Center,
                 Margin = padding ?? new Thickness(6, 4, 6, 4)
@@ -16451,10 +16957,21 @@ namespace ConstructionControl
 
         private static Border CreateArrivalMatrixBorder(string background)
         {
+            Brush resolvedBackground;
+            if (Application.Current?.Resources.Contains(background) == true
+                && Application.Current.Resources[background] is Brush resourceBrush)
+            {
+                resolvedBackground = resourceBrush;
+            }
+            else
+            {
+                resolvedBackground = (Brush)new BrushConverter().ConvertFromString(background);
+            }
+
             return new Border
             {
-                Background = (Brush)new BrushConverter().ConvertFromString(background),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
+                Background = resolvedBackground,
+                BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                 BorderThickness = new Thickness(0.6)
             };
         }
@@ -18407,7 +18924,7 @@ namespace ConstructionControl
                 MinWidth = 860,
                 MinHeight = 620,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = TryFindResource("AppBgBrush") as Brush ?? Brushes.WhiteSmoke
+                Background = TryFindResource("AppBgBrush") as Brush ?? GetApplicationThemeBrush("AppBgBrush", "#0B1220")
             };
 
             var root = new Grid { Margin = new Thickness(14) };
@@ -18589,7 +19106,7 @@ namespace ConstructionControl
                     MinWidth = 500,
                     MinHeight = 500,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Background = TryFindResource("AppBgBrush") as Brush ?? Brushes.WhiteSmoke
+                    Background = TryFindResource("AppBgBrush") as Brush ?? GetApplicationThemeBrush("AppBgBrush", "#0B1220")
                 };
 
                 var layout = new Grid { Margin = new Thickness(12) };
@@ -19049,9 +19566,879 @@ namespace ConstructionControl
             RequestReminderRefresh(immediate: true);
         }
 
+        private static bool HasProjectTransferSection(ProjectTransferSection sections, ProjectTransferSection section)
+            => (sections & section) == section;
+
+        private string GetProjectTransferSectionTitle(ProjectTransferSection section)
+        {
+            return section switch
+            {
+                ProjectTransferSection.ObjectSettings => "Настройки объекта",
+                ProjectTransferSection.MaterialsAndSummary => "База материалов / Сводка / ЖВК",
+                ProjectTransferSection.Arrival => "Приход",
+                ProjectTransferSection.Ot => "ОТ",
+                ProjectTransferSection.Timesheet => "Табель",
+                ProjectTransferSection.Production => "ПР",
+                ProjectTransferSection.HiddenWorkActs => "Акты",
+                ProjectTransferSection.Inspection => "Осмотры",
+                ProjectTransferSection.Notes => "Заметки",
+                ProjectTransferSection.Pdf => "ПДФ",
+                ProjectTransferSection.Estimates => "Сметы",
+                _ => section.ToString()
+            };
+        }
+
+        private string GetProjectTransferSectionDescription(ProjectTransferSection section)
+        {
+            return section switch
+            {
+                ProjectTransferSection.ObjectSettings => "Параметры объекта, этажность, оси, представители, мастера, прорабы, настройки интерфейса и журнал изменений.",
+                ProjectTransferSection.MaterialsAndSummary => "Дерево материалов, каталог, потребность, правила разбиения и данные для вкладок сводки и ЖВК.",
+                ProjectTransferSection.Arrival => "Журнал прихода, история прихода и шаблоны фильтров прихода.",
+                ProjectTransferSection.Ot => "Журнал ОТ и номера инструкций по профессиям.",
+                ProjectTransferSection.Timesheet => "Табель по сотрудникам и месяцам.",
+                ProjectTransferSection.Production => "Журнал ПР, автозаполнение, шаблоны, профили и справочники ПР.",
+                ProjectTransferSection.HiddenWorkActs => "Акты скрытых работ, пресеты материалов и настройки генерации актов.",
+                ProjectTransferSection.Inspection => "Журнал осмотров и шаблоны осмотров.",
+                ProjectTransferSection.Notes => "Заметки и напоминания по заметкам.",
+                ProjectTransferSection.Pdf => "Дерево ПДФ и сами PDF-файлы из внутреннего хранилища проекта.",
+                ProjectTransferSection.Estimates => "Дерево смет и сами файлы смет из внутреннего хранилища проекта.",
+                _ => string.Empty
+            };
+        }
+
+        private string FormatProjectTransferSections(ProjectTransferSection sections)
+        {
+            return string.Join(", ",
+                ProjectTransferSectionOrder
+                    .Where(section => HasProjectTransferSection(sections, section))
+                    .Select(GetProjectTransferSectionTitle));
+        }
+
+        private ProjectTransferSection? ShowProjectSectionSelectionDialog(
+            string title,
+            string subtitle,
+            string hint,
+            string confirmText,
+            ProjectTransferSection enabledSections,
+            ProjectTransferSection defaultSelectedSections)
+        {
+            var options = ProjectTransferSectionOrder
+                .Select(section => new ProjectSectionSelectionOption
+                {
+                    Section = section,
+                    Title = GetProjectTransferSectionTitle(section),
+                    Description = GetProjectTransferSectionDescription(section),
+                    IsEnabled = HasProjectTransferSection(enabledSections, section),
+                    IsSelected = HasProjectTransferSection(enabledSections, section)
+                        && HasProjectTransferSection(defaultSelectedSections, section)
+                })
+                .ToList();
+
+            var window = new ProjectSectionSelectionWindow(title, subtitle, hint, confirmText, options)
+            {
+                Owner = this
+            };
+
+            return window.ShowDialog() == true ? window.SelectedSections : null;
+        }
+
+        private AppState BuildExportState(ProjectTransferSection includedSections)
+        {
+            var state = CloneState();
+            foreach (var section in ProjectTransferSectionOrder)
+            {
+                if (!HasProjectTransferSection(includedSections, section))
+                    ClearProjectTransferSection(state, section);
+            }
+
+            NormalizeTransferredState(state, clearDocumentAbsolutePaths: true);
+            return state;
+        }
+
+        private AppState BuildMergedImportState(AppState sourceState, ProjectTransferSection selectedSections)
+        {
+            var mergedState = CloneState();
+            ApplyProjectTransferSections(mergedState, sourceState, selectedSections);
+            NormalizeTransferredState(mergedState, clearDocumentAbsolutePaths: true);
+            return mergedState;
+        }
+
+        private void ApplyProjectTransferSections(AppState targetState, AppState sourceState, ProjectTransferSection sections)
+        {
+            targetState ??= new AppState();
+            targetState.CurrentObject ??= new ProjectObject();
+            sourceState ??= new AppState();
+            sourceState.CurrentObject ??= new ProjectObject();
+
+            foreach (var section in ProjectTransferSectionOrder)
+            {
+                if (HasProjectTransferSection(sections, section))
+                    ApplyProjectTransferSection(targetState, sourceState, section);
+            }
+        }
+
+        private void ApplyProjectTransferSection(AppState targetState, AppState sourceState, ProjectTransferSection section)
+        {
+            var targetObject = targetState.CurrentObject ??= new ProjectObject();
+            var sourceObject = sourceState.CurrentObject ?? new ProjectObject();
+
+            switch (section)
+            {
+                case ProjectTransferSection.ObjectSettings:
+                    targetObject.Name = sourceObject.Name;
+                    targetObject.BlocksCount = sourceObject.BlocksCount;
+                    targetObject.HasBasement = sourceObject.HasBasement;
+                    targetObject.SameFloorsInBlocks = sourceObject.SameFloorsInBlocks;
+                    targetObject.FloorsPerBlock = sourceObject.FloorsPerBlock;
+                    targetObject.FloorsByBlock = CloneTransferValue(sourceObject.FloorsByBlock) ?? new Dictionary<int, int>();
+                    targetObject.BlockAxesByNumber = CloneTransferValue(sourceObject.BlockAxesByNumber) ?? new Dictionary<int, string>();
+                    targetObject.FullObjectName = sourceObject.FullObjectName ?? string.Empty;
+                    targetObject.GeneralContractorRepresentative = sourceObject.GeneralContractorRepresentative ?? string.Empty;
+                    targetObject.TechnicalSupervisorRepresentative = sourceObject.TechnicalSupervisorRepresentative ?? string.Empty;
+                    targetObject.ProjectOrganizationRepresentative = sourceObject.ProjectOrganizationRepresentative ?? string.Empty;
+                    targetObject.ProjectDocumentationName = sourceObject.ProjectDocumentationName ?? string.Empty;
+                    targetObject.MasterNames = CloneTransferValue(sourceObject.MasterNames) ?? new List<string>();
+                    targetObject.ForemanNames = CloneTransferValue(sourceObject.ForemanNames) ?? new List<string>();
+                    targetObject.ResponsibleForeman = sourceObject.ResponsibleForeman ?? string.Empty;
+                    targetObject.SiteManagerName = sourceObject.SiteManagerName ?? string.Empty;
+                    targetObject.UiSettings = CloneTransferValue(sourceObject.UiSettings) ?? new ProjectUiSettings();
+                    targetObject.ChangeLog = CloneTransferValue(sourceObject.ChangeLog) ?? new List<ProjectChangeLogEntry>();
+                    break;
+
+                case ProjectTransferSection.MaterialsAndSummary:
+                    targetObject.Demand = CloneTransferValue(sourceObject.Demand) ?? new Dictionary<string, MaterialDemand>();
+                    targetObject.MaterialNamesByGroup = CloneTransferValue(sourceObject.MaterialNamesByGroup) ?? new Dictionary<string, List<string>>();
+                    targetObject.StbByGroup = CloneTransferValue(sourceObject.StbByGroup) ?? new Dictionary<string, string>();
+                    targetObject.SupplierByGroup = CloneTransferValue(sourceObject.SupplierByGroup) ?? new Dictionary<string, string>();
+                    targetObject.MaterialGroups = CloneTransferValue(sourceObject.MaterialGroups) ?? new List<MaterialGroup>();
+                    targetObject.MaterialCatalog = CloneTransferValue(sourceObject.MaterialCatalog) ?? new List<MaterialCatalogItem>();
+                    targetObject.MaterialTreeSplitRules = CloneTransferValue(sourceObject.MaterialTreeSplitRules) ?? new Dictionary<string, string>();
+                    targetObject.AutoSplitMaterialNames = CloneTransferValue(sourceObject.AutoSplitMaterialNames) ?? new List<string>();
+                    targetObject.SummaryVisibleGroups = CloneTransferValue(sourceObject.SummaryVisibleGroups) ?? new List<string>();
+                    targetObject.SummaryMarksByGroup = CloneTransferValue(sourceObject.SummaryMarksByGroup) ?? new Dictionary<string, List<string>>();
+                    targetObject.SummaryBalanceHistory = CloneTransferValue(sourceObject.SummaryBalanceHistory) ?? new List<SummaryBalanceHistoryEntry>();
+                    break;
+
+                case ProjectTransferSection.Arrival:
+                    targetState.Journal = CloneTransferValue(sourceState.Journal) ?? new List<JournalRecord>();
+                    targetObject.ArrivalHistory = CloneTransferValue(sourceObject.ArrivalHistory) ?? new List<ArrivalItem>();
+                    targetObject.ArrivalFilterTemplates = CloneTransferValue(sourceObject.ArrivalFilterTemplates) ?? new List<ArrivalFilterTemplate>();
+                    break;
+
+                case ProjectTransferSection.Ot:
+                    targetObject.OtJournal = CloneTransferValue(sourceObject.OtJournal) ?? new List<OtJournalEntry>();
+                    targetObject.OtInstructionNumbersByProfession = CloneTransferValue(sourceObject.OtInstructionNumbersByProfession) ?? new Dictionary<string, string>();
+                    break;
+
+                case ProjectTransferSection.Timesheet:
+                    targetObject.TimesheetPeople = CloneTransferValue(sourceObject.TimesheetPeople) ?? new List<TimesheetPersonEntry>();
+                    break;
+
+                case ProjectTransferSection.Production:
+                    targetObject.ProductionJournal = CloneTransferValue(sourceObject.ProductionJournal) ?? new List<ProductionJournalEntry>();
+                    targetObject.ProductionAutoFillSettings = CloneTransferValue(sourceObject.ProductionAutoFillSettings) ?? new ProductionAutoFillSettings();
+                    targetObject.ProductionAutoFillProfiles = CloneTransferValue(sourceObject.ProductionAutoFillProfiles) ?? new List<ProductionAutoFillProfile>();
+                    targetObject.SelectedProductionAutoFillProfileName = sourceObject.SelectedProductionAutoFillProfileName ?? string.Empty;
+                    targetObject.ProductionTemplates = CloneTransferValue(sourceObject.ProductionTemplates) ?? new List<ProductionJournalTemplate>();
+                    targetObject.ProductionWorkRules = CloneTransferValue(sourceObject.ProductionWorkRules) ?? new List<ProductionWorkRule>();
+                    targetObject.ProductionDeviationsByType = CloneTransferValue(sourceObject.ProductionDeviationsByType) ?? new Dictionary<string, List<string>>();
+                    targetObject.ProductionWorksByAction = CloneTransferValue(sourceObject.ProductionWorksByAction) ?? new Dictionary<string, List<string>>();
+                    targetObject.ProductionMaterialsByType = CloneTransferValue(sourceObject.ProductionMaterialsByType) ?? new Dictionary<string, List<string>>();
+                    break;
+
+                case ProjectTransferSection.HiddenWorkActs:
+                    targetObject.HiddenWorkDefaults = CloneTransferValue(sourceObject.HiddenWorkDefaults) ?? new HiddenWorkActDefaults();
+                    targetObject.HiddenWorkActs = CloneTransferValue(sourceObject.HiddenWorkActs) ?? new List<HiddenWorkActRecord>();
+                    targetObject.HiddenWorkMaterialPresets = CloneTransferValue(sourceObject.HiddenWorkMaterialPresets) ?? new List<HiddenWorkMaterialPreset>();
+                    targetObject.HiddenWorkTitlePrefixReplacements = CloneTransferValue(sourceObject.HiddenWorkTitlePrefixReplacements) ?? new Dictionary<string, string>();
+                    break;
+
+                case ProjectTransferSection.Inspection:
+                    targetObject.InspectionJournal = CloneTransferValue(sourceObject.InspectionJournal) ?? new List<InspectionJournalEntry>();
+                    targetObject.InspectionTemplates = CloneTransferValue(sourceObject.InspectionTemplates) ?? new List<InspectionJournalTemplate>();
+                    break;
+
+                case ProjectTransferSection.Notes:
+                    targetObject.Notes = CloneTransferValue(sourceObject.Notes) ?? new List<ProjectNoteEntry>();
+                    break;
+
+                case ProjectTransferSection.Pdf:
+                    targetObject.PdfDocuments = CloneTransferValue(sourceObject.PdfDocuments) ?? new List<DocumentTreeNode>();
+                    NormalizeTransferredDocumentNodes(targetObject.PdfDocuments, isPdfLibrary: true, clearAbsolutePaths: true);
+                    break;
+
+                case ProjectTransferSection.Estimates:
+                    targetObject.EstimateDocuments = CloneTransferValue(sourceObject.EstimateDocuments) ?? new List<DocumentTreeNode>();
+                    NormalizeTransferredDocumentNodes(targetObject.EstimateDocuments, isPdfLibrary: false, clearAbsolutePaths: true);
+                    break;
+            }
+        }
+
+        private void ClearProjectTransferSections(AppState state, ProjectTransferSection sections)
+        {
+            foreach (var section in ProjectTransferSectionOrder)
+            {
+                if (HasProjectTransferSection(sections, section))
+                    ClearProjectTransferSection(state, section);
+            }
+
+            NormalizeTransferredState(state, clearDocumentAbsolutePaths: true);
+        }
+
+        private void ClearProjectTransferSection(AppState state, ProjectTransferSection section)
+        {
+            state ??= new AppState();
+            state.CurrentObject ??= new ProjectObject();
+            state.Journal ??= new List<JournalRecord>();
+
+            var current = state.CurrentObject;
+            switch (section)
+            {
+                case ProjectTransferSection.ObjectSettings:
+                    current.BlocksCount = 0;
+                    current.HasBasement = false;
+                    current.SameFloorsInBlocks = true;
+                    current.FloorsPerBlock = 0;
+                    current.FloorsByBlock = new Dictionary<int, int>();
+                    current.BlockAxesByNumber = new Dictionary<int, string>();
+                    current.FullObjectName = string.Empty;
+                    current.GeneralContractorRepresentative = string.Empty;
+                    current.TechnicalSupervisorRepresentative = string.Empty;
+                    current.ProjectOrganizationRepresentative = string.Empty;
+                    current.ProjectDocumentationName = string.Empty;
+                    current.MasterNames = new List<string>();
+                    current.ForemanNames = new List<string>();
+                    current.ResponsibleForeman = string.Empty;
+                    current.SiteManagerName = string.Empty;
+                    current.UiSettings = new ProjectUiSettings();
+                    current.ChangeLog = new List<ProjectChangeLogEntry>();
+                    break;
+
+                case ProjectTransferSection.MaterialsAndSummary:
+                    current.Demand = new Dictionary<string, MaterialDemand>();
+                    current.MaterialNamesByGroup = new Dictionary<string, List<string>>();
+                    current.StbByGroup = new Dictionary<string, string>();
+                    current.SupplierByGroup = new Dictionary<string, string>();
+                    current.MaterialGroups = new List<MaterialGroup>();
+                    current.MaterialCatalog = new List<MaterialCatalogItem>();
+                    current.MaterialTreeSplitRules = new Dictionary<string, string>();
+                    current.AutoSplitMaterialNames = new List<string>();
+                    current.SummaryVisibleGroups = new List<string>();
+                    current.SummaryMarksByGroup = new Dictionary<string, List<string>>();
+                    current.SummaryBalanceHistory = new List<SummaryBalanceHistoryEntry>();
+                    break;
+
+                case ProjectTransferSection.Arrival:
+                    state.Journal = new List<JournalRecord>();
+                    current.ArrivalHistory = new List<ArrivalItem>();
+                    current.ArrivalFilterTemplates = new List<ArrivalFilterTemplate>();
+                    break;
+
+                case ProjectTransferSection.Ot:
+                    current.OtJournal = new List<OtJournalEntry>();
+                    current.OtInstructionNumbersByProfession = new Dictionary<string, string>();
+                    break;
+
+                case ProjectTransferSection.Timesheet:
+                    current.TimesheetPeople = new List<TimesheetPersonEntry>();
+                    break;
+
+                case ProjectTransferSection.Production:
+                    current.ProductionJournal = new List<ProductionJournalEntry>();
+                    current.ProductionAutoFillSettings = new ProductionAutoFillSettings();
+                    current.ProductionAutoFillProfiles = new List<ProductionAutoFillProfile>();
+                    current.SelectedProductionAutoFillProfileName = string.Empty;
+                    current.ProductionTemplates = new List<ProductionJournalTemplate>();
+                    current.ProductionWorkRules = new List<ProductionWorkRule>();
+                    current.ProductionDeviationsByType = new Dictionary<string, List<string>>();
+                    current.ProductionWorksByAction = new Dictionary<string, List<string>>();
+                    current.ProductionMaterialsByType = new Dictionary<string, List<string>>();
+                    break;
+
+                case ProjectTransferSection.HiddenWorkActs:
+                    current.HiddenWorkDefaults = new HiddenWorkActDefaults();
+                    current.HiddenWorkActs = new List<HiddenWorkActRecord>();
+                    current.HiddenWorkMaterialPresets = new List<HiddenWorkMaterialPreset>();
+                    current.HiddenWorkTitlePrefixReplacements = new Dictionary<string, string>();
+                    break;
+
+                case ProjectTransferSection.Inspection:
+                    current.InspectionJournal = new List<InspectionJournalEntry>();
+                    current.InspectionTemplates = new List<InspectionJournalTemplate>();
+                    break;
+
+                case ProjectTransferSection.Notes:
+                    current.Notes = new List<ProjectNoteEntry>();
+                    break;
+
+                case ProjectTransferSection.Pdf:
+                    current.PdfDocuments = new List<DocumentTreeNode>();
+                    break;
+
+                case ProjectTransferSection.Estimates:
+                    current.EstimateDocuments = new List<DocumentTreeNode>();
+                    break;
+            }
+        }
+
+        private static T CloneTransferValue<T>(T value)
+        {
+            if (value == null)
+                return default;
+
+            return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value));
+        }
+
+        private void NormalizeTransferredState(AppState state, bool clearDocumentAbsolutePaths)
+        {
+            if (state == null)
+                return;
+
+            ApplyStateMigrations(state);
+            state.CurrentObject ??= new ProjectObject();
+            state.Journal ??= new List<JournalRecord>();
+            state.CurrentObject.ArrivalHistory ??= new List<ArrivalItem>();
+            state.CurrentObject.ArrivalFilterTemplates ??= new List<ArrivalFilterTemplate>();
+            state.CurrentObject.MaterialGroups ??= new List<MaterialGroup>();
+            state.CurrentObject.MaterialCatalog ??= new List<MaterialCatalogItem>();
+            state.CurrentObject.MaterialTreeSplitRules ??= new Dictionary<string, string>();
+            state.CurrentObject.AutoSplitMaterialNames ??= new List<string>();
+            state.CurrentObject.MaterialNamesByGroup ??= new Dictionary<string, List<string>>();
+            state.CurrentObject.StbByGroup ??= new Dictionary<string, string>();
+            state.CurrentObject.SupplierByGroup ??= new Dictionary<string, string>();
+            state.CurrentObject.SummaryVisibleGroups ??= new List<string>();
+            state.CurrentObject.SummaryMarksByGroup ??= new Dictionary<string, List<string>>();
+            state.CurrentObject.SummaryBalanceHistory ??= new List<SummaryBalanceHistoryEntry>();
+            state.CurrentObject.OtJournal ??= new List<OtJournalEntry>();
+            state.CurrentObject.TimesheetPeople ??= new List<TimesheetPersonEntry>();
+            state.CurrentObject.ProductionJournal ??= new List<ProductionJournalEntry>();
+            state.CurrentObject.ProductionAutoFillSettings ??= new ProductionAutoFillSettings();
+            state.CurrentObject.ProductionAutoFillProfiles ??= new List<ProductionAutoFillProfile>();
+            state.CurrentObject.ProductionTemplates ??= new List<ProductionJournalTemplate>();
+            state.CurrentObject.ProductionWorkRules ??= new List<ProductionWorkRule>();
+            state.CurrentObject.ProductionDeviationsByType ??= new Dictionary<string, List<string>>();
+            state.CurrentObject.ProductionWorksByAction ??= new Dictionary<string, List<string>>();
+            state.CurrentObject.ProductionMaterialsByType ??= new Dictionary<string, List<string>>();
+            state.CurrentObject.HiddenWorkTitlePrefixReplacements ??= new Dictionary<string, string>();
+            state.CurrentObject.InspectionJournal ??= new List<InspectionJournalEntry>();
+            state.CurrentObject.InspectionTemplates ??= new List<InspectionJournalTemplate>();
+            state.CurrentObject.Notes ??= new List<ProjectNoteEntry>();
+            state.CurrentObject.PdfDocuments ??= new List<DocumentTreeNode>();
+            state.CurrentObject.EstimateDocuments ??= new List<DocumentTreeNode>();
+            state.CurrentObject.HiddenWorkDefaults ??= new HiddenWorkActDefaults();
+            state.CurrentObject.HiddenWorkActs ??= new List<HiddenWorkActRecord>();
+            state.CurrentObject.HiddenWorkMaterialPresets ??= new List<HiddenWorkMaterialPreset>();
+
+            RebuildArchiveForState(state);
+            NormalizeTransferredDocumentNodes(state.CurrentObject.PdfDocuments, isPdfLibrary: true, clearDocumentAbsolutePaths);
+            NormalizeTransferredDocumentNodes(state.CurrentObject.EstimateDocuments, isPdfLibrary: false, clearDocumentAbsolutePaths);
+        }
+
+        private void RebuildArchiveForState(AppState state)
+        {
+            if (state?.CurrentObject == null)
+                return;
+
+            var archive = new ObjectArchive();
+            foreach (var rec in state.Journal ?? Enumerable.Empty<JournalRecord>())
+            {
+                if (!string.IsNullOrWhiteSpace(rec.MaterialGroup))
+                {
+                    if (!archive.Groups.Contains(rec.MaterialGroup))
+                        archive.Groups.Add(rec.MaterialGroup);
+
+                    if (!archive.Materials.ContainsKey(rec.MaterialGroup))
+                        archive.Materials[rec.MaterialGroup] = new List<string>();
+
+                    if (!string.IsNullOrWhiteSpace(rec.MaterialName) && !archive.Materials[rec.MaterialGroup].Contains(rec.MaterialName))
+                        archive.Materials[rec.MaterialGroup].Add(rec.MaterialName);
+                }
+
+                if (!string.IsNullOrWhiteSpace(rec.Unit) && !archive.Units.Contains(rec.Unit))
+                    archive.Units.Add(rec.Unit);
+
+                if (!string.IsNullOrWhiteSpace(rec.Supplier) && !archive.Suppliers.Contains(rec.Supplier))
+                    archive.Suppliers.Add(rec.Supplier);
+
+                if (!string.IsNullOrWhiteSpace(rec.Passport) && !archive.Passports.Contains(rec.Passport))
+                    archive.Passports.Add(rec.Passport);
+
+                if (!string.IsNullOrWhiteSpace(rec.Stb) && !archive.Stb.Contains(rec.Stb))
+                    archive.Stb.Add(rec.Stb);
+            }
+
+            state.CurrentObject.Archive = archive;
+        }
+
+        private void NormalizeTransferredDocumentNodes(IEnumerable<DocumentTreeNode> nodes, bool isPdfLibrary, bool clearAbsolutePaths)
+        {
+            if (nodes == null)
+                return;
+
+            foreach (var node in nodes)
+            {
+                if (node == null)
+                    continue;
+
+                node.Children ??= new List<DocumentTreeNode>();
+                if (node.IsFolder)
+                {
+                    NormalizeTransferredDocumentNodes(node.Children, isPdfLibrary, clearAbsolutePaths);
+                    continue;
+                }
+
+                var relativePath = GetNodeStorageRelativePath(node, isPdfLibrary);
+                node.StoredRelativePath = NormalizeStoredRelativePathForLibrary(relativePath, isPdfLibrary);
+                if (clearAbsolutePaths
+                    && (!string.IsNullOrWhiteSpace(node.StoredRelativePath) || !string.IsNullOrWhiteSpace(node.ContentHash)))
+                {
+                    node.FilePath = string.Empty;
+                }
+
+                NormalizeTransferredDocumentNodes(node.Children, isPdfLibrary, clearAbsolutePaths);
+            }
+        }
+
+        private string GetNodeStorageRelativePath(DocumentTreeNode node, bool isPdfLibrary)
+        {
+            if (node == null || node.IsFolder)
+                return string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(node.StoredRelativePath))
+                return node.StoredRelativePath;
+
+            if (!string.IsNullOrWhiteSpace(node.FilePath))
+            {
+                var byStorageRoot = TryBuildStorageRelativePath(node.FilePath);
+                if (!string.IsNullOrWhiteSpace(byStorageRoot))
+                    return byStorageRoot;
+            }
+
+            return string.Empty;
+        }
+
+        private string TryBuildStorageRelativePath(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return string.Empty;
+
+            var storageRoot = GetProjectStorageRoot(createIfMissing: false);
+            if (string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
+                return string.Empty;
+
+            try
+            {
+                var fullStorageRoot = System.IO.Path.GetFullPath(storageRoot);
+                var fullFilePath = System.IO.Path.GetFullPath(filePath);
+                if (!fullFilePath.StartsWith(fullStorageRoot, StringComparison.OrdinalIgnoreCase))
+                    return string.Empty;
+
+                return System.IO.Path.GetRelativePath(fullStorageRoot, fullFilePath);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static string NormalizeStoredRelativePathForLibrary(string relativePath, bool isPdfLibrary)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+                return string.Empty;
+
+            var normalized = relativePath
+                .Replace('/', System.IO.Path.DirectorySeparatorChar)
+                .Replace('\\', System.IO.Path.DirectorySeparatorChar)
+                .TrimStart(System.IO.Path.DirectorySeparatorChar);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return string.Empty;
+
+            var pdfPrefix = $"pdf{System.IO.Path.DirectorySeparatorChar}";
+            var estimatePrefix = $"estimate{System.IO.Path.DirectorySeparatorChar}";
+            if (normalized.StartsWith(pdfPrefix, StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(estimatePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized;
+            }
+
+            var libraryPrefix = isPdfLibrary ? "pdf" : "estimate";
+            return $"{libraryPrefix}{System.IO.Path.DirectorySeparatorChar}{normalized}";
+        }
+
+        private HashSet<string> CollectDocumentStorageRelativePathsForSections(AppState state, ProjectTransferSection sections)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (state?.CurrentObject == null)
+                return result;
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Pdf))
+                result.UnionWith(CollectDocumentStorageRelativePaths(state.CurrentObject.PdfDocuments, isPdfLibrary: true));
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Estimates))
+                result.UnionWith(CollectDocumentStorageRelativePaths(state.CurrentObject.EstimateDocuments, isPdfLibrary: false));
+
+            return result;
+        }
+
+        private HashSet<string> CollectDocumentStorageRelativePaths(IEnumerable<DocumentTreeNode> nodes, bool isPdfLibrary)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var node in EnumerateDocumentFileNodes(nodes))
+            {
+                var relativePath = NormalizeStoredRelativePathForLibrary(GetNodeStorageRelativePath(node, isPdfLibrary), isPdfLibrary);
+                if (string.IsNullOrWhiteSpace(relativePath))
+                    continue;
+
+                result.Add(NormalizeArchiveRelativePath(relativePath));
+            }
+
+            return result;
+        }
+
+        private HashSet<string> CollectDocumentHashesForSections(AppState state, ProjectTransferSection sections)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (state?.CurrentObject == null)
+                return result;
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Pdf))
+                result.UnionWith(CollectDocumentHashes(state.CurrentObject.PdfDocuments));
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Estimates))
+                result.UnionWith(CollectDocumentHashes(state.CurrentObject.EstimateDocuments));
+
+            return result;
+        }
+
+        private HashSet<string> CollectDocumentHashes(IEnumerable<DocumentTreeNode> nodes)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var node in EnumerateDocumentFileNodes(nodes))
+            {
+                var hash = node?.ContentHash?.Trim();
+                if (!string.IsNullOrWhiteSpace(hash))
+                    result.Add(hash);
+            }
+
+            return result;
+        }
+
+        private static string NormalizeArchiveRelativePath(string relativePath)
+        {
+            return (relativePath ?? string.Empty)
+                .Replace('\\', '/')
+                .Trim()
+                .TrimStart('/');
+        }
+
+        private BackupPackageManifest BuildBackupPackageManifest(ProjectTransferSection sections)
+        {
+            return new BackupPackageManifest
+            {
+                Version = 1,
+                IncludedSections = ProjectTransferSectionOrder
+                    .Where(section => HasProjectTransferSection(sections, section))
+                    .Select(section => section.ToString())
+                    .ToList()
+            };
+        }
+
+        private ProjectTransferSection ReadBackupIncludedSections(ZipArchive archive)
+        {
+            if (archive == null)
+                return AllProjectTransferSections;
+
+            try
+            {
+                var entry = archive.GetEntry(BackupSectionManifestEntryName);
+                if (entry == null)
+                    return AllProjectTransferSections;
+
+                using var stream = entry.Open();
+                using var reader = new StreamReader(stream);
+                var json = reader.ReadToEnd();
+                var manifest = JsonSerializer.Deserialize<BackupPackageManifest>(json);
+                if (manifest?.IncludedSections == null || manifest.IncludedSections.Count == 0)
+                    return AllProjectTransferSections;
+
+                var result = ProjectTransferSection.None;
+                foreach (var value in manifest.IncludedSections)
+                {
+                    if (Enum.TryParse<ProjectTransferSection>(value, out var parsed))
+                        result |= parsed;
+                }
+
+                return result == ProjectTransferSection.None ? AllProjectTransferSections : result;
+            }
+            catch
+            {
+                return AllProjectTransferSections;
+            }
+        }
+
+        private bool TryReadBackupPackageInfo(string backupPath, out BackupPackageInfo package, out string errorMessage)
+        {
+            package = null;
+            errorMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(backupPath) || !File.Exists(backupPath))
+            {
+                errorMessage = "Файл резервной копии не найден.";
+                return false;
+            }
+
+            var extension = System.IO.Path.GetExtension(backupPath)?.ToLowerInvariant() ?? string.Empty;
+            if (extension is ".ccbak" or ".ccrecovery")
+            {
+                try
+                {
+                    using var stream = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+
+                    var stateEntry = archive.GetEntry("state.json")
+                        ?? archive.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+                    if (stateEntry == null)
+                    {
+                        errorMessage = "В резервной копии не найден файл состояния state.json.";
+                        return false;
+                    }
+
+                    string json;
+                    using (var stateStream = stateEntry.Open())
+                    using (var reader = new StreamReader(stateStream))
+                    {
+                        json = reader.ReadToEnd();
+                    }
+
+                    if (!TryDeserializeAppState(json, out var state, out var parseError) || state == null)
+                    {
+                        errorMessage = string.IsNullOrWhiteSpace(parseError)
+                            ? "Файл состояния в резервной копии имеет неверный формат."
+                            : parseError;
+                        return false;
+                    }
+
+                    package = new BackupPackageInfo
+                    {
+                        SourcePath = backupPath,
+                        State = state,
+                        IncludedSections = ReadBackupIncludedSections(archive),
+                        HasStorageEntries = archive.Entries.Any(entry =>
+                            !string.IsNullOrWhiteSpace(entry.Name)
+                            && entry.FullName.StartsWith("storage/", StringComparison.OrdinalIgnoreCase))
+                    };
+                    return true;
+                }
+                catch (InvalidDataException)
+                {
+                    // Старый формат .ccbak мог быть обычным JSON-файлом.
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = $"Ошибка чтения резервной копии: {ex.Message}";
+                    return false;
+                }
+            }
+
+            try
+            {
+                var rawJson = File.ReadAllText(backupPath);
+                if (!TryDeserializeAppState(rawJson, out var state, out var parseError) || state == null)
+                {
+                    errorMessage = string.IsNullOrWhiteSpace(parseError)
+                        ? "Файл резервной копии имеет неверный формат."
+                        : parseError;
+                    return false;
+                }
+
+                package = new BackupPackageInfo
+                {
+                    SourcePath = backupPath,
+                    State = state,
+                    IncludedSections = AllProjectTransferSections,
+                    HasStorageEntries = false
+                };
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Ошибка чтения резервной копии: {ex.Message}";
+                return false;
+            }
+        }
+
+        private void PrepareForDocumentStorageMutation()
+        {
+            HidePdfEmbeddedPreview();
+            ClosePdfExternalProcess();
+            StopEstimateEmbeddedPreview();
+            StopEstimateEmbeddedSecondaryPreview();
+        }
+
+        private void ClearSelectedDocumentStorageFolders(ProjectTransferSection sections)
+        {
+            void ClearFolder(bool isPdfLibrary)
+            {
+                var folder = GetDocumentStorageFolder(isPdfLibrary, createIfMissing: false);
+                if (string.IsNullOrWhiteSpace(folder))
+                    return;
+
+                try
+                {
+                    if (Directory.Exists(folder))
+                        Directory.Delete(folder, recursive: true);
+                }
+                catch
+                {
+                    // Если часть файлов удерживается внешним приложением, не прерываем операцию.
+                }
+
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                }
+                catch
+                {
+                    // Каталог будет создан позднее при необходимости.
+                }
+            }
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Pdf))
+                ClearFolder(isPdfLibrary: true);
+
+            if (HasProjectTransferSection(sections, ProjectTransferSection.Estimates))
+                ClearFolder(isPdfLibrary: false);
+        }
+
+        private int ImportSelectedProjectStorageFromBackup(BackupPackageInfo package, ProjectTransferSection sections)
+        {
+            lastStorageIntegrityIssues.Clear();
+            if (package == null
+                || !package.HasStorageEntries
+                || !HasProjectTransferSection(sections, ProjectTransferSection.Pdf)
+                    && !HasProjectTransferSection(sections, ProjectTransferSection.Estimates))
+            {
+                return 0;
+            }
+
+            var extension = System.IO.Path.GetExtension(package.SourcePath)?.ToLowerInvariant() ?? string.Empty;
+            if (extension is not ".ccbak" and not ".ccrecovery")
+                return 0;
+
+            using var stream = new FileStream(package.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            return ImportSelectedProjectStorageFromArchive(archive, sections, package.State);
+        }
+
+        private int ImportSelectedProjectStorageFromArchive(ZipArchive archive, ProjectTransferSection sections, AppState importedState)
+        {
+            if (archive == null || importedState?.CurrentObject == null)
+                return 0;
+
+            var desiredPaths = CollectDocumentStorageRelativePathsForSections(importedState, sections);
+            var desiredHashes = CollectDocumentHashesForSections(importedState, sections);
+            if (desiredPaths.Count == 0 && desiredHashes.Count == 0)
+                return 0;
+
+            var storageRoot = GetProjectStorageRoot(createIfMissing: true);
+            if (string.IsNullOrWhiteSpace(storageRoot))
+                return 0;
+
+            PrepareForDocumentStorageMutation();
+            ClearSelectedDocumentStorageFolders(sections);
+
+            var manifestByRelativePath = ReadStorageManifestEntries(archive);
+            var restored = 0;
+            var restoredRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in archive.Entries.Where(item =>
+                         !string.IsNullOrWhiteSpace(item.Name)
+                         && item.FullName.StartsWith("storage/", StringComparison.OrdinalIgnoreCase)))
+            {
+                var relativePath = NormalizeArchiveRelativePath(entry.FullName.Substring("storage/".Length));
+                if (string.IsNullOrWhiteSpace(relativePath))
+                    continue;
+
+                manifestByRelativePath.TryGetValue(relativePath, out var manifestItem);
+                var entryHash = manifestItem?.Hash ?? string.Empty;
+                if (!desiredPaths.Contains(relativePath)
+                    && (string.IsNullOrWhiteSpace(entryHash) || !desiredHashes.Contains(entryHash)))
+                {
+                    continue;
+                }
+
+                var targetPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(storageRoot, relativePath.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+                if (!targetPath.StartsWith(System.IO.Path.GetFullPath(storageRoot), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    var targetDirectory = System.IO.Path.GetDirectoryName(targetPath);
+                    if (!string.IsNullOrWhiteSpace(targetDirectory))
+                        Directory.CreateDirectory(targetDirectory);
+
+                    using var input = entry.Open();
+                    using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    input.CopyTo(output);
+                    restored++;
+                    restoredRelativePaths.Add(relativePath);
+                }
+                catch (Exception ex)
+                {
+                    lastStorageIntegrityIssues.Add($"Не удалось восстановить файл {relativePath}: {ex.Message}");
+                }
+            }
+
+            ValidateImportedStorageManifest(archive, storageRoot, restoredRelativePaths);
+            return restored;
+        }
+
+        private Dictionary<string, DocumentStorageManifestEntry> ReadStorageManifestEntries(ZipArchive archive)
+        {
+            var result = new Dictionary<string, DocumentStorageManifestEntry>(StringComparer.OrdinalIgnoreCase);
+            if (archive == null)
+                return result;
+
+            try
+            {
+                var entry = archive.GetEntry("storage_manifest.json");
+                if (entry == null)
+                    return result;
+
+                using var stream = entry.Open();
+                using var reader = new StreamReader(stream);
+                var json = reader.ReadToEnd();
+                var items = JsonSerializer.Deserialize<List<DocumentStorageManifestEntry>>(json) ?? new List<DocumentStorageManifestEntry>();
+                foreach (var item in items)
+                {
+                    if (item == null || string.IsNullOrWhiteSpace(item.RelativePath))
+                        continue;
+
+                    var normalized = NormalizeArchiveRelativePath(item.RelativePath);
+                    result[normalized] = item;
+                }
+            }
+            catch
+            {
+                // Манифест целостности необязателен.
+            }
+
+            return result;
+        }
+
         private void ExportAllData_Click(object sender, RoutedEventArgs e)
         {
             CommitOpenEdits();
+
+            var selectedSections = ShowProjectSectionSelectionDialog(
+                title: "Экспорт проекта",
+                subtitle: "Выберите, какие разделы нужно включить в архив. Для документов можно быстро переключать режимы: только данные, данные + ПДФ, данные + ПДФ + сметы.",
+                hint: "Архив сохраняется в формате .ccbak. Неотмеченные разделы в файл не попадут.",
+                confirmText: "Экспортировать",
+                enabledSections: AllProjectTransferSections,
+                defaultSelectedSections: AllProjectTransferSections);
+            if (!selectedSections.HasValue)
+                return;
 
             var dlg = new SaveFileDialog
             {
@@ -19061,7 +20448,9 @@ namespace ConstructionControl
             if (dlg.ShowDialog() != true)
                 return;
 
-            var state = new AppState { CurrentObject = currentObject, Journal = journal };
+            var state = BuildExportState(selectedSections.Value);
+            state.SchemaVersion = AppState.LatestSchemaVersion;
+            state.SavedAtUtc = DateTime.UtcNow;
             var stateJson = JsonSerializer.Serialize(state);
             var exportedStorageFiles = 0;
 
@@ -19075,12 +20464,17 @@ namespace ConstructionControl
                     writer.Write(stateJson);
                 }
 
-                exportedStorageFiles = ExportProjectStorageToArchive(archive);
+                WriteTextEntry(archive, BackupSectionManifestEntryName, JsonSerializer.Serialize(BuildBackupPackageManifest(selectedSections.Value)));
+                exportedStorageFiles = ExportProjectStorageToArchive(archive, state, selectedSections.Value);
             }
 
-            AppendChangeLog("Экспорт", $"Экспортированы данные проекта в {dlg.FileName}");
+            AppendChangeLog("Экспорт", $"Экспортированы разделы: {FormatProjectTransferSections(selectedSections.Value)}.");
             SaveState(SaveTrigger.System);
-            MessageBox.Show($"Резервная копия сохранена. В архив добавлено файлов ПДФ/смет: {exportedStorageFiles}.");
+            MessageBox.Show(
+                $"Архив сохранен.\n\nРазделы: {FormatProjectTransferSections(selectedSections.Value)}\nФайлов ПДФ/смет в архиве: {exportedStorageFiles}.",
+                "Экспорт",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
 
         private void ImportAllData_Click(object sender, RoutedEventArgs e)
@@ -19097,6 +20491,28 @@ namespace ConstructionControl
             if (dlg.ShowDialog() != true)
                 return;
 
+            if (!TryReadBackupPackageInfo(dlg.FileName, out var package, out var importReadError) || package?.State == null)
+            {
+                MessageBox.Show(
+                    string.IsNullOrWhiteSpace(importReadError)
+                        ? "Не удалось импортировать резервную копию."
+                        : importReadError,
+                    "Ошибка импорта",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var selectedSections = ShowProjectSectionSelectionDialog(
+                title: "Импорт разделов",
+                subtitle: "Выберите, какие разделы нужно забрать из архива. Выбранные части текущего объекта будут заменены данными из файла, остальные разделы останутся без изменений.",
+                hint: "Серые разделы отсутствуют в выбранном архиве. Для частичных архивов доступны только те секции, которые были экспортированы.",
+                confirmText: "Импортировать",
+                enabledSections: package.IncludedSections,
+                defaultSelectedSections: package.IncludedSections);
+            if (!selectedSections.HasValue)
+                return;
+
             try
             {
                 _ = CreateSafetyBackupBeforeOperation("before_import_all");
@@ -19110,46 +20526,56 @@ namespace ConstructionControl
                     MessageBoxImage.Warning);
             }
 
-            if (!TryLoadBackupState(dlg.FileName, out var state, out var restoredStorageFiles, out var importError) || state == null)
-            {
-                MessageBox.Show(
-                    string.IsNullOrWhiteSpace(importError)
-                        ? "Не удалось импортировать резервную копию."
-                        : importError,
-                    "Ошибка импорта",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
-
+            var mergedState = BuildMergedImportState(package.State, selectedSections.Value);
             PushUndo();
-            RestoreState(state);
+            var restoredStorageFiles = ImportSelectedProjectStorageFromBackup(package, selectedSections.Value);
+            RestoreState(mergedState);
             RebuildArchiveFromCurrentData();
-            AppendChangeLog("Импорт", $"Импортированы данные из {dlg.FileName}");
+            AppendChangeLog("Импорт", $"Импортированы разделы: {FormatProjectTransferSections(selectedSections.Value)}.");
             SaveState(SaveTrigger.System);
-              RefreshTreePreserveState();
-              RefreshArrivalTypes();
-              RefreshArrivalNames();
-              RefreshDocumentLibraries();
-              ApplyAllFilters();
+            RefreshTreePreserveState();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            RefreshArrivalFilterTemplates();
+            RefreshDocumentLibraries();
+            ApplyAllFilters();
 
-              var integrityWarning = lastStorageIntegrityIssues.Count > 0
-                  ? $"{Environment.NewLine}{Environment.NewLine}Проверка целостности: найдены проблемы ({lastStorageIntegrityIssues.Count})."
-                  : string.Empty;
-              MessageBox.Show($"Импорт завершен. Восстановлено файлов ПДФ/смет: {restoredStorageFiles}.{integrityWarning}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Information);
-          }
+            var integrityWarning = lastStorageIntegrityIssues.Count > 0
+                ? $"{Environment.NewLine}{Environment.NewLine}Проверка целостности: найдены проблемы ({lastStorageIntegrityIssues.Count})."
+                : string.Empty;
+            MessageBox.Show(
+                $"Импорт завершен.\n\nЗаменены разделы: {FormatProjectTransferSections(selectedSections.Value)}\nВосстановлено файлов ПДФ/смет: {restoredStorageFiles}.{integrityWarning}",
+                "Импорт",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
 
         private int ExportProjectStorageToArchive(ZipArchive archive)
+            => ExportProjectStorageToArchive(archive, relativePathFilter: null);
+
+        private int ExportProjectStorageToArchive(ZipArchive archive, AppState state, ProjectTransferSection sections)
+        {
+            var relativePathFilter = CollectDocumentStorageRelativePathsForSections(state, sections);
+            return ExportProjectStorageToArchive(archive, relativePathFilter);
+        }
+
+        private int ExportProjectStorageToArchive(ZipArchive archive, HashSet<string> relativePathFilter)
         {
             var storageRoot = GetProjectStorageRoot(createIfMissing: false);
             if (string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
                 return 0;
 
+            var filter = relativePathFilter == null || relativePathFilter.Count == 0
+                ? null
+                : new HashSet<string>(relativePathFilter.Select(NormalizeArchiveRelativePath), StringComparer.OrdinalIgnoreCase);
             var exported = 0;
             var manifest = new List<DocumentStorageManifestEntry>();
             foreach (var sourceFile in Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories))
             {
-                var relativePath = System.IO.Path.GetRelativePath(storageRoot, sourceFile).Replace('\\', '/');
+                var relativePath = NormalizeArchiveRelativePath(System.IO.Path.GetRelativePath(storageRoot, sourceFile));
+                if (filter != null && !filter.Contains(relativePath))
+                    continue;
+
                 var entry = archive.CreateEntry($"storage/{relativePath}", CompressionLevel.Optimal);
                 using var input = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var output = entry.Open();
@@ -19356,7 +20782,7 @@ namespace ConstructionControl
             }
         }
 
-        private void ValidateImportedStorageManifest(ZipArchive archive, string storageRoot)
+        private void ValidateImportedStorageManifest(ZipArchive archive, string storageRoot, HashSet<string> relativePathFilter = null)
         {
             if (archive == null || string.IsNullOrWhiteSpace(storageRoot) || !Directory.Exists(storageRoot))
                 return;
@@ -19371,9 +20797,16 @@ namespace ConstructionControl
                 using var reader = new StreamReader(stream);
                 var json = reader.ReadToEnd();
                 var entries = JsonSerializer.Deserialize<List<DocumentStorageManifestEntry>>(json) ?? new List<DocumentStorageManifestEntry>();
+                var filter = relativePathFilter == null || relativePathFilter.Count == 0
+                    ? null
+                    : new HashSet<string>(relativePathFilter.Select(NormalizeArchiveRelativePath), StringComparer.OrdinalIgnoreCase);
                 foreach (var item in entries)
                 {
                     if (item == null || string.IsNullOrWhiteSpace(item.RelativePath))
+                        continue;
+
+                    var normalizedRelativePath = NormalizeArchiveRelativePath(item.RelativePath);
+                    if (filter != null && !filter.Contains(normalizedRelativePath))
                         continue;
 
                     var candidate = item.RelativePath.Replace('/', System.IO.Path.DirectorySeparatorChar).TrimStart(System.IO.Path.DirectorySeparatorChar);
@@ -19434,14 +20867,27 @@ namespace ConstructionControl
             if (!EnsureCanRunCriticalOperation("очистка объекта", requireCode: false))
                 return;
 
+            CommitOpenEdits();
+
             if (currentObject == null)
             {
                 MessageBox.Show("Сначала создайте объект");
                 return;
             }
 
+            var selectedSections = ShowProjectSectionSelectionDialog(
+                title: "Очистка разделов",
+                subtitle: "Выберите, какие разделы текущего объекта нужно очистить. По умолчанию выбраны все данные, кроме базовых настроек объекта.",
+                hint: "Выбранные разделы будут очищены без возможности быстрого восстановления, поэтому перед операцией автоматически создается предохранительный бэкап.",
+                confirmText: "Очистить",
+                enabledSections: AllProjectTransferSections,
+                defaultSelectedSections: DefaultClearTransferSections);
+            if (!selectedSections.HasValue)
+                return;
+
+            var selectedSectionText = FormatProjectTransferSections(selectedSections.Value);
             var firstConfirm = MessageBox.Show(
-                "Будут удалены все данные текущего объекта: приход, сводка, ОТ, табель, ПР, осмотры, дерево материалов, ПДФ и сметы.\n\nПродолжить?",
+                $"Будут удалены выбранные разделы текущего объекта:\n{selectedSectionText}\n\nПродолжить?",
                 "Очистка объекта",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -19449,7 +20895,7 @@ namespace ConstructionControl
                 return;
 
             var secondConfirm = MessageBox.Show(
-                "Подтвердите полную очистку объекта.",
+                $"Подтвердите очистку разделов:\n{selectedSectionText}",
                 "Очистка объекта",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -19482,10 +20928,25 @@ namespace ConstructionControl
             }
 
             PushUndo();
-            ClearCurrentObjectData();
-            AppendChangeLog("Очистка объекта", "Выполнена полная очистка объекта.");
+            PrepareForDocumentStorageMutation();
+            ClearSelectedDocumentStorageFolders(selectedSections.Value);
+            var state = CloneState();
+            ClearProjectTransferSections(state, selectedSections.Value);
+            RestoreState(state);
+            RebuildArchiveFromCurrentData();
+            AppendChangeLog("Очистка объекта", $"Очищены разделы: {selectedSectionText}.");
             SaveState(SaveTrigger.System);
-            MessageBox.Show("Объект полностью очищен.", "Очистка объекта", MessageBoxButton.OK, MessageBoxImage.Information);
+            RefreshTreePreserveState();
+            RefreshArrivalTypes();
+            RefreshArrivalNames();
+            RefreshArrivalFilterTemplates();
+            RefreshDocumentLibraries();
+            ApplyAllFilters();
+            MessageBox.Show(
+                $"Очищены разделы:\n{selectedSectionText}",
+                "Очистка объекта",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
 
         private void ClearCurrentObjectData()
@@ -19906,7 +21367,7 @@ namespace ConstructionControl
             var note = new TextBlock
             {
                 Text = summaryMountedMode ? "Формат ячейки: смонтировано / пришло" : "Формат ячейки: план / пришло",
-                Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8"),
                 Margin = new Thickness(0, 0, 0, 8)
             };
 
@@ -19930,7 +21391,7 @@ namespace ConstructionControl
             {
                 Text = group,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(31, 41, 55))
+                Foreground = GetApplicationThemeBrush("TextBrush", "#E5E7EB")
             };
 
             SummaryPanel.Items.Add(headerBorder);
@@ -19982,7 +21443,7 @@ namespace ConstructionControl
             summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 90 });
             summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 70 });
 
-            var headerBg = new SolidColorBrush(Color.FromRgb(243, 244, 246));
+            var headerBg = GetApplicationThemeBrush("SurfaceAltBrush", "#1F2937");
 
             AddCell(summaryGrid, 0, 0, "Позиция", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
             AddCell(summaryGrid, 0, 1, "Наименование", rowspan: 2, bg: headerBg, align: TextAlignment.Center, fontWeight: FontWeights.SemiBold, noWrap: true);
@@ -20058,9 +21519,9 @@ namespace ConstructionControl
                     && blockTotal > 0
                     && blockFilled.TryGetValue(block.Block, out var filled) && filled);
             bool rowOverage = totalArrival > totalPlanned;
-            var filledHighlight = new SolidColorBrush(Color.FromRgb(220, 252, 231));
-            var blockHighlight = new SolidColorBrush(Color.FromRgb(219, 234, 254));
-            var warningHighlight = new SolidColorBrush(Color.FromRgb(254, 243, 199));
+            var filledHighlight = GetApplicationThemeBrush("SuccessSoftBrush", "#064E3B");
+            var blockHighlight = GetApplicationThemeBrush("SelectedBrush", "#1E3A8A");
+            var warningHighlight = GetApplicationThemeBrush("WarningSoftBrush", "#78350F");
 
             AddCell(summaryGrid, summaryRowIndex, 0, position, align: TextAlignment.Center, noWrap: true, minWidth: 60);
             AddCell(summaryGrid, summaryRowIndex, 1, mat, noWrap: false, minWidth: 280);
@@ -20373,12 +21834,12 @@ namespace ConstructionControl
             {
                 var border = new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                    BorderBrush = GetApplicationThemeBrush("StrokeBrush", "#334155"),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(12),
                     Padding = new Thickness(10),
                     Margin = new Thickness(0, 0, 10, 0),
-                    Background = Brushes.White
+                    Background = GetApplicationThemeBrush("SurfaceBrush", "#111827")
                 };
                 Grid.SetRow(border, 1);
                 Grid.SetColumn(border, column);
@@ -21462,7 +22923,7 @@ namespace ConstructionControl
                 currentObject.UiSettings.UiDensityMode = "Стандартный";
 
             if (currentObject?.UiSettings != null && string.IsNullOrWhiteSpace(currentObject.UiSettings.UiThemeMode))
-                currentObject.UiSettings.UiThemeMode = UiThemeModes.Light;
+                currentObject.UiSettings.UiThemeMode = UiThemeModes.Dark;
 
             if (currentObject?.UiSettings != null)
                 currentObject.UiSettings.UiThemeMode = NormalizeUiThemeMode(currentObject.UiSettings.UiThemeMode);
@@ -21576,7 +23037,14 @@ namespace ConstructionControl
 
         private string NormalizeUiThemeMode(string themeMode)
         {
-            return UiThemeModes.Light;
+            var normalized = (themeMode ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                UiThemeModes.Dark => UiThemeModes.Dark,
+                UiThemeModes.System => UiThemeModes.System,
+                UiThemeModes.Light => UiThemeModes.Light,
+                _ => UiThemeModes.Dark
+            };
         }
 
         private static bool IsSystemDarkThemePreferred()
@@ -21599,11 +23067,26 @@ namespace ConstructionControl
 
         private void ApplyUiThemeMode()
         {
-            var mode = UiThemeModes.Light;
+            var mode = NormalizeUiThemeMode(currentObject?.UiSettings?.UiThemeMode);
             if (currentObject?.UiSettings != null)
                 currentObject.UiSettings.UiThemeMode = mode;
 
-            ApplyThemeBrushPalette(LightThemeBrushColors);
+            var useDarkPalette = mode == UiThemeModes.Dark
+                || (mode == UiThemeModes.System && IsSystemDarkThemePreferred());
+
+            isDarkThemeActive = useDarkPalette;
+            ApplyThemeBrushPalette(useDarkPalette ? DarkThemeBrushColors : LightThemeBrushColors);
+            WindowThemeHelper.ApplyToAllOpenWindows();
+
+            var hoverBrushColor = useDarkPalette ? DarkThemeBrushColors["RowHoverBrush"] : LightThemeBrushColors["RowHoverBrush"];
+            UpdateBrushColor(Resources, "HoverBrush", hoverBrushColor);
+
+            colorPalette = new List<string>((useDarkPalette ? DarkSummaryGroupPalette : LightSummaryGroupPalette).ToArray());
+            colorMap.Clear();
+            colorIndex = 0;
+
+            if (currentObject != null)
+                RefreshSummaryTable();
         }
 
         private static void ApplyThemeBrushPalette(IReadOnlyDictionary<string, string> palette)
@@ -22238,7 +23721,7 @@ namespace ConstructionControl
             {
                 Text = "Управление колонками текущей вкладки: видимость, порядок, ширина.",
                 Margin = new Thickness(0, 0, 0, 10),
-                Foreground = new SolidColorBrush(Color.FromRgb(71, 85, 105))
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8")
             };
             Grid.SetRow(hint, 0);
             root.Children.Add(hint);
@@ -23090,7 +24573,7 @@ namespace ConstructionControl
                 BorderBrush = TryFindResource("StrokeBrush") as Brush ?? Brushes.Gainsboro,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
-                Background = TryFindResource("SurfaceAltBrush") as Brush ?? Brushes.WhiteSmoke
+                Background = TryFindResource("SurfaceAltBrush") as Brush ?? GetApplicationThemeBrush("SurfaceAltBrush", "#1F2937")
             };
             Grid.SetRow(shortcutHintBorder, 1);
             root.Children.Add(shortcutHintBorder);
@@ -23504,6 +24987,33 @@ namespace ConstructionControl
                 },
                 new()
                 {
+                    Id = "theme_dark",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("theme_dark", string.Empty),
+                    Name = "Тема: Темная",
+                    Hint = "Переключить интерфейс на темную тему",
+                    ExecuteAction = () => SetUiThemeMode(UiThemeModes.Dark)
+                },
+                new()
+                {
+                    Id = "theme_light",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("theme_light", string.Empty),
+                    Name = "Тема: Светлая",
+                    Hint = "Переключить интерфейс на светлую тему",
+                    ExecuteAction = () => SetUiThemeMode(UiThemeModes.Light)
+                },
+                new()
+                {
+                    Id = "theme_system",
+                    DefaultShortcut = string.Empty,
+                    Shortcut = ResolveCommandPaletteShortcut("theme_system", string.Empty),
+                    Name = "Тема: Системная",
+                    Hint = "Использовать тему Windows для приложений",
+                    ExecuteAction = () => SetUiThemeMode(UiThemeModes.System)
+                },
+                new()
+                {
                     Id = "tab_summary",
                     DefaultShortcut = string.Empty,
                     Shortcut = ResolveCommandPaletteShortcut("tab_summary", string.Empty),
@@ -23801,6 +25311,18 @@ namespace ConstructionControl
             ApplyUiDensityMode();
             SaveState(SaveTrigger.System);
         }
+
+        private void SetUiThemeMode(string mode)
+        {
+            EnsureProjectUiSettings();
+            if (currentObject?.UiSettings == null)
+                return;
+
+            currentObject.UiSettings.UiThemeMode = NormalizeUiThemeMode(mode);
+            ApplyUiThemeMode();
+            SaveState(SaveTrigger.System);
+        }
+
         private List<SummaryBlockInfo> BuildSummaryBlocks(string group)
         {
             var blocks = new List<SummaryBlockInfo>();
@@ -24005,7 +25527,7 @@ namespace ConstructionControl
 
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
+                BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = bg,
                 MinHeight = 30
@@ -24044,7 +25566,7 @@ namespace ConstructionControl
 
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
+                BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Background = bg,
                 MinHeight = 30,
@@ -24066,7 +25588,7 @@ namespace ConstructionControl
             var line = new WpfPath
             {
                 Data = Geometry.Parse("M0,1 L1,0"),
-                Stroke = new SolidColorBrush(Color.FromRgb(209, 213, 219)),
+                Stroke = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                 StrokeThickness = 1,
                 Stretch = Stretch.Fill,
                 SnapsToDevicePixels = true,
@@ -24109,7 +25631,7 @@ namespace ConstructionControl
                 Margin = new Thickness(2, 1, 2, 1),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Bottom,
-                Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)),
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8"),
                 FontSize = 11
             };
 
@@ -24118,9 +25640,9 @@ namespace ConstructionControl
 
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)),
+                BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                 BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = bg ?? Brushes.White,
+                Background = bg ?? GetApplicationThemeBrush("SurfaceBrush", "#111827"),
                 MinHeight = 30,
                 Child = container
             };
@@ -24375,7 +25897,7 @@ namespace ConstructionControl
                 // Лёгкая горизонтальная разделительная линия между днями
                 var daySeparator = new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(180, 187, 198)), // тот же тон что в таблице
+                    BorderBrush = GetApplicationThemeBrush("DividerBrush", "#1E293B"),
                     BorderThickness = new Thickness(0, 1, 0, 0),
                     Margin = new Thickness(0, 12, 0, 8) // чуть воздуха
                 };
@@ -24917,7 +26439,7 @@ namespace ConstructionControl
             var hint = new TextBlock
             {
                 Text = "Пустое поле означает: не менять это значение.",
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                Foreground = GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8"),
                 Margin = new Thickness(0, 10, 0, 0)
             };
             Grid.SetRow(hint, 4);
@@ -25363,9 +26885,7 @@ namespace ConstructionControl
 
             pdfEditorProcess = process;
             pdfEditorWindowHandle = handle;
-            ConfigureFloatingEstimateWindow(pdfEditorWindowHandle);
             ResetPdfEmbeddedLayoutCache();
-            SchedulePdfEmbeddedLayout();
             return true;
         }
 
@@ -25377,13 +26897,18 @@ namespace ConstructionControl
             if (!EnsurePdfExternalProcess())
                 return;
 
-            if (string.Equals(pdfEmbeddedFilePath, filePath, StringComparison.CurrentCultureIgnoreCase))
+            var normalizedPath = NormalizeDocumentPathKey(filePath);
+            if (pdfEditorWindowHandle != IntPtr.Zero
+                && IsPdfEditorProcessAlive()
+                && string.Equals(NormalizeDocumentPathKey(pdfEmbeddedFilePath), normalizedPath, StringComparison.CurrentCultureIgnoreCase))
             {
+                AttachPdfExternalWindowToHost();
                 SchedulePdfEmbeddedLayout();
                 return;
             }
 
-            pdfEmbeddedFilePath = filePath;
+            pdfEmbeddedFilePath = normalizedPath;
+            AttachPdfExternalWindowToHost();
             try
             {
                 Process.Start(new ProcessStartInfo
@@ -25449,18 +26974,21 @@ namespace ConstructionControl
                 return;
             }
 
+            if (PdfExternalHost == null || PdfExternalHost.HostHandle == IntPtr.Zero)
+                return;
+
             PdfPreviewContainer.UpdateLayout();
-            var screenBounds = GetScreenBounds(PdfPreviewContainer);
-            var width = screenBounds.Width;
-            var height = screenBounds.Height;
+            PdfExternalHost.UpdateLayout();
+            if (!TryGetNativeHostClientSize(PdfExternalHost.HostHandle, out var width, out var height))
+                return;
             if (width <= 0 || height <= 0)
             {
                 try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
                 return;
             }
 
-            var x = screenBounds.X;
-            var y = screenBounds.Y;
+            var x = 0;
+            var y = 0;
 
             if (!force
                 && x == pdfEmbeddedWindowX
@@ -25499,6 +27027,9 @@ namespace ConstructionControl
                 return;
             }
 
+            if (PdfExternalHost != null)
+                PdfExternalHost.Visibility = Visibility.Collapsed;
+            ResetPdfEmbeddedInputState();
             try { ShowWindow(pdfEditorWindowHandle, SW_HIDE); } catch { }
         }
 
@@ -25545,6 +27076,8 @@ namespace ConstructionControl
             pdfEditorProcess = null;
             pdfEditorWindowHandle = IntPtr.Zero;
             pdfEmbeddedFilePath = string.Empty;
+            if (PdfExternalHost != null)
+                PdfExternalHost.Visibility = Visibility.Collapsed;
             ResetPdfEmbeddedLayoutCache();
         }
         void ExportArrival(IXLWorkbook wb)

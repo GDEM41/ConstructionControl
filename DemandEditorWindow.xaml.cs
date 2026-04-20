@@ -32,6 +32,14 @@ namespace ConstructionControl
             RenderTabs();
         }
 
+        private Brush GetThemeBrush(string key, string fallbackHex)
+        {
+            if (TryFindResource(key) is Brush themedBrush)
+                return themedBrush;
+
+            return new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallbackHex));
+        }
+
         private void RenderTabs()
         {
             TypeTabs.Items.Clear();
@@ -68,19 +76,19 @@ namespace ConstructionControl
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 64 });
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            AddCell(grid, 0, 0, "Материал", true, "#EEF2F7", true);
+            AddCell(grid, 0, 0, "Материал", true, GetThemeBrush("SurfaceAltBrush", "#F9FAFB"), true);
             Grid.SetRowSpan(grid.Children[^1], 2);
 
             int startColumn = 1;
             foreach (var blockGroup in markColumns.GroupBy(x => x.Block))
             {
-                AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, "#E5E7EB", true, HorizontalAlignment.Center);
+                AddCell(grid, 0, startColumn, $"Блок {blockGroup.Key}", true, GetThemeBrush("SecondaryBrush", "#E5E7EB"), true, HorizontalAlignment.Center);
                 Grid.SetColumnSpan(grid.Children[^1], blockGroup.Count());
 
                 int offset = 0;
                 foreach (var column in blockGroup)
                 {
-                    AddCell(grid, 1, startColumn + offset, column.Mark, true, "#EEF2F7", true, HorizontalAlignment.Center);
+                    AddCell(grid, 1, startColumn + offset, column.Mark, true, GetThemeBrush("SurfaceAltBrush", "#F9FAFB"), true, HorizontalAlignment.Center);
                     offset++;
                 }
 
@@ -92,7 +100,9 @@ namespace ConstructionControl
             {
                 var row = groupRows[rowIndex];
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var bg = rowIndex % 2 == 0 ? "White" : "#F9FAFB";
+                var bg = rowIndex % 2 == 0
+                    ? GetThemeBrush("SurfaceBrush", "#FFFFFF")
+                    : GetThemeBrush("SurfaceAltBrush", "#F9FAFB");
                 AddCell(grid, rowIndex + 2, 0, row.Material, false, bg, false);
 
                 string key = $"{row.Group}::{row.Material}";
@@ -109,7 +119,7 @@ namespace ConstructionControl
                         Padding = new Thickness(4, 2, 4, 2),
                         HorizontalContentAlignment = HorizontalAlignment.Right,
                         Tag = (key, row.Unit, col.Block, col.Mark),
-                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E7EB")),
+                        BorderBrush = GetThemeBrush("StrokeBrush", "#E5E7EB"),
                         BorderThickness = new Thickness(1)
                     };
                     box.PreviewKeyDown += Cell_PreviewKeyDown;
@@ -241,20 +251,22 @@ namespace ConstructionControl
             return 0;
         }
 
-        private void AddCell(Grid grid, int row, int col, string text, bool bold, string bg, bool header, HorizontalAlignment alignment = HorizontalAlignment.Left)
+        private void AddCell(Grid grid, int row, int col, string text, bool bold, Brush backgroundBrush, bool header, HorizontalAlignment alignment = HorizontalAlignment.Left)
         {
             var border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(229, 231, 235)),
+                BorderBrush = GetThemeBrush("DividerBrush", "#E5E7EB"),
                 BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = (Brush)new BrushConverter().ConvertFromString(bg),
+                Background = backgroundBrush,
                 Padding = new Thickness(6, 5, 6, 5)
             };
             border.Child = new TextBlock
             {
                 Text = text,
                 FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-                Foreground = header ? new SolidColorBrush(Color.FromRgb(17, 24, 39)) : new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+                Foreground = header
+                    ? GetThemeBrush("TextBrush", "#111827")
+                    : GetThemeBrush("TextSecondaryBrush", "#6B7280"),
                 HorizontalAlignment = alignment,
                 TextAlignment = alignment == HorizontalAlignment.Center ? TextAlignment.Center : TextAlignment.Left
             };

@@ -12,8 +12,8 @@
         Height="270"
         SizeToContent="Manual">
     <Border CornerRadius="18"
-            Background="White"
-            BorderBrush="#1F2937"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource StrokeBrush}"
             BorderThickness="0">
         <Image x:Name="SplashImage"
                Source="/installer/assets/splash_masterpro.jpg"

@@ -58,6 +58,7 @@ namespace ConstructionControl
             };
 
             base.OnStartup(e);
+            EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent, new RoutedEventHandler(ApplyThemeToLoadedWindow));
             TouchpadScrollSupport.Initialize();
 
             try
@@ -103,6 +104,12 @@ namespace ConstructionControl
                     MessageBoxImage.Error);
                 Shutdown(-1);
             }
+        }
+
+        private static void ApplyThemeToLoadedWindow(object sender, RoutedEventArgs e)
+        {
+            if (sender is Window window)
+                WindowThemeHelper.ApplyToWindow(window);
         }
     }
 }

@@ -13,6 +13,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
 
@@ -725,7 +726,7 @@ namespace ConstructionControl
                 Margin = new Thickness(48),
                 FontSize = 16,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = System.Windows.Media.Brushes.DimGray
+                Foreground = TryFindResource("TextSecondaryBrush") as Brush ?? GetApplicationThemeBrush("TextSecondaryBrush", "#94A3B8")
             };
 
             page.Children.Add(textBlock);

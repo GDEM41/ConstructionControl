@@ -18,7 +18,7 @@
 
     <!-- ================= СТИЛИ ================= -->
     <Window.Resources>
-        <SolidColorBrush x:Key="HoverBrush" Color="#EEF4FF"/>
+        <SolidColorBrush x:Key="HoverBrush" Color="#1E3A5F"/>
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Height" Value="{DynamicResource ControlHeight}"/>
             <Setter Property="MinWidth" Value="118"/>
@@ -293,15 +293,15 @@
                             <Border x:Name="SwitchTrack"
                                     Width="46"
                                     Height="26"
-                                    Background="#CBD5E1"
+                                    Background="{DynamicResource SecondaryBrush}"
                                     CornerRadius="13"
-                                    BorderBrush="#94A3B8"
+                                    BorderBrush="{DynamicResource StrokeBrush}"
                                     BorderThickness="1">
                                 <Ellipse x:Name="SwitchThumb"
                                          Width="20"
                                          Height="20"
-                                         Fill="White"
-                                         Stroke="#CBD5E1"
+                                         Fill="{DynamicResource SurfaceBrush}"
+                                         Stroke="{DynamicResource StrokeBrush}"
                                          StrokeThickness="1"
                                          HorizontalAlignment="Left"
                                          Margin="3,0,0,0"
@@ -1153,6 +1153,7 @@
                 <MenuItem Header="База материалов" Click="TreeSettings_Click"/>
                 <MenuItem Header="Обмен данными">
                     <MenuItem Header="Импорт Excel" Click="ImportExcel_Click"/>
+                    <Separator/>
                     <MenuItem Header="Экспорт всего" Click="ExportAllData_Click"/>
                     <MenuItem Header="Импорт всего" Click="ImportAllData_Click"/>
                     <Separator/>
@@ -1206,7 +1207,9 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <ToolBar Grid.Column="0" Background="Transparent">
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
 
                 <Button Style="{StaticResource IconButton}"
                         ToolTip="Сохранить"
@@ -1230,7 +1233,11 @@
 
 
 
-                <Separator Margin="6,0"/>
+                <Border Width="1"
+                        Height="34"
+                        Margin="6,0"
+                        Background="{DynamicResource DividerBrush}"
+                        VerticalAlignment="Center"/>
 
                 <Button x:Name="UndoButton"
         Style="{StaticResource IconButton}"
@@ -1247,14 +1254,22 @@
                     ↪
                 </Button>
                 
-                    <Separator Margin="6,0"/>
+                    <Border Width="1"
+                            Height="34"
+                            Margin="6,0"
+                            Background="{DynamicResource DividerBrush}"
+                            VerticalAlignment="Center"/>
                 
                     <Button Style="{StaticResource IconButton}"
                         ToolTip="Обновить"
                         Click="RefreshButton_Click">⟳</Button>
-                    <Separator Margin="10,0"/>
+                    <Border Width="1"
+                            Height="34"
+                            Margin="10,0"
+                            Background="{DynamicResource DividerBrush}"
+                            VerticalAlignment="Center"/>
 
-                </ToolBar>
+                </StackPanel>
 
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
@@ -4604,6 +4619,8 @@
                                                         AllowDrop="True"
                                                         Drop="EstimateSecondaryPane_Drop">
                                                     <Grid>
+                                                        <local:NativeChildHost x:Name="EstimateExcelHostSecondary"
+                                                                               Visibility="Collapsed"/>
                                                         <Border x:Name="EstimatePreviewPlaceholderSecondary"
                                                                 Background="Transparent">
                                                             <StackPanel HorizontalAlignment="Center"

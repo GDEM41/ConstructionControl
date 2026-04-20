@@ -284,7 +284,7 @@
                     Padding="14,0"
                     FontSize="14"
                     Background="{DynamicResource PrimaryBrush}"
-                    Foreground="White"
+                    Foreground="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource PrimaryBrush}"
                     Click="AddArrival_Click"/>
         </StackPanel>

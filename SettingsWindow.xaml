@@ -145,13 +145,15 @@
                                   Height="40"
                                   VerticalContentAlignment="Center">
                             <ComboBoxItem Content="Светлая" Tag="light"/>
+                            <ComboBoxItem Content="Темная" Tag="dark"/>
+                            <ComboBoxItem Content="Системная" Tag="system"/>
                         </ComboBox>
                         <TextBlock Grid.Row="1"
                                    Grid.ColumnSpan="2"
                                    Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"
-                                   Text="Темная и системная темы пока в разработке."/>
+                                   Text="Системная тема использует настройку Windows для приложений."/>
                     </Grid>
 
                     <Grid Margin="0,2,0,10">

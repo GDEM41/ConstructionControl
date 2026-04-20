@@ -213,18 +213,38 @@ namespace ConstructionControl
 
         private static string NormalizeThemeMode(string mode)
         {
-            return UiThemeModes.Light;
+            var normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                UiThemeModes.Dark => UiThemeModes.Dark,
+                UiThemeModes.System => UiThemeModes.System,
+                UiThemeModes.Light => UiThemeModes.Light,
+                _ => UiThemeModes.Dark
+            };
         }
 
         private void SelectThemeMode(string mode)
         {
-            _ = NormalizeThemeMode(mode);
-            ThemeModeBox.SelectedIndex = 0;
+            var normalized = NormalizeThemeMode(mode);
+            for (var i = 0; i < ThemeModeBox.Items.Count; i++)
+            {
+                if (ThemeModeBox.Items[i] is ComboBoxItem item
+                    && string.Equals(item.Tag?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    ThemeModeBox.SelectedIndex = i;
+                    return;
+                }
+            }
+
+            ThemeModeBox.SelectedIndex = 1;
         }
 
         private string GetSelectedThemeMode()
         {
-            return UiThemeModes.Light;
+            if (ThemeModeBox.SelectedItem is ComboBoxItem item)
+                return NormalizeThemeMode(item.Tag?.ToString());
+
+            return UiThemeModes.Dark;
         }
 
         private void SelectAccessRole(string role)

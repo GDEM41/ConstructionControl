@@ -485,7 +485,7 @@ namespace ConstructionControl
         public bool HideReminderDetails { get; set; }
         public bool SafeStartupMode { get; set; }
         public string UiDensityMode { get; set; } = "Стандартный";
-        public string UiThemeMode { get; set; } = UiThemeModes.Light;
+        public string UiThemeMode { get; set; } = UiThemeModes.Dark;
         public string AccessRole { get; set; } = ProjectAccessRoles.Critical;
         public bool RequireCodeForCriticalOperations { get; set; } = true;
         public bool SummaryReminderOnOverage { get; set; } = true;
